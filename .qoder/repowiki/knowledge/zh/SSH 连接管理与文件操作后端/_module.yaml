@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: backend
-title: SSH 连接管理与文件操作后端
-scope:
-    - src-tauri/
-source_files: []
-depends_on: []
-related_to:
-    - path: frontend

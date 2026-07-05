@@ -261,14 +261,16 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
               <button className="sidebar-edit-close" onClick={() => setEditing(null)}>×</button>
             </div>
             <div className="sidebar-edit-fields">
-              <label>Name</label>
-              <input className="sidebar-edit-input" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div style={{ flex: 1 }}>
+              <div className="form-group">
+                <label>Name</label>
+                <input className="sidebar-edit-input" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+              </div>
+              <div className="form-row">
+                <div className="form-group">
                   <label>Host</label>
                   <input className="sidebar-edit-input" value={editing.host} onChange={(e) => setEditing({ ...editing, host: e.target.value })} />
                 </div>
-                <div style={{ width: 80 }}>
+                <div className="form-group fixed-width">
                   <label>Port</label>
                   <input 
                     className="sidebar-edit-input" 
@@ -287,30 +289,36 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
                   />
                 </div>
               </div>
-              <label>Username</label>
-              <input className="sidebar-edit-input" value={editing.username} onChange={(e) => setEditing({ ...editing, username: e.target.value })} />
-              <label>Auth Type</label>
-              <select className="sidebar-edit-input" value={editing.auth_type} onChange={(e) => setEditing({ ...editing, auth_type: e.target.value, key_path: e.target.value === 'key' ? editing.key_path : undefined, password: e.target.value === 'password' ? editing.password : undefined })}>
-                <option value="password">Password</option>
-                <option value="key">Key File</option>
-              </select>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Username</label>
+                  <input className="sidebar-edit-input" value={editing.username} onChange={(e) => setEditing({ ...editing, username: e.target.value })} />
+                </div>
+                <div className="form-group medium-width">
+                  <label>Auth Type</label>
+                  <select className="sidebar-edit-input" value={editing.auth_type} onChange={(e) => setEditing({ ...editing, auth_type: e.target.value, key_path: e.target.value === 'key' ? editing.key_path : undefined, password: e.target.value === 'password' ? editing.password : undefined })}>
+                    <option value="password">Password</option>
+                    <option value="key">Key File</option>
+                  </select>
+                </div>
+              </div>
               {editing.auth_type === 'password' && (
-                <>
+                <div className="form-group">
                   <label>Password</label>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <input className="sidebar-edit-input" style={{ flex: 1 }} type={showEditPassword ? 'text' : 'password'} value={editing.password || ''} onChange={(e) => setEditing({ ...editing, password: e.target.value })} />
                     <button className="sidebar-edit-action-btn" onClick={() => setShowEditPassword(!showEditPassword)} title={showEditPassword ? 'Hide password' : 'Show password'}>{showEditPassword ? '🙈' : '👁'}</button>
                   </div>
-                </>
+                </div>
               )}
               {editing.auth_type === 'key' && (
-                <>
+                <div className="form-group">
                   <label>Key Path</label>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <input className="sidebar-edit-input" style={{ flex: 1 }} value={editing.key_path || ''} onChange={(e) => setEditing({ ...editing, key_path: e.target.value })} />
                     <button className="sidebar-edit-action-btn" onClick={pickKeyFile} title="Browse key file">📂</button>
                   </div>
-                </>
+                </div>
               )}
             </div>
             <div className="sidebar-confirm-actions">
@@ -348,14 +356,16 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
               <button className="sidebar-edit-close" onClick={() => setCreating(null)}>×</button>
             </div>
             <div className="sidebar-edit-fields">
-              <label>Name</label>
-              <input className="sidebar-edit-input" value={creating.name} onChange={(e) => setCreating({ ...creating, name: e.target.value })} placeholder="Server name" />
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div style={{ flex: 1 }}>
+              <div className="form-group">
+                <label>Name</label>
+                <input className="sidebar-edit-input" value={creating.name} onChange={(e) => setCreating({ ...creating, name: e.target.value })} placeholder="Server name" />
+              </div>
+              <div className="form-row">
+                <div className="form-group">
                   <label>Host</label>
                   <input className="sidebar-edit-input" value={creating.host} onChange={(e) => setCreating({ ...creating, host: e.target.value })} placeholder="192.168.1.1" />
                 </div>
-                <div style={{ width: 80 }}>
+                <div className="form-group fixed-width">
                   <label>Port</label>
                   <input 
                     className="sidebar-edit-input" 
@@ -374,30 +384,36 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
                   />
                 </div>
               </div>
-              <label>Username</label>
-              <input className="sidebar-edit-input" value={creating.username} onChange={(e) => setCreating({ ...creating, username: e.target.value })} placeholder="root" />
-              <label>Auth Type</label>
-              <select className="sidebar-edit-input" value={creating.auth_type} onChange={(e) => setCreating({ ...creating, auth_type: e.target.value, key_path: e.target.value === 'key' ? creating.key_path : undefined, password: e.target.value === 'password' ? creating.password : undefined })}>
-                <option value="password">Password</option>
-                <option value="key">Key File</option>
-              </select>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Username</label>
+                  <input className="sidebar-edit-input" value={creating.username} onChange={(e) => setCreating({ ...creating, username: e.target.value })} placeholder="root" />
+                </div>
+                <div className="form-group medium-width">
+                  <label>Auth Type</label>
+                  <select className="sidebar-edit-input" value={creating.auth_type} onChange={(e) => setCreating({ ...creating, auth_type: e.target.value, key_path: e.target.value === 'key' ? creating.key_path : undefined, password: e.target.value === 'password' ? creating.password : undefined })}>
+                    <option value="password">Password</option>
+                    <option value="key">Key File</option>
+                  </select>
+                </div>
+              </div>
               {creating.auth_type === 'password' && (
-                <>
+                <div className="form-group">
                   <label>Password</label>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <input className="sidebar-edit-input" style={{ flex: 1 }} type={showCreatePassword ? 'text' : 'password'} value={creating.password || ''} onChange={(e) => setCreating({ ...creating, password: e.target.value })} placeholder="Enter password" />
-                    <button className="sidebar-edit-action-btn" onClick={() => setShowCreatePassword(!showCreatePassword)} title={showCreatePassword ? 'Hide password' : 'Show password'}>{showCreatePassword ? '' : '👁'}</button>
+                    <button className="sidebar-edit-action-btn" onClick={() => setShowCreatePassword(!showCreatePassword)} title={showCreatePassword ? 'Hide password' : 'Show password'}>{showCreatePassword ? '🙈' : '👁'}</button>
                   </div>
-                </>
+                </div>
               )}
               {creating.auth_type === 'key' && (
-                <>
+                <div className="form-group">
                   <label>Key Path</label>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <input className="sidebar-edit-input" style={{ flex: 1 }} value={creating.key_path || ''} onChange={(e) => setCreating({ ...creating, key_path: e.target.value })} placeholder="~/.ssh/id_rsa" />
                     <button className="sidebar-edit-action-btn" onClick={pickCreateKeyFile} title="Browse key file">📂</button>
                   </div>
-                </>
+                </div>
               )}
             </div>
             <div className="sidebar-confirm-actions">

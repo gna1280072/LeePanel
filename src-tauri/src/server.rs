@@ -1,0 +1,7317 @@
+use crate::ssh::SshManager;
+use russh_keys::key::{KeyPair, SignatureHash};
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter};
+
+// ===== Data Structures =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct OsInfo {
+    pub distro: String,      // e.g. "Ubuntu", "CentOS"
+    pub version: String,     // e.g. "22.04", "7"
+    pub codename: String,    // e.g. "jammy" (Ubuntu only)
+    pub family: String,      // "debian" or "rhel"
+    pub kernel: String,
+    pub arch: String,
+    pub hostname: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DiskInfo {
+    pub filesystem: String,
+    pub size: String,
+    pub used: String,
+    pub available: String,
+    pub use_percent: String,
+    pub mount: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SystemInfo {
+    pub os: OsInfo,
+    pub uptime: String,
+    pub load_avg: String,
+    pub cpu_model: String,
+    pub cpu_cores: u32,
+    #[serde(default)]
+    pub cpu_percent: u32,
+    pub mem_total_mb: u64,
+    pub mem_used_mb: u64,
+    pub mem_free_mb: u64,
+    pub swap_total_mb: u64,
+    pub swap_used_mb: u64,
+    pub disks: Vec<DiskInfo>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ServiceStatus {
+    pub name: String,
+    pub active: bool,
+    pub status_text: String, // "active (running)", "inactive (dead)", etc.
+    pub version: String,
+}
+
+// ===== OS Detection =====
+
+/// Detect the operating system of the remote server
+pub async fn detect_os(ssh_mgr: &SshManager, session_id: &str) -> Result<OsInfo, String> {
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(
+            session_id,
+            r#"
+# Detect distro
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+  echo "DISTRO=$NAME"
+  echo "VERSION=$VERSION_ID"
+  echo "CODENAME=$VERSION_CODENAME"
+  echo "ID=$ID"
+  echo "ID_LIKE=$ID_LIKE"
+elif [ -f /etc/redhat-release ]; then
+  echo "DISTRO=$(cat /etc/redhat-release)"
+  echo "VERSION=unknown"
+  echo "ID=rhel"
+fi
+echo "KERNEL=$(uname -r)"
+echo "ARCH=$(uname -m)"
+echo "HOSTNAME=$(hostname)"
+"#,
+            15,
+        )
+        .await?;
+
+    let mut info = OsInfo {
+        distro: String::new(),
+        version: String::new(),
+        codename: String::new(),
+        family: String::new(),
+        kernel: String::new(),
+        arch: String::new(),
+        hostname: String::new(),
+    };
+
+    for line in stdout.lines() {
+        if let Some((key, val)) = line.split_once('=') {
+            let val = val.trim().trim_matches('"').to_string();
+            match key.trim() {
+                "DISTRO" => info.distro = val,
+                "VERSION" => info.version = val,
+                "CODENAME" => info.codename = val,
+                "ID" | "ID_LIKE" => {
+                    if info.family.is_empty() {
+                        let lower = val.to_lowercase();
+                        if lower.contains("debian") || lower.contains("ubuntu") {
+                            info.family = "debian".to_string();
+                        } else if lower.contains("rhel")
+                            || lower.contains("centos")
+                            || lower.contains("fedora")
+                            || lower.contains("rocky")
+                            || lower.contains("alma")
+                        {
+                            info.family = "rhel".to_string();
+                        }
+                    }
+                }
+                "KERNEL" => info.kernel = val,
+                "ARCH" => info.arch = val,
+                "HOSTNAME" => info.hostname = val,
+                _ => {}
+            }
+        }
+    }
+
+    // Fallback: detect family from distro name if ID didn't work
+    if info.family.is_empty() {
+        let d = info.distro.to_lowercase();
+        if d.contains("ubuntu") || d.contains("debian") {
+            info.family = "debian".to_string();
+        } else if d.contains("centos")
+            || d.contains("rhel")
+            || d.contains("red hat")
+            || d.contains("rocky")
+            || d.contains("alma")
+        {
+            info.family = "rhel".to_string();
+        } else {
+            info.family = "unknown".to_string();
+        }
+    }
+
+    Ok(info)
+}
+
+// ===== System Info =====
+
+/// Get comprehensive system information
+pub async fn get_system_info(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<SystemInfo, String> {
+    // ponytail: cache system info for 15s (memory/uptime/load change, but panel switches are fast)
+    if let Some(cached) = ssh_mgr.cache.get(session_id, "system_info", 15).await {
+        if let Ok(info) = serde_json::from_str::<SystemInfo>(&cached) {
+            return Ok(info);
+        }
+    }
+    // ponytail: single SSH round-trip combining OS detection + system info (was 2 calls)
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(
+            session_id,
+            r#"
+# OS Detection
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+  echo "DISTRO=$NAME"
+  echo "VERSION=$VERSION_ID"
+  echo "CODENAME=$VERSION_CODENAME"
+  echo "ID=$ID"
+  echo "ID_LIKE=$ID_LIKE"
+elif [ -f /etc/redhat-release ]; then
+  echo "DISTRO=$(cat /etc/redhat-release)"
+  echo "VERSION=unknown"
+  echo "ID=rhel"
+fi
+echo "KERNEL=$(uname -r)"
+echo "ARCH=$(uname -m)"
+echo "HOSTNAME=$(hostname)"
+# System info
+echo "UPTIME=$(uptime -p 2>/dev/null || uptime)"
+echo "LOAD=$(cat /proc/loadavg | awk '{print $1, $2, $3}')"
+echo "CPU_MODEL=$(grep 'model name' /proc/cpuinfo | head -1 | cut -d: -f2 | xargs)"
+echo "CPU_CORES=$(nproc)"
+# CPU usage (quick snapshot from /proc/stat)
+CPU_IDLE=$(awk '/^cpu / {print $5}' /proc/stat)
+CPU_TOTAL=$(awk '/^cpu / {sum=$2+$3+$4+$5+$6+$7+$8; print sum}' /proc/stat)
+if [ "$CPU_TOTAL" -gt 0 ]; then
+  CPU_USED=$((100 - ($CPU_IDLE * 100 / $CPU_TOTAL)))
+else
+  CPU_USED=0
+fi
+echo "CPU_PERCENT=$CPU_USED"
+free -m | awk '/^Mem:/ {print "MEM_TOTAL=" $2; print "MEM_USED=" $3; print "MEM_FREE=" $4}'
+free -m | awk '/^Swap:/ {print "SWAP_TOTAL=" $2; print "SWAP_USED=" $3}'
+echo "---DISKS---"
+df -h --output=source,size,used,avail,pcent,target -x tmpfs -x devtmpfs -x squashfs 2>/dev/null | tail -n +2 || df -h | grep -v tmpfs | tail -n +2
+"#,
+            15,
+        )
+        .await?;
+
+    let mut info = SystemInfo {
+        os: OsInfo {
+            distro: String::new(),
+            version: String::new(),
+            codename: String::new(),
+            family: String::new(),
+            kernel: String::new(),
+            arch: String::new(),
+            hostname: String::new(),
+        },
+        uptime: String::new(),
+        load_avg: String::new(),
+        cpu_model: String::new(),
+        cpu_cores: 0,
+        cpu_percent: 0,
+        mem_total_mb: 0,
+        mem_used_mb: 0,
+        mem_free_mb: 0,
+        swap_total_mb: 0,
+        swap_used_mb: 0,
+        disks: Vec::new(),
+    };
+
+    let mut in_disks = false;
+
+    for line in stdout.lines() {
+        if line.starts_with("---DISKS---") {
+            in_disks = true;
+            continue;
+        }
+
+        if in_disks {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 6 {
+                info.disks.push(DiskInfo {
+                    filesystem: parts[0].to_string(),
+                    size: parts[1].to_string(),
+                    used: parts[2].to_string(),
+                    available: parts[3].to_string(),
+                    use_percent: parts[4].to_string(),
+                    mount: parts[5..].join(" "),
+                });
+            }
+            continue;
+        }
+
+        if let Some((key, val)) = line.split_once('=') {
+            let val = val.trim().trim_matches('"').to_string();
+            match key.trim() {
+                "DISTRO" => info.os.distro = val,
+                "VERSION" => info.os.version = val,
+                "CODENAME" => info.os.codename = val,
+                "ID" | "ID_LIKE" => {
+                    if info.os.family.is_empty() {
+                        let lower = val.to_lowercase();
+                        if lower.contains("debian") || lower.contains("ubuntu") {
+                            info.os.family = "debian".to_string();
+                        } else if lower.contains("rhel")
+                            || lower.contains("centos")
+                            || lower.contains("fedora")
+                            || lower.contains("rocky")
+                            || lower.contains("alma")
+                        {
+                            info.os.family = "rhel".to_string();
+                        }
+                    }
+                }
+                "KERNEL" => info.os.kernel = val,
+                "ARCH" => info.os.arch = val,
+                "HOSTNAME" => info.os.hostname = val,
+                "UPTIME" => info.uptime = val.replace("up ", ""),
+                "LOAD" => info.load_avg = val,
+                "CPU_MODEL" => info.cpu_model = val,
+                "CPU_CORES" => info.cpu_cores = val.parse().unwrap_or(0),
+                "CPU_PERCENT" => info.cpu_percent = val.parse().unwrap_or(0),
+                "MEM_TOTAL" => info.mem_total_mb = val.parse().unwrap_or(0),
+                "MEM_USED" => info.mem_used_mb = val.parse().unwrap_or(0),
+                "MEM_FREE" => info.mem_free_mb = val.parse().unwrap_or(0),
+                "SWAP_TOTAL" => info.swap_total_mb = val.parse().unwrap_or(0),
+                "SWAP_USED" => info.swap_used_mb = val.parse().unwrap_or(0),
+                _ => {}
+            }
+        }
+    }
+
+    // Fallback: detect family from distro name if ID didn't work
+    if info.os.family.is_empty() {
+        let d = info.os.distro.to_lowercase();
+        if d.contains("ubuntu") || d.contains("debian") {
+            info.os.family = "debian".to_string();
+        } else if d.contains("centos")
+            || d.contains("rhel")
+            || d.contains("red hat")
+            || d.contains("rocky")
+            || d.contains("alma")
+        {
+            info.os.family = "rhel".to_string();
+        } else {
+            info.os.family = "unknown".to_string();
+        }
+    }
+
+    // ponytail: cache system info
+    if let Ok(json) = serde_json::to_string(&info) {
+        ssh_mgr.cache.put(session_id, "system_info", json).await;
+    }
+    Ok(info)
+}
+
+// ===== Service Status =====
+
+/// Check status of LNMP services
+pub async fn get_service_statuses(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<Vec<ServiceStatus>, String> {
+    // ponytail: cache service statuses for 30s (changes only on start/stop)
+    if let Some(cached) = ssh_mgr.cache.get(session_id, "service_statuses", 30).await {
+        if let Ok(statuses) = serde_json::from_str::<Vec<ServiceStatus>>(&cached) {
+            return Ok(statuses);
+        }
+    }
+    // ponytail: single SSH round-trip for all services (was ~10 sequential calls)
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(
+            session_id,
+            r#"
+for svc in nginx mysqld mariadb mysql php-fpm; do
+  ACTIVE=$(systemctl is-active $svc 2>/dev/null)
+  SUBSTATE=$(systemctl show $svc --property=SubState 2>/dev/null | cut -d= -f2)
+  echo "SVC=$svc|ACTIVE=$ACTIVE|SUB=$SUBSTATE"
+done
+# ponytail: BT Panel installs binaries outside PATH, fallback to /www/server/ paths
+_nver=$(nginx -v 2>&1 || /www/server/nginx/sbin/nginx -v 2>&1 || echo '')
+echo "NGINX_VER=$(echo "$_nver" | grep -oP '[\d.]+' || echo '')"
+_mver=$(mysql --version 2>/dev/null || /www/server/mysql/bin/mysql --version 2>/dev/null || echo '')
+echo "MYSQL_VER=$(echo "$_mver" | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1 || echo '')"
+_pver=$(php -v 2>/dev/null || $(ls /www/server/php/*/bin/php 2>/dev/null | tail -1) -v 2>/dev/null || echo '')
+echo "PHP_VER=$(echo "$_pver" | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1 || echo '')"
+"#,
+            15,
+        )
+        .await?;
+
+    let mut statuses = Vec::new();
+    let mut nginx_ver = String::new();
+    let mut mysql_ver = String::new();
+    let mut php_ver = String::new();
+
+    for line in stdout.lines() {
+        if line.starts_with("SVC=") {
+            // Parse: SVC=name|ACTIVE=status|SUB=substate
+            let parts: Vec<&str> = line.split('|').collect();
+            if parts.len() >= 3 {
+                let name = parts[0].strip_prefix("SVC=").unwrap_or("");
+                let active_str = parts[1].strip_prefix("ACTIVE=").unwrap_or("inactive");
+                let substate = parts[2].strip_prefix("SUB=").unwrap_or("");
+                let active = active_str.trim() == "active";
+                let status_text = if !substate.is_empty() {
+                    substate.to_string()
+                } else if active {
+                    "running".to_string()
+                } else {
+                    "inactive".to_string()
+                };
+                // Skip non-existent services (systemctl returns "unknown" for is-active)
+                if active_str.trim() != "unknown" || active {
+                    statuses.push(ServiceStatus {
+                        name: name.to_string(),
+                        active,
+                        status_text,
+                        version: String::new(), // filled below
+                    });
+                }
+            }
+        } else if let Some((key, val)) = line.split_once('=') {
+            let val = val.trim().to_string();
+            match key.trim() {
+                "NGINX_VER" => nginx_ver = val,
+                "MYSQL_VER" => mysql_ver = val,
+                "PHP_VER" => php_ver = val,
+                _ => {}
+            }
+        }
+    }
+
+    // Assign versions
+    for s in &mut statuses {
+        s.version = match s.name.as_str() {
+            "nginx" => nginx_ver.clone(),
+            "mysqld" | "mysql" | "mariadb" => mysql_ver.clone(),
+            "php-fpm" => php_ver.clone(),
+            _ => String::new(),
+        };
+    }
+
+    // ponytail: cache service statuses
+    if let Ok(json) = serde_json::to_string(&statuses) {
+        ssh_mgr.cache.put(session_id, "service_statuses", json).await;
+    }
+    Ok(statuses)
+}
+
+// ===== LNMP Install =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct LnmpInstallConfig {
+    pub install_nginx: bool,
+    pub install_mysql: bool,
+    pub mysql_variant: String, // "mysql" or "mariadb"
+    pub install_php: bool,
+    pub php_version: String,   // e.g. "8.1", "8.2", "8.3"
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct LnmpStatus {
+    pub nginx_installed: bool,
+    pub mysql_installed: bool,
+    pub mariadb_installed: bool,
+    pub php_installed: bool,
+    pub nginx_version: String,
+    pub mysql_version: String,
+    pub php_version: String,
+}
+
+/// Check which LNMP components are currently installed
+pub async fn check_lnmp_status(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<LnmpStatus, String> {
+    // ponytail: cache LNMP status for connection lifetime (changes only on install/uninstall)
+    if let Some(cached) = ssh_mgr.cache.get(session_id, "lnmp_status", 0).await {
+        if let Ok(status) = serde_json::from_str::<LnmpStatus>(&cached) {
+            return Ok(status);
+        }
+    }
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(
+            session_id,
+            r#"
+echo "NGINX=$(( command -v nginx || [ -x /www/server/nginx/sbin/nginx ] ) >/dev/null 2>&1 && echo yes || echo no)"
+echo "MYSQL=$(( command -v mysql || [ -x /www/server/mysql/bin/mysql ] ) >/dev/null 2>&1 && echo yes || echo no)"
+echo "MARIADB=$(dpkg -l mariadb-server 2>/dev/null | grep -q '^ii' && echo yes || (rpm -q mariadb-server >/dev/null 2>&1 && echo yes || echo no))"
+echo "PHP=$(( command -v php || ls /www/server/php/*/bin/php >/dev/null 2>&1 ) >/dev/null 2>&1 && echo yes || echo no)"
+echo "NGINX_VER=$(nginx -v 2>&1 || /www/server/nginx/sbin/nginx -v 2>&1 | grep -oP '[\d.]+' || echo '')"
+echo "MYSQL_VER=$(mysql --version 2>/dev/null || /www/server/mysql/bin/mysql --version 2>/dev/null | head -1 || echo '')"
+echo "PHP_VER=$(php -v 2>/dev/null || $(ls /www/server/php/*/bin/php 2>/dev/null | tail -1) -v 2>/dev/null | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1 || echo '')"
+"#,
+            15,
+        )
+        .await?;
+
+    let mut status = LnmpStatus {
+        nginx_installed: false,
+        mysql_installed: false,
+        mariadb_installed: false,
+        php_installed: false,
+        nginx_version: String::new(),
+        mysql_version: String::new(),
+        php_version: String::new(),
+    };
+
+    for line in stdout.lines() {
+        if let Some((key, val)) = line.split_once('=') {
+            match key.trim() {
+                "NGINX" => status.nginx_installed = val.trim() == "yes",
+                "MYSQL" => status.mysql_installed = val.trim() == "yes",
+                "MARIADB" => status.mariadb_installed = val.trim() == "yes",
+                "PHP" => status.php_installed = val.trim() == "yes",
+                "NGINX_VER" => status.nginx_version = val.trim().to_string(),
+                "MYSQL_VER" => status.mysql_version = val.trim().to_string(),
+                "PHP_VER" => status.php_version = val.trim().to_string(),
+                _ => {}
+            }
+        }
+    }
+
+    // ponytail: cache LNMP status
+    if let Ok(json) = serde_json::to_string(&status) {
+        ssh_mgr.cache.put(session_id, "lnmp_status", json).await;
+    }
+    Ok(status)
+}
+
+/// Generate an OS-appropriate LNMP install script
+fn generate_install_script(os: &OsInfo, config: &LnmpInstallConfig) -> String {
+    let mut script = String::new();
+
+    script.push_str("#!/bin/bash\n");
+    script.push_str("set -e\n");
+    script.push_str("export DEBIAN_FRONTEND=noninteractive\n");
+    script.push_str(r#"log() { echo "[$(date +%H:%M:%S)] $*"; }"#);
+    script.push('\n');
+    script.push_str(r#"err() { log "ERROR: $*"; exit 1; }"#);
+    script.push('\n');
+    script.push_str("log 'Starting LNMP installation...'\n");
+    script.push_str(&format!("log 'System: {} {} ({})'\n", os.distro, os.version, os.family));
+
+    if os.family == "debian" {
+        script.push_str("\n# Update package index\n");
+        script.push_str("log 'Updating package index...'\n");
+        script.push_str("apt-get update -y\n");
+
+        if config.install_nginx {
+            script.push_str("\n# Install Nginx\n");
+            script.push_str("log 'Installing Nginx...'\n");
+            script.push_str("apt-get install -y nginx || err 'Failed to install Nginx'\n");
+            script.push_str("systemctl enable nginx\n");
+            script.push_str("systemctl start nginx\n");
+            script.push_str("log 'Nginx installed successfully'\n");
+        }
+
+        if config.install_mysql {
+            script.push_str("\n# Install MySQL/MariaDB\n");
+            if config.mysql_variant == "mariadb" {
+                script.push_str("log 'Installing MariaDB...'\n");
+                script.push_str("apt-get install -y mariadb-server mariadb-client || err 'Failed to install MariaDB'\n");
+                script.push_str("systemctl enable mariadb\n");
+                script.push_str("systemctl start mariadb\n");
+                script.push_str("log 'MariaDB installed successfully'\n");
+            } else {
+                script.push_str("log 'Installing MySQL...'\n");
+                script.push_str("apt-get install -y mysql-server mysql-client || err 'Failed to install MySQL'\n");
+                script.push_str("systemctl enable mysql\n");
+                script.push_str("systemctl start mysql\n");
+                script.push_str("log 'MySQL installed successfully'\n");
+            }
+        }
+
+        if config.install_php {
+            let php_ver = &config.php_version;
+            script.push_str("\n# Install PHP\n");
+            script.push_str(&format!("log 'Installing PHP {}...'\n", php_ver));
+            // Add ondrej PPA for older Ubuntu/Debian
+            script.push_str("apt-get install -y software-properties-common\n");
+            script.push_str("add-apt-repository -y ppa:ondrej/php || true\n");
+            script.push_str("apt-get update -y\n");
+            script.push_str(&format!(
+                "apt-get install -y php{v}-fpm php{v}-mysql php{v}-curl php{v}-gd php{v}-mbstring php{v}-xml php{v}-zip || err 'Failed to install PHP {v}'\n",
+                v = php_ver
+            ));
+            script.push_str(&format!("systemctl enable php{v}-fpm\n", v = php_ver));
+            script.push_str(&format!("systemctl start php{v}-fpm\n", v = php_ver));
+            script.push_str(&format!("log 'PHP {} installed successfully'\n", php_ver));
+        }
+    } else if os.family == "rhel" {
+        // CentOS / RHEL / Rocky / Alma
+        let pkg_mgr = if os.version.starts_with('9') || os.version.starts_with("8.") {
+            "dnf"
+        } else {
+            "yum"
+        };
+
+        script.push_str("\n# Install EPEL repository\n");
+        script.push_str("log 'Installing EPEL repository...'\n");
+        script.push_str(&format!("{} install -y epel-release || true\n", pkg_mgr));
+
+        if config.install_nginx {
+            script.push_str("\n# Install Nginx\n");
+            script.push_str("log 'Installing Nginx...'\n");
+            script.push_str(&format!("{} install -y nginx || err 'Failed to install Nginx'\n", pkg_mgr));
+            script.push_str("systemctl enable nginx\n");
+            script.push_str("systemctl start nginx\n");
+            script.push_str("log 'Nginx installed successfully'\n");
+        }
+
+        if config.install_mysql {
+            script.push_str("\n# Install MySQL/MariaDB\n");
+            if config.mysql_variant == "mariadb" {
+                script.push_str("log 'Installing MariaDB...'\n");
+                script.push_str(&format!("{} install -y mariadb-server mariadb || err 'Failed to install MariaDB'\n", pkg_mgr));
+                script.push_str("systemctl enable mariadb\n");
+                script.push_str("systemctl start mariadb\n");
+                script.push_str("log 'MariaDB installed successfully'\n");
+            } else {
+                script.push_str("log 'Installing MySQL...'\n");
+                // For CentOS 8/9, use mysql-server from appstream
+                script.push_str(&format!("{} install -y mysql-server mysql || err 'Failed to install MySQL'\n", pkg_mgr));
+                script.push_str("systemctl enable mysqld\n");
+                script.push_str("systemctl start mysqld\n");
+                script.push_str("log 'MySQL installed successfully'\n");
+            }
+        }
+
+        if config.install_php {
+            let php_ver = &config.php_version;
+            script.push_str("\n# Install PHP\n");
+            script.push_str(&format!("log 'Installing PHP {}...'\n", php_ver));
+            // Use remi repository for newer PHP versions
+            script.push_str("log 'Adding Remi repository...'\n");
+            if os.version.starts_with('9') {
+                script.push_str(&format!("{} install -y https://rpms.remirepo.net/enterprise/remi-release-9.rpm || true\n", pkg_mgr));
+            } else if os.version.starts_with('8') {
+                script.push_str(&format!("{} install -y https://rpms.remirepo.net/enterprise/remi-release-8.rpm || true\n", pkg_mgr));
+            } else {
+                script.push_str(&format!("{} install -y https://rpms.remirepo.net/enterprise/remi-release-7.rpm || true\n", pkg_mgr));
+            }
+            let php_pkg = if php_ver.contains('.') {
+                format!("php{}", php_ver.replace('.', ""))
+            } else {
+                "php".to_string()
+            };
+            script.push_str(&format!(
+                "{} module enable -y php:remi-{} || true\n",
+                pkg_mgr, php_ver
+            ));
+            script.push_str(&format!(
+                "{} install -y {} {}-fpm {}-mysqlnd {}-gd {}-mbstring {}-xml {}-zip || err 'Failed to install PHP {}'\n",
+                pkg_mgr, php_pkg, php_pkg, php_pkg, php_pkg, php_pkg, php_pkg, php_pkg, php_ver
+            ));
+            script.push_str(&format!("systemctl enable {}-fpm\n", php_pkg));
+            script.push_str(&format!("systemctl start {}-fpm\n", php_pkg));
+            script.push_str(&format!("log 'PHP {} installed successfully'\n", php_ver));
+        }
+    } else {
+        return format!("#!/bin/bash\necho 'ERROR: Unsupported OS family: {}'\nexit 1\n", os.family);
+    }
+
+    // Firewall configuration hints
+    script.push_str("\n# Configure firewall\n");
+    if os.family == "debian" {
+        script.push_str("if command -v ufw >/dev/null 2>&1; then\n");
+        script.push_str("  log 'Configuring UFW firewall...'\n");
+        if config.install_nginx {
+            script.push_str("  ufw allow 'Nginx Full' || true\n");
+        }
+        script.push_str("fi\n");
+    } else {
+        script.push_str("if command -v firewall-cmd >/dev/null 2>&1; then\n");
+        script.push_str("  log 'Configuring firewalld...'\n");
+        if config.install_nginx {
+            script.push_str("  firewall-cmd --permanent --add-service=http || true\n");
+            script.push_str("  firewall-cmd --permanent --add-service=https || true\n");
+        }
+        script.push_str("  firewall-cmd --reload || true\n");
+        script.push_str("fi\n");
+    }
+
+    script.push_str("\nlog 'LNMP installation completed successfully!'\n");
+    script.push_str("echo 'INSTALL_SUCCESS'\n");
+
+    script
+}
+
+/// Install LNMP stack on the remote server, emitting progress events
+pub async fn install_lnmp(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    config: &LnmpInstallConfig,
+    app_handle: &AppHandle,
+) -> Result<String, String> {
+    // Detect OS first
+    let os = detect_os(ssh_mgr, session_id).await?;
+
+    if os.family == "unknown" {
+        return Err(format!("Unsupported operating system: {}", os.distro));
+    }
+
+    // Generate install script
+    let script = generate_install_script(&os, config);
+
+    // Write script to remote server
+    ssh_mgr
+        .write_file(session_id, "/tmp/lnmp-install.sh", &script)
+        .await?;
+
+    // Make it executable and run it
+    // Use a shell channel to stream output
+    let mut channel = ssh_mgr.open_channel(session_id).await?;
+    channel
+        .exec(true, "bash /tmp/lnmp-install.sh")
+        .await
+        .map_err(|e| format!("Failed to start install script: {}", e))?;
+
+    let mut full_output = String::new();
+    let mut exit_code: i32 = -1;
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(1800); // 30 min timeout
+
+    loop {
+        tokio::select! {
+            msg = channel.wait() => {
+                match msg {
+                    Some(russh::ChannelMsg::Data { data }) => {
+                        let text = String::from_utf8_lossy(&data);
+                        full_output.push_str(&text);
+                        // Emit every output line to the UI in real time
+                        for line in text.lines() {
+                            if !line.trim().is_empty() {
+                                let _ = app_handle.emit("lnmp-install-progress", serde_json::json!({
+                                    "sessionId": session_id,
+                                    "line": line,
+                                    "status": "installing",
+                                }));
+                            }
+                        }
+                    }
+                    Some(russh::ChannelMsg::ExtendedData { data, ext }) => {
+                        if ext == 1 {
+                            let text = String::from_utf8_lossy(&data);
+                            full_output.push_str(&text);
+                            for line in text.lines() {
+                                if !line.trim().is_empty() {
+                                    let _ = app_handle.emit("lnmp-install-progress", serde_json::json!({
+                                        "sessionId": session_id,
+                                        "line": line,
+                                        "status": "installing",
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                    Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
+                        exit_code = exit_status as i32;
+                    }
+                    Some(russh::ChannelMsg::Eof) | Some(russh::ChannelMsg::Close) | None => break,
+                    _ => {}
+                }
+            }
+            _ = tokio::time::sleep_until(deadline) => {
+                return Err("LNMP installation timed out (30 minutes)".to_string());
+            }
+        }
+    }
+
+    // Emit final status
+    // ponytail: russh may deliver ExitStatus after Eof/Close, so exit_code stays -1.
+    // Fall back to checking the script's own success marker in output.
+    let script_succeeded = full_output.contains("INSTALL_SUCCESS");
+
+    if exit_code == 0 || script_succeeded {
+        let _ = app_handle.emit("lnmp-install-progress", serde_json::json!({
+            "sessionId": session_id,
+            "line": "Installation completed successfully!",
+            "status": "done",
+        }));
+        Ok(full_output)
+    } else {
+        let _ = app_handle.emit("lnmp-install-progress", serde_json::json!({
+            "sessionId": session_id,
+            "line": format!("Installation failed (exit code {})", exit_code),
+            "status": "error",
+        }));
+        Err(format!("Installation failed (exit code {}):\n{}", exit_code, full_output))
+    }
+}
+
+// ===== Service Management =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ServiceInfo {
+    pub name: String,
+    pub display_name: String,
+    pub active: bool,
+    pub status_text: String,
+    pub version: String,
+    pub pid: String,
+    pub memory: String,
+    pub uptime: String,
+    pub config_path: String,
+}
+
+/// Get detailed info for a specific service
+pub async fn get_service_info(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    service: &str,
+) -> Result<ServiceInfo, String> {
+    // ponytail: single SSH round-trip combining status + version + config detection (was 2-3 calls)
+    let cmd = match service {
+        "nginx" => format!(r#"
+echo "ACTIVE=$(systemctl is-active {svc} 2>/dev/null || echo inactive)"
+echo "STATUS=$(systemctl show {svc} --property=ActiveState,SubState,MainPID,MemoryCurrent 2>/dev/null | paste -sd ',' -)"
+echo "UPTIME=$(systemctl show {svc} --property=ActiveEnterTimestamp 2>/dev/null | cut -d= -f2-)"
+echo "VER=$(nginx -v 2>&1 | grep -oP '[\d.]+' || echo '')"
+"#, svc = service),
+        "mysqld" | "mysql" | "mariadb" => format!(r#"
+echo "ACTIVE=$(systemctl is-active {svc} 2>/dev/null || echo inactive)"
+echo "STATUS=$(systemctl show {svc} --property=ActiveState,SubState,MainPID,MemoryCurrent 2>/dev/null | paste -sd ',' -)"
+echo "UPTIME=$(systemctl show {svc} --property=ActiveEnterTimestamp 2>/dev/null | cut -d= -f2-)"
+echo "VER=$(mysql --version 2>/dev/null | head -1 || echo '')"
+echo "CFG=$(mysql --help 2>/dev/null | grep 'Default options' -A 1 | tail -1 | xargs || echo '')"
+"#, svc = service),
+        _ => format!(r#"
+echo "ACTIVE=$(systemctl is-active {svc} 2>/dev/null || echo inactive)"
+echo "STATUS=$(systemctl show {svc} --property=ActiveState,SubState,MainPID,MemoryCurrent 2>/dev/null | paste -sd ',' -)"
+echo "UPTIME=$(systemctl show {svc} --property=ActiveEnterTimestamp 2>/dev/null | cut -d= -f2-)"
+echo "VER=$(php -v 2>/dev/null | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1 || echo '')"
+echo "CFG=$(php -i 2>/dev/null | grep 'Loaded Configuration File' | head -1 | cut -d= -f2- | xargs || echo '')"
+"#, svc = service),
+    };
+
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(session_id, &cmd, 15)
+        .await?;
+
+    let mut info = ServiceInfo {
+        name: service.to_string(),
+        display_name: service.to_string(),
+        active: false,
+        status_text: String::new(),
+        version: String::new(),
+        pid: String::new(),
+        memory: String::new(),
+        uptime: String::new(),
+        config_path: String::new(),
+    };
+
+    for line in stdout.lines() {
+        if let Some((key, val)) = line.split_once('=') {
+            let val = val.trim().to_string();
+            match key.trim() {
+                "ACTIVE" => {
+                    info.active = val == "active";
+                    info.status_text = val;
+                }
+                "STATUS" => {
+                    for prop in val.split(',') {
+                        if let Some((k, v)) = prop.split_once('=') {
+                            match k {
+                                "MainPID" => info.pid = v.to_string(),
+                                "MemoryCurrent" => {
+                                    if let Ok(bytes) = v.parse::<u64>() {
+                                        info.memory = format!("{} MB", bytes / 1024 / 1024);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                "UPTIME" => info.uptime = val,
+                "VER" => info.version = val,
+                "CFG" => info.config_path = val,
+                _ => {}
+            }
+        }
+    }
+
+    // Set display name and config path defaults based on service type
+    match service {
+        "nginx" => {
+            info.display_name = "Nginx".to_string();
+            if info.config_path.is_empty() {
+                info.config_path = "/etc/nginx/nginx.conf".to_string();
+            }
+        }
+        "mysqld" | "mysql" => {
+            info.display_name = "MySQL".to_string();
+            if info.config_path.is_empty() || !info.config_path.starts_with('/') {
+                info.config_path = info.config_path.split_whitespace()
+                    .next().unwrap_or("/etc/my.cnf").to_string();
+            }
+            if info.config_path.is_empty() {
+                info.config_path = "/etc/my.cnf".to_string();
+            }
+        }
+        "mariadb" => {
+            info.display_name = "MariaDB".to_string();
+            if info.config_path.is_empty() || !info.config_path.starts_with('/') {
+                info.config_path = info.config_path.split_whitespace()
+                    .next().unwrap_or("/etc/my.cnf").to_string();
+            }
+            if info.config_path.is_empty() {
+                info.config_path = "/etc/my.cnf".to_string();
+            }
+        }
+        "php-fpm" => {
+            info.display_name = "PHP-FPM".to_string();
+            if info.config_path.is_empty() {
+                info.config_path = "/etc/php.ini".to_string();
+            }
+        }
+        _ => {}
+    }
+
+    Ok(info)
+}
+
+/// Find the active MySQL/MariaDB service name in a single SSH call (was ~9 sequential calls)
+pub async fn find_mysql_service(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<(String, ServiceInfo), String> {
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(
+            session_id,
+            r#"
+for svc in mysqld mariadb mysql; do
+  ACTIVE=$(systemctl is-active $svc 2>/dev/null || echo inactive)
+  echo "SVC=$svc|ACTIVE=$ACTIVE"
+done
+"#,
+            10,
+        )
+        .await?;
+
+    // Find first active service, or first that exists
+    let mut first_existing = String::new();
+    let mut found_active: Option<String> = None;
+
+    for line in stdout.lines() {
+        if line.starts_with("SVC=") {
+            let parts: Vec<&str> = line.split('|').collect();
+            if parts.len() >= 2 {
+                let name = parts[0].strip_prefix("SVC=").unwrap_or("");
+                let active = parts[1].strip_prefix("ACTIVE=").unwrap_or("inactive");
+                if first_existing.is_empty() && active != "unknown" {
+                    first_existing = name.to_string();
+                }
+                if active == "active" && found_active.is_none() {
+                    found_active = Some(name.to_string());
+                }
+            }
+        }
+    }
+
+    let service_name = found_active.unwrap_or(first_existing);
+    if service_name.is_empty() {
+        return Err("No MySQL/MariaDB service found".to_string());
+    }
+
+    let info = get_service_info(ssh_mgr, session_id, &service_name).await?;
+    Ok((service_name, info))
+}
+
+/// Find the active PHP-FPM service name in a single SSH call (was ~18 sequential calls)
+pub async fn find_php_service(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<(String, ServiceInfo), String> {
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(
+            session_id,
+            r#"
+for svc in php-fpm php8.4-fpm php8.3-fpm php8.2-fpm php8.1-fpm php8.0-fpm; do
+  ACTIVE=$(systemctl is-active $svc 2>/dev/null || echo inactive)
+  echo "SVC=$svc|ACTIVE=$ACTIVE"
+done
+"#,
+            10,
+        )
+        .await?;
+
+    let mut first_existing = String::new();
+    let mut found_active: Option<String> = None;
+
+    for line in stdout.lines() {
+        if line.starts_with("SVC=") {
+            let parts: Vec<&str> = line.split('|').collect();
+            if parts.len() >= 2 {
+                let name = parts[0].strip_prefix("SVC=").unwrap_or("");
+                let active = parts[1].strip_prefix("ACTIVE=").unwrap_or("inactive");
+                if first_existing.is_empty() && active != "unknown" {
+                    first_existing = name.to_string();
+                }
+                if active == "active" && found_active.is_none() {
+                    found_active = Some(name.to_string());
+                }
+            }
+        }
+    }
+
+    let service_name = found_active.unwrap_or(first_existing);
+    if service_name.is_empty() {
+        return Err("No PHP-FPM service found".to_string());
+    }
+
+    let info = get_service_info(ssh_mgr, session_id, &service_name).await?;
+    Ok((service_name, info))
+}
+
+/// Find the FPM pool config path in a single SSH call (was up to 6 sequential reads)
+pub async fn find_php_fpm_config(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<(String, String), String> {
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(
+            session_id,
+            r#"
+for p in /etc/php-fpm.d/www.conf /etc/php/8.4/fpm/pool.d/www.conf /etc/php/8.3/fpm/pool.d/www.conf /etc/php/8.2/fpm/pool.d/www.conf /etc/php/8.1/fpm/pool.d/www.conf /etc/php/8.0/fpm/pool.d/www.conf; do
+  if [ -f "$p" ]; then
+    echo "PATH=$p"
+    cat "$p"
+    exit 0
+  fi
+done
+echo "NOT_FOUND"
+"#,
+            10,
+        )
+        .await?;
+
+    if stdout.contains("NOT_FOUND") {
+        return Err("FPM pool config not found".to_string());
+    }
+
+    let mut path = String::new();
+    let mut content = String::new();
+    for line in stdout.lines() {
+        if line.starts_with("PATH=") {
+            path = line.strip_prefix("PATH=").unwrap_or("").to_string();
+        } else if !path.is_empty() {
+            content.push_str(line);
+            content.push('\n');
+        }
+    }
+
+    if path.is_empty() {
+        return Err("FPM pool config not found".to_string());
+    }
+
+    Ok((path, content))
+}
+
+/// Read a remote file's content via SSH exec
+pub async fn read_remote_file(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    path: &str,
+) -> Result<String, String> {
+    let safe = path.replace('\'', "'\\''");
+    let (stdout, stderr, code) = ssh_mgr
+        .exec_with_output(session_id, &format!("cat '{}'", safe), 10)
+        .await?;
+    if code != 0 {
+        Err(format!("Failed to read {}: {}", path, stderr.trim()))
+    } else {
+        Ok(stdout)
+    }
+}
+
+/// Write content to a remote file via SFTP
+pub async fn write_remote_file(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    path: &str,
+    content: &str,
+) -> Result<(), String> {
+    ssh_mgr.write_file(session_id, path, content).await
+}
+
+/// Get recent log lines from a file
+pub async fn get_log_lines(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    path: &str,
+    lines: u32,
+) -> Result<String, String> {
+    let safe = path.replace('\'', "'\\''");
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(session_id, &format!("tail -{} '{}'", lines, safe), 10)
+        .await?;
+    Ok(stdout)
+}
+
+/// List Nginx virtual hosts
+pub async fn list_nginx_vhosts(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<Vec<String>, String> {
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(
+            session_id,
+            r#"
+for dir in /etc/nginx/conf.d /etc/nginx/sites-enabled /etc/nginx/sites-available /www/server/panel/vhost/nginx /www/server/nginx/conf/vhost; do
+  [ -d "$dir" ] && find "$dir" -maxdepth 1 -type f 2>/dev/null
+done | sort -u
+"#,
+            10,
+        )
+        .await?;
+
+    let vhosts: Vec<String> = stdout
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .filter(|l| {
+            let name = l.rsplit('/').next().unwrap_or(l);
+            name != "default"
+        })
+        .collect();
+
+    Ok(vhosts)
+}
+
+/// Get Nginx configuration test result
+pub async fn test_nginx_config(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<(bool, String), String> {
+    let (stdout, stderr, code) = ssh_mgr
+        .exec_with_output(session_id, "nginx -t 2>&1", 10)
+        .await?;
+    let combined = format!("{} {}", stdout, stderr);
+    let ok = code == 0 || combined.contains("test is successful") || combined.contains("syntax is ok");
+    Ok((ok, combined.trim().to_string()))
+}
+
+/// Get MySQL global variables
+pub async fn get_mysql_variables(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(
+            session_id,
+            "mysql -e 'SHOW GLOBAL VARIABLES' 2>/dev/null | head -80",
+            10,
+        )
+        .await?;
+
+    let mut vars = Vec::new();
+    for line in stdout.lines().skip(1) {
+        if let Some((name, value)) = line.split_once('\t') {
+            vars.push((name.trim().to_string(), value.trim().to_string()));
+        }
+    }
+    Ok(vars)
+}
+
+/// Get MySQL process list
+pub async fn get_mysql_processes(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<String, String> {
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(
+            session_id,
+            "mysql -e 'SHOW PROCESSLIST' 2>/dev/null",
+            10,
+        )
+        .await?;
+    Ok(stdout)
+}
+
+/// Execute a MySQL query
+pub async fn exec_mysql_query(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    query: &str,
+) -> Result<String, String> {
+    let safe_query = query.replace('\'', "'\\''");
+    let (stdout, stderr, code) = ssh_mgr
+        .exec_with_output(
+            session_id,
+            &format!("mysql -e '{}' 2>&1", safe_query),
+            15,
+        )
+        .await?;
+    let combined = format!("{} {}", stdout, stderr);
+    // mysql errors start with "ERROR" (e.g. "ERROR 1045 (28000): Access denied")
+    let has_error = combined.contains("ERROR ") || combined.contains("ERROR:");
+    if code != 0 && has_error {
+        Err(combined.trim().to_string())
+    } else {
+        Ok(stdout)
+    }
+}
+
+// ===== Site Management =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SiteInfo {
+    pub domain: String,
+    pub domains: String,             // Space-separated list of all server_names
+    pub root: String,
+    pub config_path: String,
+    pub ssl: bool,
+    pub ssl_cert_path: Option<String>,
+    pub ssl_key_path: Option<String>,
+    pub php_version: String,
+    pub running_dir: String,
+    pub open_basedir: bool,
+    pub enabled: bool,
+    pub index_files: String,         // Space-separated index file list
+    pub proxy_target: String,        // Detected proxy_pass URL
+    pub hotlink_enabled: bool,       // Hotlink protection enabled
+    pub hotlink_extensions: String,  // Comma-separated file extensions
+    pub hotlink_allowed_domains: String, // Newline-separated allowed domains
+    pub hotlink_response: String,    // Response code or path
+    pub hotlink_allow_empty_referer: bool, // Allow empty referer
+    pub created_at: i64,
+}
+
+/// List installed PHP-FPM versions on the server
+pub async fn list_php_versions(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<Vec<String>, String> {
+    // ponytail: cache PHP versions for connection lifetime
+    if let Some(cached) = ssh_mgr.cache.get(session_id, "php_versions", 0).await {
+        if let Ok(versions) = serde_json::from_str::<Vec<String>>(&cached) {
+            return Ok(versions);
+        }
+    }
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(
+            session_id,
+            r#"
+for v in 5.6 7.0 7.1 7.2 7.3 7.4 8.0 8.1 8.2 8.3 8.4 8.5; do
+  # Check multiple possible locations for php-fpm binary
+  if command -v php-fpm$v >/dev/null 2>&1 || \
+     [ -x /usr/sbin/php-fpm$v ] || \
+     [ -x /usr/bin/php-fpm$v ] || \
+     [ -x /www/server/php/$v/sbin/php-fpm ] || \
+     systemctl list-units --type=service 2>/dev/null | grep -q "php${v}-fpm"; then
+    echo "$v"
+  fi
+done
+"#,
+            10,
+        )
+        .await?;
+
+    let versions: Vec<String> = stdout
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    // ponytail: cache PHP versions
+    if let Ok(json) = serde_json::to_string(&versions) {
+        ssh_mgr.cache.put(session_id, "php_versions", json).await;
+    }
+    Ok(versions)
+}
+
+/// List immediate subdirectories of a given path
+pub async fn list_subdirs(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    path: &str,
+) -> Result<Vec<String>, String> {
+    let safe_path = path.replace('\'', "'\\''");
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(
+            session_id,
+            &format!("find '{}' -maxdepth 1 -mindepth 1 -type d -printf '%f\\n' 2>/dev/null | sort", safe_path),
+            10,
+        )
+        .await?;
+
+    let dirs: Vec<String> = stdout
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    Ok(dirs)
+}
+
+/// List all configured sites from Nginx
+pub async fn list_sites(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<Vec<SiteInfo>, String> {
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(
+            session_id,
+            r##"
+# Parse nginx vhost configs — scan both enabled and disabled
+seen=""
+
+# 1) Scan enabled configs (standard + BT Panel vhost paths)
+for dir in /etc/nginx/sites-enabled /etc/nginx/conf.d /www/server/panel/vhost/nginx /www/server/nginx/conf/vhost; do
+  if [ -d "$dir" ]; then
+    for f in "$dir"/*; do
+      [ -f "$f" ] || continue
+      # Skip default config
+      case "$(basename "$f")" in default) continue;; esac
+      # Skip .disabled files in conf.d (not enabled)
+      case "$f" in *.conf.disabled) continue;; esac
+      echo "===TIME:$(stat -c %Y "$f" 2>/dev/null || echo 0)==="
+      echo "===FILE:$f==="
+      cat "$f" 2>/dev/null
+      # ponytail: detect PHP version from includes and running sockets
+      _pv=$(grep -ohP 'php\K[0-9]+\.[0-9]+' "$f" 2>/dev/null | head -1)
+      if [ -z "$_pv" ]; then
+        _inc=$(grep -oP 'include\s+\K[^;]+' "$f" 2>/dev/null | tr -d " '" | while read _ip; do
+          for _g in $_ip; do [ -f "$_g" ] && grep -ohP 'php\K[0-9]+\.[0-9]+' "$_g" 2>/dev/null; done
+        done | head -1)
+        [ -n "$_inc" ] && _pv="$_inc"
+      fi
+      if [ -z "$_pv" ] && grep -q 'fastcgi_pass' "$f" 2>/dev/null; then
+        _sk=$(ls /run/php/php*-fpm.sock /var/run/php/php*-fpm.sock 2>/dev/null | head -1)
+        [ -n "$_sk" ] && _pv=$(echo "$_sk" | grep -oP 'php\K[0-9]+\.[0-9]+')
+      fi
+      [ -n "$_pv" ] && echo "# __PHP_FPM:$_pv"
+      # ponytail: explicit SSL marker for reliable detection
+      grep -q 'ssl_certificate' "$f" 2>/dev/null && echo '# __SSL:1' || echo '# __SSL:0'
+      # Record the server_name for dedup
+      sn=$(grep -E '^[[:space:]]*server_name[[:space:]]+' "$f" 2>/dev/null | head -1 | sed 's/.*server_name[[:space:]]*//' | sed 's/;.*//' | awk '{print $1}')
+      [ -n "$sn" ] && seen="$seen $sn"
+    done
+  fi
+done
+
+# 2) Scan disabled configs (sites-available without symlink + conf.d/*.conf.disabled)
+
+# sites-available
+if [ -d /etc/nginx/sites-available ]; then
+  for f in /etc/nginx/sites-available/*; do
+    [ -f "$f" ] || continue
+    # Skip default config
+    case "$(basename "$f")" in default) continue;; esac
+    sn=$(grep -E '^[[:space:]]*server_name[[:space:]]+' "$f" 2>/dev/null | head -1 | sed 's/.*server_name[[:space:]]*//' | sed 's/;.*//' | awk '{print $1}')
+    [ -z "$sn" ] && continue
+    # Skip if already seen as enabled
+    echo "$seen" | grep -qw "$sn" && continue
+    echo "===TIME:$(stat -c %Y "$f" 2>/dev/null || echo 0)==="
+    echo "===FILE:$f==="
+    cat "$f" 2>/dev/null
+    _pv=$(grep -ohP 'php\K[0-9]+\.[0-9]+' "$f" 2>/dev/null | head -1)
+    if [ -z "$_pv" ]; then
+      _inc=$(grep -oP 'include\s+\K[^;]+' "$f" 2>/dev/null | tr -d " '" | while read _ip; do
+        for _g in $_ip; do [ -f "$_g" ] && grep -ohP 'php\K[0-9]+\.[0-9]+' "$_g" 2>/dev/null; done
+      done | head -1)
+      [ -n "$_inc" ] && _pv="$_inc"
+    fi
+    if [ -z "$_pv" ] && grep -q 'fastcgi_pass' "$f" 2>/dev/null; then
+      _sk=$(ls /run/php/php*-fpm.sock /var/run/php/php*-fpm.sock 2>/dev/null | head -1)
+      [ -n "$_sk" ] && _pv=$(echo "$_sk" | grep -oP 'php\K[0-9]+\.[0-9]+')
+    fi
+    [ -n "$_pv" ] && echo "# __PHP_FPM:$_pv"
+    grep -q 'ssl_certificate' "$f" 2>/dev/null && echo '# __SSL:1' || echo '# __SSL:0'
+  done
+fi
+
+# conf.d .disabled files
+if [ -d /etc/nginx/conf.d ]; then
+  for f in /etc/nginx/conf.d/*.conf.disabled; do
+    [ -f "$f" ] || continue
+    echo "===TIME:$(stat -c %Y "$f" 2>/dev/null || echo 0)==="
+    echo "===FILE:$f==="
+    cat "$f" 2>/dev/null
+    _pv=$(grep -ohP 'php\K[0-9]+\.[0-9]+' "$f" 2>/dev/null | head -1)
+    if [ -z "$_pv" ]; then
+      _inc=$(grep -oP 'include\s+\K[^;]+' "$f" 2>/dev/null | tr -d " '" | while read _ip; do
+        for _g in $_ip; do [ -f "$_g" ] && grep -ohP 'php\K[0-9]+\.[0-9]+' "$_g" 2>/dev/null; done
+      done | head -1)
+      [ -n "$_inc" ] && _pv="$_inc"
+    fi
+    if [ -z "$_pv" ] && grep -q 'fastcgi_pass' "$f" 2>/dev/null; then
+      _sk=$(ls /run/php/php*-fpm.sock /var/run/php/php*-fpm.sock 2>/dev/null | head -1)
+      [ -n "$_sk" ] && _pv=$(echo "$_sk" | grep -oP 'php\K[0-9]+\.[0-9]+')
+    fi
+    [ -n "$_pv" ] && echo "# __PHP_FPM:$_pv"
+    grep -q 'ssl_certificate' "$f" 2>/dev/null && echo '# __SSL:1' || echo '# __SSL:0'
+  done
+fi
+"##,
+            15,
+        )
+        .await?;
+
+    let mut sites: Vec<SiteInfo> = Vec::new();
+    let mut current_file = String::new();
+    let mut current_content = String::new();
+    let mut current_time: i64 = 0;
+
+    for line in stdout.lines() {
+        if line.starts_with("===TIME:") && line.ends_with("===") {
+            current_time = line
+                .trim_start_matches("===TIME:")
+                .trim_end_matches("===")
+                .parse::<i64>()
+                .unwrap_or(0);
+        } else if line.starts_with("===FILE:") && line.ends_with("===") {
+            // Process previous file
+            if !current_file.is_empty() {
+                if let Some(mut site) = parse_site_config(&current_file, &current_content) {
+                    site.created_at = current_time * 1000; // Convert seconds to milliseconds
+                    sites.push(site);
+                }
+            }
+            current_file = line
+                .trim_start_matches("===FILE:")
+                .trim_end_matches("===")
+                .to_string();
+            current_content.clear();
+        } else {
+            current_content.push_str(line);
+            current_content.push('\n');
+        }
+    }
+    // Process last file
+    if !current_file.is_empty() {
+        if let Some(mut site) = parse_site_config(&current_file, &current_content) {
+            site.created_at = current_time * 1000; // Convert seconds to milliseconds
+            sites.push(site);
+        }
+    }
+
+    // Dedup by domain (keep first occurrence = enabled)
+    let mut seen_domains = std::collections::HashSet::new();
+    sites.retain(|s| seen_domains.insert(s.domain.clone()));
+
+    Ok(sites)
+}
+
+/// Parse a single nginx vhost config to extract site info
+fn parse_site_config(path: &str, content: &str) -> Option<SiteInfo> {
+    // ponytail: extract all server_names from all server_name directives
+    let domains = content
+        .lines()
+        .filter(|l| l.trim().starts_with("server_name"))
+        .flat_map(|l| {
+            l.trim()
+                .strip_prefix("server_name")
+                .map(|s| s.trim().trim_end_matches(';').trim())
+                .unwrap_or("")
+                .split_whitespace()
+                .map(String::from)
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<String>>();
+    
+    let domains_str = if domains.is_empty() {
+        "unknown".to_string()
+    } else {
+        domains.join(" ")
+    };
+    
+    let domain = domains.first().cloned().unwrap_or_else(|| "unknown".to_string());
+
+    // Skip if no server_name found and filename is default-like
+    if domain == "unknown" && (path.contains("default") || path.contains("default.conf")) {
+        return None;
+    }
+
+    let root = content
+        .lines()
+        .find(|l| l.trim().starts_with("root "))
+        .and_then(|l| {
+            l.trim()
+                .strip_prefix("root ")
+                .map(|s| s.trim().trim_end_matches(';').trim().to_string())
+        })
+        .unwrap_or_else(|| format!("/var/www/{}", domain));
+
+    // ponytail: use explicit SSL marker from shell script, fall back to content scan
+    let ssl = content.lines().any(|l| l.trim() == "# __SSL:1")
+        || content.contains("ssl_certificate")
+        || content.contains("listen 443");
+
+    // ponytail: parse SSL cert/key paths from config
+    let ssl_cert_path = content.lines()
+        .find(|l| l.trim().starts_with("ssl_certificate "))
+        .and_then(|l| l.trim().strip_prefix("ssl_certificate ").map(|s| s.trim().trim_end_matches(';').trim().to_string()));
+    let ssl_key_path = content.lines()
+        .find(|l| l.trim().starts_with("ssl_certificate_key "))
+        .and_then(|l| l.trim().strip_prefix("ssl_certificate_key ").map(|s| s.trim().trim_end_matches(';').trim().to_string()));
+
+    let php_version = content
+        .lines()
+        .find(|l| l.starts_with("# __PHP_FPM:"))
+        .map(|l| l.trim_start_matches("# __PHP_FPM:").trim().to_string())
+        .or_else(|| {
+            // Fallback: scan content for php{ver}-fpm patterns
+            let lower = content.to_lowercase();
+            for pat in &["php-fpm", "php_fpm"] {
+                let mut start = 0;
+                while let Some(idx) = lower[start..].find(pat) {
+                    let abs = start + idx + pat.len();
+                    let rest: String = lower[abs..].chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+                    if !rest.is_empty() && rest.contains('.') {
+                        return Some(rest);
+                    }
+                    start = abs;
+                }
+            }
+            None
+        })
+        .unwrap_or_default();
+
+    // ponytail: a site is disabled if config ends with .disabled; otherwise enabled if in sites-enabled or conf.d
+    let enabled = !path.ends_with(".disabled") && (path.contains("sites-enabled") || path.contains("conf.d"));
+
+    // Detect running_dir: from comment marker, default to "/"
+    let running_dir = content
+        .lines()
+        .find(|l| l.starts_with("# __RUNNING_DIR:"))
+        .map(|l| l.trim_start_matches("# __RUNNING_DIR:").trim().to_string())
+        .unwrap_or_else(|| "/".to_string());
+
+    // Strip running_dir from nginx root to get the true web root
+    let web_root = if running_dir != "/" {
+        let suffix = running_dir.trim_start_matches('/');
+        root.strip_suffix(&format!("/{}", suffix)).unwrap_or(&root).to_string()
+    } else {
+        root.clone()
+    };
+
+    // Detect open_basedir: check if PHP_ADMIN_VALUE open_basedir exists in config
+    let open_basedir = content.contains("PHP_ADMIN_VALUE") && content.contains("open_basedir");
+
+    // ponytail: parse index files from the index directive
+    let index_files = content.lines()
+        .find(|l| l.trim().starts_with("index "))
+        .and_then(|l| l.trim().strip_prefix("index ").map(|s| s.trim().trim_end_matches(';').trim().to_string()))
+        .unwrap_or_else(|| "index.php index.html index.htm".to_string());
+
+    // ponytail: detect proxy_pass URL from config (first occurrence)
+    let proxy_target = content.lines()
+        .find(|l| l.trim().starts_with("proxy_pass "))
+        .and_then(|l| l.trim().strip_prefix("proxy_pass ").map(|s| s.trim().trim_end_matches(';').trim().to_string()))
+        .unwrap_or_default();
+
+    // ponytail: parse hotlink protection from config markers
+    let hotlink_enabled = content.contains("# Hotlink Protection Start");
+    
+    let (hotlink_extensions, hotlink_allowed_domains, hotlink_response, hotlink_allow_empty_referer) = if hotlink_enabled {
+        // Extract the hotlink block
+        let mut in_hotlink_block = false;
+        let mut hotlink_content = String::new();
+        for line in content.lines() {
+            if line.contains("# Hotlink Protection Start") {
+                in_hotlink_block = true;
+                continue;
+            }
+            if line.contains("# Hotlink Protection End") {
+                break;
+            }
+            if in_hotlink_block {
+                hotlink_content.push_str(line);
+                hotlink_content.push('\n');
+            }
+        }
+        
+        // Parse extensions from location ~* \.(ext)$ pattern
+        let extensions = hotlink_content
+            .lines()
+            .find(|l| l.contains("location ~* \\.") && l.contains("$"))
+            .and_then(|l| {
+                l.split("\\.").nth(1)
+                    .and_then(|s| s.split('$').next())
+                    .map(|s| {
+                        // Remove parentheses and convert | to commas
+                        s.replace('(', "")
+                            .replace(')', "")
+                            .replace('|', ",")
+                    })
+            })
+            .unwrap_or_else(|| "jpg,jpeg,gif,png,js,css".to_string());
+        
+        // Parse valid_referers to extract allowed domains
+        let referers_line = hotlink_content
+            .lines()
+            .find(|l| l.trim().starts_with("valid_referers"));
+        
+        eprintln!("[DEBUG] referers_line: {:?}", referers_line);
+        
+        let mut allowed_domains_list: Vec<String> = Vec::new();
+        let mut allow_empty = false;
+        
+        if let Some(ref_line) = referers_line {
+            let parts: Vec<&str> = ref_line
+                .trim()  // Remove leading/trailing whitespace first
+                .strip_prefix("valid_referers")
+                .unwrap_or("")
+                .trim()
+                .trim_end_matches(';')
+                .split_whitespace()
+                .collect();
+            
+            eprintln!("[DEBUG] parts: {:?}", parts);
+            
+            for part in parts {
+                if part == "none" {
+                    allow_empty = true;
+                } else if part.starts_with("*.") {
+                    // *.example.com -> example.com
+                    let domain = part.strip_prefix("*.").unwrap_or(part).to_string();
+                    eprintln!("[DEBUG] Adding wildcard domain: {}", domain);
+                    if !allowed_domains_list.contains(&domain) {
+                        allowed_domains_list.push(domain);
+                    }
+                } else if part != "blocked" && part != "server_names" {
+                    let domain_str = part.to_string();
+                    eprintln!("[DEBUG] Adding regular domain: {}", domain_str);
+                    if !allowed_domains_list.contains(&domain_str) {
+                        allowed_domains_list.push(domain_str);
+                    }
+                }
+            }
+        }
+        
+        // Join domains with newlines (preserving order)
+        let allowed_domains = allowed_domains_list.join("\n");
+        eprintln!("[DEBUG] Final allowed_domains: {:?}", allowed_domains);
+        
+        // Parse response directive
+        let response = hotlink_content
+            .lines()
+            .find(|l| l.trim().starts_with("return "))
+            .and_then(|l| {
+                let trimmed = l.trim().strip_prefix("return ")?.trim_end_matches(';').trim();
+                // Extract just the code or path
+                if let Some(code) = trimmed.split_whitespace().next() {
+                    // If it's a number, return it; otherwise return the full directive
+                    if code.parse::<u16>().is_ok() {
+                        Some(code.to_string())
+                    } else {
+                        Some(trimmed.to_string())
+                    }
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| "403".to_string());
+        
+        (extensions, allowed_domains, response, allow_empty)
+    } else {
+        ("".to_string(), "".to_string(), "".to_string(), false)
+    };
+
+    Some(SiteInfo {
+        domain,
+        domains: domains_str,
+        root: web_root,
+        config_path: path.to_string(),
+        ssl,
+        ssl_cert_path,
+        ssl_key_path,
+        php_version,
+        running_dir,
+        open_basedir,
+        enabled,
+        index_files,
+        proxy_target,
+        hotlink_enabled,
+        hotlink_extensions,
+        hotlink_allowed_domains,
+        hotlink_response,
+        hotlink_allow_empty_referer,
+        created_at: 0, // set by caller from ===TIME: marker
+    })
+}
+
+/// Create a new site with Nginx vhost configuration
+pub async fn create_site(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    domain: &str,
+    root: &str,
+    php_version: &str,
+    running_dir: &str,
+    open_basedir: bool,
+    use_ssl: bool,
+    create_db: bool,
+    db_name: &str,
+    db_user: &str,
+    db_pass: &str,
+    app_handle: &AppHandle,
+) -> Result<(String, String), String> {
+    // Check if nginx is installed (comprehensive check for standard + BT Panel installations)
+    let emit = |line: &str| {
+        let _ = app_handle.emit("site-create-progress", serde_json::json!({
+            "sessionId": session_id,
+            "domain": domain,
+            "line": line,
+            "status": "running",
+        }));
+    };
+    
+    emit(&format!("Starting site creation for {}...", domain));
+    
+    // Check if nginx is installed
+    let nginx_check_cmd = r#"which nginx 2>/dev/null || command -v nginx 2>/dev/null || [ -x /www/server/nginx/sbin/nginx ] && echo 'found' || echo ''"#;
+    emit(&format!("Command: {}", nginx_check_cmd));
+    let (nginx_check_out, nginx_check_err, _nginx_check_code) = ssh_mgr
+        .exec_with_output(session_id, nginx_check_cmd, 5)
+        .await?;
+    if !nginx_check_out.trim().is_empty() {
+        emit("STDOUT: Nginx found");
+    }
+    if !nginx_check_err.trim().is_empty() {
+        emit(&format!("STDERR: {}", nginx_check_err.trim()));
+    }
+    if nginx_check_out.trim().is_empty() {
+        return Err("Please install nginx first before creating a site.".to_string());
+    }
+    emit("✓ Nginx detected");
+
+    let safe_domain = domain.replace('\'', "'\\''");
+    let safe_root = root.replace('\'', "'\\''");
+
+    // Detect OS, nginx user, vhost layout, PHP socket
+    let detect_cmd = r#"
+# Detect OS
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+  echo "FAMILY=$ID_LIKE"
+  echo "ID=$ID"
+fi
+
+# Detect nginx user
+NGINX_USER=$(ps aux | grep -E '^www-data ' 2>/dev/null | head -1)
+if [ -n "$NGINX_USER" ]; then
+  echo "NGINX_USER=www-data"
+else
+  NGINX_USER=$(ps aux | grep -E '^nginx ' 2>/dev/null | head -1)
+  if [ -n "$NGINX_USER" ]; then
+    echo "NGINX_USER=nginx"
+  else
+    # Fallback: check /etc/nginx/nginx.conf
+    echo "NGINX_USER=$(grep -E '^user[[:space:]]+' /etc/nginx/nginx.conf 2>/dev/null | awk '{print $2}' | tr -d ';' || echo 'www-data')"
+  fi
+fi
+
+# Detect vhost layout
+echo "VHOST_DIR=$([ -d /etc/nginx/sites-available ] && echo 'sites-available' || echo 'conf.d')"
+
+# Detect PHP-FPM socket
+if command -v php-fpm &>/dev/null || command -v php-fpm$(php -v 2>/dev/null | head -1 | grep -oP '[\d]+\.[\d]+' | head -1) &>/dev/null; then
+  SOCK=$(ls /run/php/php*-fpm.sock /var/run/php/php*-fpm.sock /run/php-fpm/www.sock /var/run/php-fpm/www.sock 2>/dev/null | head -1)
+  echo "PHP_SOCK=$SOCK"
+fi
+
+# Check if nginx snippets exist
+echo "HAS_FCGI_SNIPPET=$([ -f /etc/nginx/snippets/fastcgi-php.conf ] && echo '1' || echo '0')"
+"#;
+    
+    emit("Detecting system configuration...");
+    emit(&format!("Command: {}", detect_cmd.trim()));
+    let (detect_out, detect_err, _) = ssh_mgr
+        .exec_with_output(session_id, detect_cmd, 10)
+        .await?;
+    
+    if !detect_out.trim().is_empty() {
+        emit("STDOUT:");
+        for line in detect_out.lines() {
+            emit(line);
+        }
+    }
+    if !detect_err.trim().is_empty() {
+        emit(&format!("STDERR: {}", detect_err.trim()));
+    }
+
+    let get = |key: &str| -> String {
+        detect_out
+            .lines()
+            .find(|l| l.starts_with(key))
+            .map(|l| l.split('=').nth(1).unwrap_or("").trim().to_string())
+            .unwrap_or_default()
+    };
+
+    let family = get("FAMILY");
+    let os_id = get("ID");
+    let is_debian = family.contains("debian") || os_id == "ubuntu" || os_id == "debian";
+    let nginx_user = get("NGINX_USER");
+    let nginx_user = if nginx_user.is_empty() { if is_debian { "www-data".to_string() } else { "nginx".to_string() } } else { nginx_user };
+    let vhost_dir = get("VHOST_DIR");
+    let uses_sites = vhost_dir == "sites-available";
+    let php_sock = get("PHP_SOCK");
+    let has_fcgi_snippet = get("HAS_FCGI_SNIPPET") == "1";
+
+    let config_path = if uses_sites {
+        format!("/etc/nginx/sites-available/{}", domain)
+    } else {
+        format!("/etc/nginx/conf.d/{}.conf", domain)
+    };
+
+    // Compute effective nginx root: web_root + running_dir
+    let running_dir_clean = running_dir.trim().trim_start_matches('/');
+    let effective_root = if running_dir_clean.is_empty() {
+        safe_root.clone()
+    } else {
+        format!("{}/{}", safe_root, running_dir_clean)
+    };
+
+    // Build PHP socket path — always derive from requested version, use detected sock as fallback only
+    let php_sock = if php_version.is_empty() {
+        String::new()
+    } else if is_debian {
+        format!("/run/php/php{}-fpm.sock", php_version)
+    } else {
+        // RHEL/CentOS: version-specific socket, or fallback to generic
+        let versioned = format!("/run/php-fpm/www-{}.sock", php_version);
+        if !php_sock.is_empty() && php_sock.contains(php_version) {
+            php_sock
+        } else {
+            // ponytail: try common RHEL socket paths for the requested version
+            versioned
+        }
+    };
+
+    let has_php = !php_sock.is_empty();
+
+    // Build nginx config — handle both Debian (snippets) and RHEL/CentOS (inline)
+    let open_basedir_line = if open_basedir && has_php {
+        format!("\n        fastcgi_param PHP_ADMIN_VALUE \"open_basedir={}:/tmp/\";", safe_root)
+    } else {
+        String::new()
+    };
+    let fastcgi_block = if has_php {
+        if has_fcgi_snippet {
+            format!(r#"
+    location ~ \.php$ {{
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:{sock};{oba}
+    }}
+"#, sock = php_sock, oba = open_basedir_line)
+        } else {
+            format!(r#"
+    location ~ \.php$ {{
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass unix:{sock};
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;{oba}
+    }}
+"#, sock = php_sock, oba = open_basedir_line)
+        }
+    } else {
+        String::new()
+    };
+
+    let try_files = if has_php {
+        "try_files $uri $uri/ /index.php?$query_string;"
+    } else {
+        "try_files $uri $uri/ =404;"
+    };
+
+    let nginx_conf = format!(
+        r#"server {{
+    listen 80;
+    listen [::]:80;
+    server_name {domain};
+    root {root};
+    index index.php index.html index.htm;
+
+    location / {{
+        {try_files}
+    }}
+{fastcgi}
+    location ~ /\.ht {{
+        deny all;
+    }}
+
+    access_log /var/log/nginx/{domain}.access.log;
+    error_log /var/log/nginx/{domain}.error.log;
+# __RUNNING_DIR:{running_dir}
+}}
+"#,
+        domain = safe_domain,
+        root = effective_root,
+        fastcgi = fastcgi_block,
+        running_dir = running_dir.trim(),
+        try_files = try_files,
+    );
+
+    // Create effective root directory (web_root + running_dir)
+    emit(&format!("Creating web root: {}", root));
+    let mkdir_cmd = format!("mkdir -p '{}'", effective_root);
+    emit(&format!("Command: {}", mkdir_cmd));
+    let (mkdir_out, mkdir_err, _) = ssh_mgr
+        .exec_with_output(session_id, &mkdir_cmd, 10)
+        .await?;
+    if !mkdir_out.trim().is_empty() {
+        emit(&format!("STDOUT: {}", mkdir_out.trim()));
+    }
+    if !mkdir_err.trim().is_empty() {
+        emit(&format!("STDERR: {}", mkdir_err.trim()));
+    }
+
+    // Set ownership
+    emit("Setting file permissions...");
+    let chown_cmd = format!("chown -R {}:'{}' '{}' 2>/dev/null || true", nginx_user, nginx_user, safe_root);
+    emit(&format!("Command: {}", chown_cmd));
+    let (chown_out, chown_err, _) = ssh_mgr
+        .exec_with_output(session_id, &chown_cmd, 10)
+        .await?;
+    if !chown_out.trim().is_empty() {
+        emit(&format!("STDOUT: {}", chown_out.trim()));
+    }
+    if !chown_err.trim().is_empty() {
+        emit(&format!("STDERR: {}", chown_err.trim()));
+    }
+
+    // Create a default welcome page
+    if !php_version.is_empty() {
+        let index_content = r#"<?php
+$domain = $_SERVER['HTTP_HOST'] ?? 'your site';
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome - <?= htmlspecialchars($domain) ?></title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #1a2332 100%);
+            color: #c9d1d9;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            text-align: center;
+            padding: 60px 40px;
+            max-width: 600px;
+        }
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 30px;
+            background: linear-gradient(135deg, #58a6ff, #238636);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            box-shadow: 0 8px 32px rgba(88, 166, 255, 0.3);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        h1 {
+            font-size: 2.2em;
+            background: linear-gradient(135deg, #58a6ff, #79c0ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 12px;
+        }
+        .subtitle {
+            font-size: 1.1em;
+            color: #8b949e;
+            margin-bottom: 40px;
+        }
+        .info {
+            background: rgba(88, 166, 255, 0.08);
+            border: 1px solid rgba(88, 166, 255, 0.2);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 30px;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { color: #8b949e; }
+        .info-value { color: #58a6ff; font-weight: 600; }
+        .features {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .features span {
+            background: rgba(35, 134, 54, 0.15);
+            border: 1px solid rgba(35, 134, 54, 0.3);
+            color: #3fb950;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+        }
+        .footer {
+            margin-top: 40px;
+            color: #484f58;
+            font-size: 0.85em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">&#9775;</div>
+        <h1>Welcome to LeePanel</h1>
+        <p class="subtitle">Your powerful SSH server management companion</p>
+        <div class="info">
+            <div class="info-row">
+                <span class="info-label">Domain</span>
+                <span class="info-value"><?= htmlspecialchars($domain) ?></span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">PHP Version</span>
+                <span class="info-value"><?= PHP_VERSION ?></span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Server Software</span>
+                <span class="info-value"><?= $_SERVER['SERVER_SOFTWARE'] ?? 'Nginx' ?></span>
+            </div>
+        </div>
+        <div class="features">
+            <span>&#10003; Secure Connections</span>
+            <span>&#10003; File Management</span>
+            <span>&#10003; Server Control</span>
+        </div>
+        <p class="footer">Powered by LeePanel</p>
+    </div>
+</body>
+</html>
+"#;
+        ssh_mgr
+            .write_file(
+                session_id,
+                &format!("{}/index.php", root),
+                index_content,
+            )
+            .await?;
+    } else {
+        let index_content = r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #1a2332 100%);
+            color: #c9d1d9;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            text-align: center;
+            padding: 60px 40px;
+            max-width: 600px;
+        }
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 30px;
+            background: linear-gradient(135deg, #58a6ff, #238636);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            box-shadow: 0 8px 32px rgba(88, 166, 255, 0.3);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        h1 {
+            font-size: 2.2em;
+            background: linear-gradient(135deg, #58a6ff, #79c0ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 12px;
+        }
+        .subtitle {
+            font-size: 1.1em;
+            color: #8b949e;
+            margin-bottom: 40px;
+        }
+        .features {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .features span {
+            background: rgba(35, 134, 54, 0.15);
+            border: 1px solid rgba(35, 134, 54, 0.3);
+            color: #3fb950;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+        }
+        .footer {
+            margin-top: 40px;
+            color: #484f58;
+            font-size: 0.85em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">&#9775;</div>
+        <h1>Welcome to LeePanel</h1>
+        <p class="subtitle">Your powerful SSH server management companion</p>
+        <div class="features">
+            <span>&#10003; Secure Connections</span>
+            <span>&#10003; File Management</span>
+            <span>&#10003; Server Control</span>
+        </div>
+        <p class="footer">Powered by LeePanel</p>
+    </div>
+</body>
+</html>
+"#;
+        ssh_mgr
+            .write_file(
+                session_id,
+                &format!("{}/index.html", root),
+                index_content,
+            )
+            .await?;
+    }
+
+    // Write nginx config
+    emit("Generating Nginx configuration...");
+    ssh_mgr
+        .write_file(session_id, &config_path, &nginx_conf)
+        .await?;
+    emit(&format!("Config written to: {}", config_path));
+
+    // Enable site (symlink if using sites-available)
+    if uses_sites {
+        emit("Enabling site in Nginx...");
+        let symlink_cmd = format!("ln -sf '{}' '/etc/nginx/sites-enabled/{}'", config_path, safe_domain);
+        emit(&format!("Command: {}", symlink_cmd));
+        let (symlink_out, symlink_err, _) = ssh_mgr
+            .exec_with_output(session_id, &symlink_cmd, 5)
+            .await?;
+        if !symlink_out.trim().is_empty() {
+            emit(&format!("STDOUT: {}", symlink_out.trim()));
+        }
+        if !symlink_err.trim().is_empty() {
+            emit(&format!("STDERR: {}", symlink_err.trim()));
+        }
+    }
+
+    // Test nginx config
+    emit("Testing Nginx configuration...");
+    let test_cmd = "nginx -t 2>&1";
+    emit(&format!("Command: {}", test_cmd));
+    let (test_stdout, test_stderr, test_code) = ssh_mgr
+        .exec_with_output(session_id, test_cmd, 10)
+        .await?;
+    // nginx -t outputs everything to stderr; combine both for robust checking
+    let test_combined = format!("{} {}", test_stdout, test_stderr);
+    if !test_stdout.trim().is_empty() {
+        emit(&format!("STDOUT: {}", test_stdout.trim()));
+    }
+    if !test_stderr.trim().is_empty() {
+        emit(&format!("STDERR: {}", test_stderr.trim()));
+    }
+    let test_ok = test_code == 0 || test_combined.contains("test is successful") || test_combined.contains("syntax is ok");
+    if !test_ok {
+        return Err(format!("Nginx config test failed: {}", test_combined.trim()));
+    }
+
+    // Reload nginx
+    emit("Reloading Nginx...");
+    let reload_cmd = "systemctl reload nginx";
+    emit(&format!("Command: {}", reload_cmd));
+    let (reload_out, reload_err, _) = ssh_mgr
+        .exec_with_output(session_id, reload_cmd, 10)
+        .await?;
+    if !reload_out.trim().is_empty() {
+        emit(&format!("STDOUT: {}", reload_out.trim()));
+    }
+    if !reload_err.trim().is_empty() {
+        emit(&format!("STDERR: {}", reload_err.trim()));
+    }
+    emit("✓ Nginx reloaded successfully");
+
+    // Create MySQL database and user if requested
+    let mut db_warning = String::new();
+    if create_db && !db_name.is_empty() {
+        emit(&format!("Creating database: {}...", db_name));
+        
+        // Check if mysql client is installed on the server
+        let (which_out, _, which_code) = ssh_mgr
+            .exec_with_output(session_id, "command -v mysql", 5)
+            .await?;
+        if which_code != 0 || which_out.trim().is_empty() {
+            emit("✗ MySQL client is NOT installed on the server");
+            emit("  Install it first: apt install mysql-client (Debian/Ubuntu) or yum install mysql (CentOS/RHEL)");
+            db_warning = " (database not created: mysql client not found on server)".to_string();
+        } else {
+            emit(&format!("MySQL client found: {}", which_out.trim()));
+        }
+        
+        if db_warning.is_empty() {
+            let safe_db = db_name.replace('`', "");
+            let safe_user = db_user.replace('`', "");
+            let safe_pw = db_pass.replace('`', "");
+            let sql = format!(
+                "CREATE DATABASE IF NOT EXISTS `{}`;\n\
+                 CREATE USER IF NOT EXISTS '{}'@'localhost' IDENTIFIED BY '{}';\n\
+                 GRANT ALL PRIVILEGES ON `{}`.* TO '{}'@'localhost';\n\
+                 FLUSH PRIVILEGES;\n",
+                safe_db, safe_user, safe_pw, safe_db, safe_user
+            );
+            
+            // Write SQL file via SFTP (more reliable than echo with complex escaping)
+            let tmp_sql = "/tmp/db_setup.sql";
+            emit(&format!("Writing SQL file to {}...", tmp_sql));
+            emit("SQL Content:");
+            for line in sql.lines() {
+                emit(line);
+            }
+            
+            if let Err(e) = ssh_mgr.write_file(session_id, tmp_sql, &sql).await {
+                emit(&format!("✗ Failed to write SQL file: {}", e));
+                db_warning = format!(" (database not created: failed to write SQL file: {})", e);
+            } else {
+                emit("✓ SQL file written successfully");
+                
+                // Execute mysql command separately
+                let mysql_cmd = format!("mysql < {}", tmp_sql);
+                emit(&format!("Command: {}", mysql_cmd));
+                
+                let (db_out, db_err, db_code) = ssh_mgr
+                    .exec_with_output(session_id, &mysql_cmd, 30)
+                    .await?;
+                
+                // Check if database was actually created (verify regardless of exit code)
+                let verify_cmd = format!("mysql -e 'SHOW DATABASES' 2>&1 | grep -i '{}'", safe_db);
+                let (verify_out, _, _) = ssh_mgr
+                    .exec_with_output(session_id, &verify_cmd, 10)
+                    .await?;
+                let db_exists = !verify_out.trim().is_empty();
+                
+                if db_code != 0 && !db_exists {
+                    // Real failure - database was not created
+                    let full_output = format!("{} {}", db_out, db_err).trim().to_string();
+                    let error_detail = if full_output.is_empty() {
+                        "unknown error".to_string()
+                    } else {
+                        full_output.clone()
+                    };
+                    db_warning = format!(" (but database creation failed: {})", error_detail.lines().next().unwrap_or("unknown error"));
+                    
+                    emit("✗ Database creation failed!");
+                    emit(&format!("Exit code: {}", db_code));
+                    
+                    if !db_out.trim().is_empty() {
+                        emit("=== STDOUT ===");
+                        for line in db_out.lines() {
+                            emit(line);
+                        }
+                    } else {
+                        emit("STDOUT: (empty)");
+                    }
+                    
+                    if !db_err.trim().is_empty() {
+                        emit("=== STDERR ===");
+                        for line in db_err.lines() {
+                            emit(line);
+                        }
+                    } else {
+                        emit("STDERR: (empty)");
+                    }
+                    
+                    if db_out.trim().is_empty() && db_err.trim().is_empty() {
+                        emit("");
+                        emit(" Troubleshooting hints:");
+                        emit("- Check if MySQL/MariaDB service is running: systemctl status mysql");
+                        emit("- Try connecting manually: mysql -u root -p");
+                        emit("- Check MySQL error log: /var/log/mysql/error.log or journalctl -u mysql");
+                        emit("- Verify MySQL socket exists: ls -la /var/run/mysqld/mysqld.sock");
+                    }
+                } else if db_code != 0 && db_exists {
+                    // Exit code was non-zero but database exists - likely SSH channel issue
+                    emit("✓ Database created successfully (verified)");
+                    emit(&format!("Note: Exit code was {} but database exists", db_code));
+                    if !db_out.trim().is_empty() {
+                        emit("=== Output ===");
+                        for line in db_out.lines() {
+                            emit(line);
+                        }
+                    }
+                } else {
+                    emit("✓ Database created successfully");
+                    if !db_out.trim().is_empty() {
+                        emit("=== Output ===");
+                        for line in db_out.lines() {
+                            emit(line);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Setup SSL with certbot if requested
+    if use_ssl {
+        emit("Setting up SSL certificate...");
+        let ssl_cmd = format!("certbot --nginx -d '{}' --non-interactive --agree-tos --email admin@'{}' 2>&1", safe_domain, safe_domain);
+        emit(&format!("Command: {}", ssl_cmd));
+        let (ssl_out, ssl_err, ssl_code) = ssh_mgr
+            .exec_with_output(session_id, &ssl_cmd, 120)
+            .await?;
+        
+        if !ssl_out.trim().is_empty() {
+            emit("=== STDOUT ===");
+            for line in ssl_out.lines() {
+                emit(line);
+            }
+        }
+        if !ssl_err.trim().is_empty() {
+            emit("=== STDERR ===");
+            for line in ssl_err.lines() {
+                emit(line);
+            }
+        }
+        
+        if ssl_code != 0 {
+            emit("✗ SSL setup failed!");
+            return Ok((
+                config_path,
+                format!(
+                    "Site created successfully but SSL setup failed. Check the logs above for details.\nYou can run certbot manually later."
+                ),
+            ));
+        }
+        emit("✓ SSL certificate installed");
+    }
+
+    emit(&format!("Site {} created successfully!", domain));
+    Ok((config_path, format!("Site {} created successfully at {}{}", domain, root, db_warning)))
+}
+
+/// Toggle site enable/disable
+pub async fn toggle_site(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    config_path: &str,
+    domain: &str,
+    enable: bool,
+) -> Result<String, String> {
+    let safe_domain = domain.replace('\'', "'\\''");
+    let safe_path = config_path.replace('\'', "'\\''");
+
+    // Determine which strategy to use based on where the config lives
+    if config_path.contains("sites-available") || config_path.contains("sites-enabled") {
+        // sites-enabled/sites-available style: manage symlink in sites-enabled,
+        // actual config lives in sites-available (or sites-enabled if no symlink was used)
+        let link = format!("/etc/nginx/sites-enabled/{}", safe_domain);
+        let available_path = if config_path.contains("sites-available") {
+            // Strip .disabled suffix if present to get the canonical path
+            config_path.trim_end_matches(".disabled").to_string()
+        } else {
+            // Config is directly in sites-enabled; move to sites-available on disable
+            format!("/etc/nginx/sites-available/{}", safe_domain)
+        };
+        let safe_available = available_path.replace('\'', "'\\''");
+
+        if enable {
+            // Ensure config is in sites-available
+            if config_path.contains("sites-enabled") && !config_path.contains("sites-available") {
+                let src = config_path.trim_end_matches(".disabled");
+                let safe_src = src.replace('\'', "'\\''");
+                ssh_mgr
+                    .exec_with_output(session_id, &format!("mv '{}' '{}'", safe_src, safe_available), 5)
+                    .await?;
+            }
+            // Create symlink
+            ssh_mgr
+                .exec_with_output(session_id, &format!("ln -sf '{}' '{}'", safe_available, link), 5)
+                .await?;
+        } else {
+            // Remove symlink from sites-enabled
+            ssh_mgr
+                .exec_with_output(session_id, &format!("rm -f '{}'", link), 5)
+                .await?;
+            // If config is in sites-enabled, move to sites-available
+            if config_path.contains("sites-enabled") && !config_path.contains("sites-available") {
+                ssh_mgr
+                    .exec_with_output(session_id, "mkdir -p /etc/nginx/sites-available", 5)
+                    .await?;
+                ssh_mgr
+                    .exec_with_output(session_id, &format!("mv '{}' '{}'", safe_path, safe_available), 5)
+                    .await?;
+            }
+        }
+    } else {
+        // conf.d style: rename between .conf and .conf.disabled
+        let enabled_path = config_path.trim_end_matches(".disabled").to_string();
+        if enable {
+            ssh_mgr
+                .exec_with_output(session_id, &format!("mv '{}' '{}'", safe_path, enabled_path.replace('\'', "'\\''")), 5)
+                .await?;
+        } else {
+            ssh_mgr
+                .exec_with_output(session_id, &format!("mv '{}' '{}.disabled'", safe_path, safe_path), 5)
+                .await?;
+        }
+    }
+
+    // Test and reload nginx
+    let (test_out, test_err, test_code) = ssh_mgr
+        .exec_with_output(session_id, "nginx -t 2>&1", 10)
+        .await?;
+    let test_combined = format!("{} {}", test_out, test_err);
+    if test_code != 0 && !test_combined.contains("test is successful") && !test_combined.contains("syntax is ok") {
+        // Revert
+        let link = format!("/etc/nginx/sites-enabled/{}", safe_domain);
+        if config_path.contains("sites-available") || config_path.contains("sites-enabled") {
+            let available_path = if config_path.contains("sites-available") {
+                config_path.trim_end_matches(".disabled").to_string()
+            } else {
+                format!("/etc/nginx/sites-available/{}", safe_domain)
+            };
+            let safe_available = available_path.replace('\'', "'\\''");
+            if enable {
+                let _ = ssh_mgr.exec_with_output(session_id, &format!("rm -f '{}'", link), 5).await;
+                if config_path.contains("sites-enabled") && !config_path.contains("sites-available") {
+                    let src = config_path.trim_end_matches(".disabled");
+                    let safe_src = src.replace('\'', "'\\''");
+                    let _ = ssh_mgr.exec_with_output(session_id, &format!("mv '{}' '{}'", safe_available, safe_src), 5).await;
+                }
+            } else {
+                if config_path.contains("sites-enabled") && !config_path.contains("sites-available") {
+                    let _ = ssh_mgr.exec_with_output(session_id, &format!("mv '{}' '{}'", safe_available, safe_path), 5).await;
+                }
+                let _ = ssh_mgr.exec_with_output(session_id, &format!("ln -sf '{}' '{}'", safe_available, link), 5).await;
+            }
+        }
+        return Err(format!("Nginx test failed after toggling site, reverted: {}", test_combined.trim()));
+    }
+
+    ssh_mgr
+        .exec_with_output(session_id, "systemctl reload nginx", 10)
+        .await?;
+
+    let action = if enable { "Started" } else { "Stopped" };
+    Ok(format!("{} site {}", action, domain))
+}
+
+/// Graceful restart (reload) a site — nginx -t then systemctl reload nginx
+#[allow(dead_code)]
+pub async fn restart_site(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    domain: &str,
+) -> Result<String, String> {
+    // Verify config first
+    let (test_out, test_err, test_code) = ssh_mgr
+        .exec_with_output(session_id, "nginx -t 2>&1", 10)
+        .await?;
+    let test_combined = format!("{} {}", test_out, test_err);
+    if test_code != 0 && !test_combined.contains("test is successful") && !test_combined.contains("syntax is ok") {
+        return Err(format!("Nginx config test failed, reload aborted: {}", test_combined.trim()));
+    }
+
+    ssh_mgr
+        .exec_with_output(session_id, "systemctl reload nginx", 10)
+        .await?;
+
+    Ok(format!("Restarted site {}", domain))
+}
+
+/// Delete a site
+pub async fn delete_site(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    domain: &str,
+    remove_files: bool,
+) -> Result<String, String> {
+    let safe_domain = domain.replace('\'', "'\\''");
+
+    // Remove symlinks and config files
+    ssh_mgr
+        .exec_with_output(
+            session_id,
+            &format!(
+                "rm -f '/etc/nginx/sites-enabled/{}' '/etc/nginx/conf.d/{}.conf' 2>/dev/null; rm -f '/etc/nginx/sites-available/{}' 2>/dev/null",
+                safe_domain, safe_domain, safe_domain
+            ),
+            5,
+        )
+        .await?;
+
+    if remove_files {
+        // Find and remove the web root (check both common paths)
+        let (stdout, _, _) = ssh_mgr
+            .exec_with_output(
+                session_id,
+                &format!(
+                    "for d in /www/wwwroot/{d} /var/www/{d}; do [ -d \"$d\" ] && echo \"$d\" && break; done",
+                    d = safe_domain
+                ),
+                5,
+            )
+            .await?;
+        let web_root = stdout.trim();
+        if !web_root.is_empty() {
+            ssh_mgr
+                .exec_with_output(
+                    session_id,
+                    &format!("rm -rf '{}'", web_root.replace('\'', "'\\''")),
+                    10,
+                )
+                .await?;
+        }
+    }
+
+    // Reload nginx
+    let (reload_stdout, reload_stderr, reload_code) = ssh_mgr
+        .exec_with_output(session_id, "nginx -t 2>&1 && systemctl reload nginx 2>&1", 10)
+        .await?;
+    let reload_combined = format!("{} {}", reload_stdout, reload_stderr);
+    let reload_ok = reload_code == 0
+        || reload_combined.contains("test is successful")
+        || reload_combined.contains("syntax is ok");
+    if !reload_ok {
+        return Err(format!("Nginx reload failed after site deletion: {}", reload_combined.trim()));
+    }
+
+    Ok(format!("Site {} deleted successfully", domain))
+}
+
+/// Update site with all settings in one call (batch update)
+pub async fn update_site_full(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    old_domain: &str,
+    new_domains: &str,           // space-separated
+    new_root: &str,
+    new_php_version: &str,
+    index_files: &str,           // space-separated
+    rewrite_rules: &str,
+    config_path: &str,
+    running_dir: &str,
+    open_basedir: bool,
+    hotlink_enabled: bool,
+    hotlink_extensions: &str,    // comma-separated
+    hotlink_allowed_domains: &str, // newline-separated
+    hotlink_response: &str,
+    hotlink_allow_empty_referer: bool,
+    proxy_enabled: bool,
+    proxy_path: &str,
+    proxy_target: &str,
+    proxy_websocket: bool,
+    proxy_preserve_host: bool,
+) -> Result<String, String> {
+    let primary_domain = new_domains.split_whitespace().next().unwrap_or(old_domain);
+    
+    // Step 1: Read existing config to check for SSL and preserve it
+    let (old_conf, _, _) = ssh_mgr
+        .exec_with_output(session_id, &format!("cat '{}' 2>/dev/null", config_path.replace('\'', "'\\''")), 5)
+        .await?;
+    let has_ssl = old_conf.contains("ssl_certificate") || old_conf.contains("listen 443");
+    
+    // Step 2: Build complete nginx config in memory
+    let safe_domains: Vec<String> = new_domains.split_whitespace().map(|d| d.replace('\'', "'\\''")).collect();
+    let server_name = safe_domains.join(" ");
+    let safe_root = new_root.replace('\'', "'\\''");
+    
+    let php_sock = if new_php_version.is_empty() {
+        String::new()
+    } else {
+        format!("/run/php/php{}-fpm.sock", new_php_version)
+    };
+    let has_php = !php_sock.is_empty();
+    
+    let index_directive = if index_files.trim().is_empty() {
+        "index.php index.html index.htm".to_string()
+    } else {
+        index_files.trim().to_string()
+    };
+    
+    // Compute effective nginx root: web_root + running_dir
+    let running_dir_clean = running_dir.trim().trim_start_matches('/');
+    let effective_root = if running_dir_clean.is_empty() {
+        safe_root.clone()
+    } else {
+        format!("{}/{}", safe_root, running_dir_clean)
+    };
+    
+    let open_basedir_line = if open_basedir && has_php {
+        format!("\n        fastcgi_param PHP_ADMIN_VALUE \"open_basedir={}:/tmp/\";", safe_root)
+    } else {
+        String::new()
+    };
+    
+    // Build PHP location block
+    let php_location = if has_php {
+        format!(r#"
+    location ~ \.php$ {{
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:{php_sock};
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;{oba}
+    }}
+"#, php_sock = php_sock, oba = open_basedir_line)
+    } else {
+        String::new()
+    };
+    
+    let try_files = if has_php {
+        "try_files $uri $uri/ /index.php?$query_string;"
+    } else {
+        "try_files $uri $uri/ =404;"
+    };
+    
+    // Build base config
+    let mut nginx_conf = format!(
+        r#"server {{
+    listen 80;
+    listen [::]:80;
+    server_name {server_name};
+    root {root};
+    index {index_directive};
+
+    location / {{
+        {try_files}
+    }}
+
+{rewrite_section}{php_location}
+    location ~ /\.ht {{
+        deny all;
+    }}
+
+    access_log /var/log/nginx/{domain}.access.log;
+    error_log /var/log/nginx/{domain}.error.log;
+# __RUNNING_DIR:{running_dir}
+"#,
+        server_name = server_name,
+        root = effective_root,
+        index_directive = index_directive,
+        domain = safe_domains.first().map(|s| s.as_str()).unwrap_or(primary_domain),
+        running_dir = running_dir.trim(),
+        try_files = try_files,
+        php_location = php_location,
+        rewrite_section = if rewrite_rules.trim().is_empty() {
+            String::new()
+        } else {
+            let trimmed = rewrite_rules.trim();
+            // Check if user input contains a complete location block (e.g., "location / { ... }")
+            // If so, extract the inner content to avoid duplicate location blocks
+            if trimmed.starts_with("location ") && trimmed.contains('{') && trimmed.contains('}') {
+                // Extract content between first '{' and last '}'
+                if let Some(start) = trimmed.find('{') {
+                    if let Some(end) = trimmed.rfind('}') {
+                        let inner = trimmed[start+1..end].trim();
+                        // Format as indented instructions without location wrapper
+                        format!("    # Rewrite rules\n    {}\n\n", inner.replace('\n', "\n    "))
+                    } else {
+                        format!("    # Rewrite rules\n    {}\n\n", trimmed.replace('\n', "\n    "))
+                    }
+                } else {
+                    format!("    # Rewrite rules\n    {}\n\n", trimmed.replace('\n', "\n    "))
+                }
+            } else {
+                // User provided just instructions, insert as-is with indentation
+                format!("    # Rewrite rules\n    {}\n\n", trimmed.replace('\n', "\n    "))
+            }
+        },
+    );
+    
+    // Preserve SSL block if it existed
+    if has_ssl {
+        let ssl_lines: Vec<&str> = old_conf.lines()
+            .filter(|l| l.contains("ssl_") || l.contains("listen 443") || l.contains("listen [::]:443"))
+            .collect();
+        if !ssl_lines.is_empty() {
+            nginx_conf.push_str("\n    # SSL Configuration (preserved)\n");
+            for line in ssl_lines {
+                nginx_conf.push_str("    ");
+                nginx_conf.push_str(line.trim());
+                nginx_conf.push('\n');
+            }
+        }
+    }
+    
+    // Add Hotlink Protection block
+    if hotlink_enabled {
+        let ext_list: Vec<&str> = hotlink_extensions.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        let ext_regex = if ext_list.is_empty() {
+            "(jpg|jpeg|gif|png|js|css)".to_string()
+        } else {
+            format!("({})", ext_list.join("|"))
+        };
+        
+        let mut referers = Vec::new();
+        if hotlink_allow_empty_referer {
+            referers.push("none".to_string());
+        }
+        referers.push("blocked".to_string());
+        referers.push("server_names".to_string());
+        for d in hotlink_allowed_domains.lines() {
+            let d = d.trim();
+            if !d.is_empty() {
+                if d.starts_with("*.") {
+                    referers.push(d.to_string());
+                } else {
+                    referers.push(format!("*.{}", d));
+                }
+            }
+        }
+        let valid_referers = referers.join(" ");
+        
+        let return_directive = if hotlink_response.trim().parse::<u16>().is_ok() {
+            format!("return {}", hotlink_response.trim())
+        } else {
+            format!("rewrite ^ {} last", hotlink_response.trim())
+        };
+        
+        nginx_conf.push_str(&format!(r#"
+    # Hotlink Protection Start
+    location ~* \.{}$ {{
+        valid_referers {};
+        if ($invalid_referer) {{
+            {};
+        }}
+    }}
+    # Hotlink Protection End
+"#, ext_regex, valid_referers, return_directive));
+    }
+    
+    // Add Reverse Proxy block
+    if proxy_enabled {
+        let proxy_path_clean = if proxy_path.starts_with('/') {
+            proxy_path.to_string()
+        } else {
+            format!("/{}", proxy_path)
+        };
+        let proxy_target_clean = proxy_target.trim().split_whitespace().next().unwrap_or(proxy_target);
+        
+        let mut headers = vec![
+            "proxy_set_header Host $host;".to_string(),
+            "proxy_set_header X-Real-IP $remote_addr;".to_string(),
+            "proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;".to_string(),
+            "proxy_set_header X-Forwarded-Proto $scheme;".to_string(),
+        ];
+        
+        if !proxy_preserve_host {
+            headers[0] = format!("proxy_set_header Host {};", proxy_target_clean.replace("http://", "").replace("https://", "").trim_end_matches('/'));
+        }
+        
+        if proxy_websocket {
+            headers.push("proxy_http_version 1.1;".to_string());
+            headers.push("proxy_set_header Upgrade $http_upgrade;".to_string());
+            headers.push("proxy_set_header Connection upgrade;".to_string());
+        }
+        
+        nginx_conf.push_str(&format!(r#"
+    # Reverse Proxy Start
+    location {} {{
+        proxy_pass {};
+{}
+    }}
+    # Reverse Proxy End
+"#, proxy_path_clean, proxy_target_clean, headers.iter().map(|h| format!("        {}", h)).collect::<Vec<_>>().join("\n")));
+    }
+    
+    nginx_conf.push_str("}\n");
+    
+    // Step 3: Determine new config path if primary domain changed
+    let domain_changed = old_domain != primary_domain;
+    let new_config_path = if domain_changed {
+        if config_path.contains("sites-available") {
+            format!("/etc/nginx/sites-available/{}", primary_domain)
+        } else if config_path.contains("conf.d") {
+            format!("/etc/nginx/conf.d/{}.conf", primary_domain)
+        } else {
+            config_path.to_string()
+        }
+    } else {
+        config_path.to_string()
+    };
+    
+    // Step 4: Create effective root directory
+    ssh_mgr
+        .exec_with_output(
+            session_id,
+            &format!("mkdir -p '{}' && chown -R www-data:www-data '{}' 2>/dev/null || true", effective_root, effective_root),
+            10,
+        )
+        .await?;
+    
+    // Step 5: Write complete config in one operation
+    ssh_mgr
+        .write_file(session_id, &new_config_path, &nginx_conf)
+        .await?;
+    
+    // Step 6: Handle domain change: symlink + cleanup
+    if domain_changed {
+        let safe_old_domain = old_domain.replace('\'', "'\\''");
+        if new_config_path.contains("sites-available") {
+            ssh_mgr
+                .exec_with_output(
+                    session_id,
+                    &format!(
+                        "rm -f '/etc/nginx/sites-enabled/{}'; ln -sf '{}' '/etc/nginx/sites-enabled/{}'",
+                        safe_old_domain, new_config_path, safe_domains.first().map(|s| s.as_str()).unwrap_or(primary_domain)
+                    ),
+                    5,
+                )
+                .await?;
+        }
+        if new_config_path != config_path {
+            ssh_mgr
+                .exec_with_output(
+                    session_id,
+                    &format!("rm -f '{}'", config_path.replace('\'', "'\\''")),
+                    5,
+                )
+                .await?;
+        }
+    }
+    
+    // Step 7: Test + reload nginx
+    test_and_reload_nginx(ssh_mgr, session_id).await?;
+    
+    Ok(format!("Site {} updated successfully", primary_domain))
+}
+
+/// Update an existing site's configuration
+pub async fn update_site(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    old_domain: &str,
+    new_domains: &str,
+    new_root: &str,
+    new_php_version: &str,
+    index_files: &str,
+    rewrite_rules: &str,
+    config_path: &str,
+    running_dir: &str,
+    open_basedir: bool,
+) -> Result<String, String> {
+    // new_domains is space-separated list; first is primary
+    let primary_domain = new_domains.split_whitespace().next().unwrap_or(old_domain);
+    let safe_domains: Vec<String> = new_domains.split_whitespace().map(|d| d.replace('\'', "'\\''")).collect();
+    let server_name = safe_domains.join(" ");
+    let safe_root = new_root.replace('\'', "'\\''");
+
+    let php_sock = if new_php_version.is_empty() {
+        String::new()
+    } else {
+        format!("/run/php/php{}-fpm.sock", new_php_version)
+    };
+    let has_php = !php_sock.is_empty();
+
+    // Read old config to check for SSL
+    let (old_conf, _, _) = ssh_mgr
+        .exec_with_output(session_id, &format!("cat '{}' 2>/dev/null", config_path.replace('\'', "'\\''")), 5)
+        .await?;
+    let has_ssl = old_conf.contains("ssl_certificate") || old_conf.contains("listen 443");
+
+    let index_directive = if index_files.trim().is_empty() {
+        "index.php index.html index.htm".to_string()
+    } else {
+        index_files.trim().to_string()
+    };
+
+    // Compute effective nginx root: web_root + running_dir
+    let running_dir_clean = running_dir.trim().trim_start_matches('/');
+    let effective_root = if running_dir_clean.is_empty() {
+        safe_root.clone()
+    } else {
+        format!("{}/{}", safe_root, running_dir_clean)
+    };
+
+    let open_basedir_line = if open_basedir && has_php {
+        format!("\n        fastcgi_param PHP_ADMIN_VALUE \"open_basedir={}:/tmp/\";", safe_root)
+    } else {
+        String::new()
+    };
+
+    // Build PHP location block (only if PHP version selected)
+    let php_location = if has_php {
+        format!(r#"
+    location ~ \.php$ {{
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:{php_sock};
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;{oba}
+    }}
+"#, php_sock = php_sock, oba = open_basedir_line)
+    } else {
+        String::new()
+    };
+
+    let try_files = if has_php {
+        "try_files $uri $uri/ /index.php?$query_string;"
+    } else {
+        "try_files $uri $uri/ =404;"
+    };
+
+    let mut nginx_conf = format!(
+        r#"server {{
+    listen 80;
+    listen [::]:80;
+    server_name {server_name};
+    root {root};
+    index {index_directive};
+
+    location / {{
+        {try_files}
+    }}
+
+{rewrite_section}{php_location}
+    location ~ /\.ht {{
+        deny all;
+    }}
+
+    access_log /var/log/nginx/{domain}.access.log;
+    error_log /var/log/nginx/{domain}.error.log;
+# __RUNNING_DIR:{running_dir}
+"#,
+        server_name = server_name,
+        root = effective_root,
+        index_directive = index_directive,
+        domain = safe_domains.first().map(|s| s.as_str()).unwrap_or(primary_domain),
+        running_dir = running_dir.trim(),
+        try_files = try_files,
+        php_location = php_location,
+        rewrite_section = if rewrite_rules.trim().is_empty() {
+            String::new()
+        } else {
+            let trimmed = rewrite_rules.trim();
+            // Check if user input contains a complete location block (e.g., "location / { ... }")
+            // If so, extract the inner content to avoid duplicate location blocks
+            if trimmed.starts_with("location ") && trimmed.contains('{') && trimmed.contains('}') {
+                // Extract content between first '{' and last '}'
+                if let Some(start) = trimmed.find('{') {
+                    if let Some(end) = trimmed.rfind('}') {
+                        let inner = trimmed[start+1..end].trim();
+                        // Format as indented instructions without location wrapper
+                        format!("    # Rewrite rules\n    {}\n\n", inner.replace('\n', "\n    "))
+                    } else {
+                        format!("    # Rewrite rules\n    {}\n\n", trimmed.replace('\n', "\n    "))
+                    }
+                } else {
+                    format!("    # Rewrite rules\n    {}\n\n", trimmed.replace('\n', "\n    "))
+                }
+            } else {
+                // User provided just instructions, insert as-is with indentation
+                format!("    # Rewrite rules\n    {}\n\n", trimmed.replace('\n', "\n    "))
+            }
+        },
+    );
+
+    // Preserve SSL block if it existed
+    if has_ssl {
+        let ssl_lines: Vec<&str> = old_conf.lines()
+            .filter(|l| l.contains("ssl_") || l.contains("listen 443") || l.contains("listen [::]:443"))
+            .collect();
+        if !ssl_lines.is_empty() {
+            nginx_conf.push_str("\n    # SSL Configuration (preserved)\n");
+            for line in ssl_lines {
+                nginx_conf.push_str("    ");
+                nginx_conf.push_str(line.trim());
+                nginx_conf.push('\n');
+            }
+        }
+    }
+    nginx_conf.push_str("}\n");
+
+    // Determine new config path if primary domain changed
+    let domain_changed = old_domain != primary_domain;
+    let new_config_path = if domain_changed {
+        if config_path.contains("sites-available") {
+            format!("/etc/nginx/sites-available/{}", primary_domain)
+        } else if config_path.contains("conf.d") {
+            format!("/etc/nginx/conf.d/{}.conf", primary_domain)
+        } else {
+            config_path.to_string()
+        }
+    } else {
+        config_path.to_string()
+    };
+
+    // Create effective root directory (web_root + running_dir)
+    ssh_mgr
+        .exec_with_output(
+            session_id,
+            &format!("mkdir -p '{}' && chown -R www-data:www-data '{}' 2>/dev/null || true", effective_root, effective_root),
+            10,
+        )
+        .await?;
+
+    // Write config
+    ssh_mgr
+        .write_file(session_id, &new_config_path, &nginx_conf)
+        .await?;
+
+    // Handle domain change: symlink + cleanup
+    if domain_changed {
+        let safe_old_domain = old_domain.replace('\'', "'\\''");
+        if new_config_path.contains("sites-available") {
+            ssh_mgr
+                .exec_with_output(
+                    session_id,
+                    &format!(
+                        "rm -f '/etc/nginx/sites-enabled/{}'; ln -sf '{}' '/etc/nginx/sites-enabled/{}'",
+                        safe_old_domain, new_config_path, safe_domains.first().map(|s| s.as_str()).unwrap_or(primary_domain)
+                    ),
+                    5,
+                )
+                .await?;
+        }
+        if new_config_path != config_path {
+            ssh_mgr
+                .exec_with_output(
+                    session_id,
+                    &format!("rm -f '{}'", config_path.replace('\'', "'\\''")),
+                    5,
+                )
+                .await?;
+        }
+    }
+
+    // Test + reload nginx
+    test_and_reload_nginx(ssh_mgr, session_id).await?;
+
+    Ok(format!("Site {} updated successfully", primary_domain))
+}
+
+/// Save raw nginx config for a site, test and reload
+pub async fn save_site_config(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    config_path: &str,
+    config_content: &str,
+) -> Result<String, String> {
+    ssh_mgr
+        .write_file(session_id, config_path, config_content)
+        .await?;
+    test_and_reload_nginx(ssh_mgr, session_id).await?;
+    Ok("Config saved and nginx reloaded".to_string())
+}
+
+/// Set hotlink protection for a site
+pub async fn set_hotlink_protection(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    config_path: &str,
+    enabled: bool,
+    extensions: &str,
+    allowed_domains: &str,
+    response_code: &str,
+    allow_empty_referer: bool,
+) -> Result<String, String> {
+    // Read current config
+    let (config, _, _) = ssh_mgr
+        .exec_with_output(session_id, &format!("cat '{}'", config_path.replace('\'', "'\\''")), 5)
+        .await?;
+
+    // Remove existing hotlink block (between markers)
+    let mut lines: Vec<String> = config.lines().map(|l| l.to_string()).collect();
+    let mut i = 0;
+    while i < lines.len() {
+        if lines[i].contains("# Hotlink Protection Start") {
+            let start = i;
+            while i < lines.len() && !lines[i].contains("# Hotlink Protection End") {
+                i += 1;
+            }
+            if i < lines.len() { i += 1; } // skip the End marker
+            lines.drain(start..i);
+            break;
+        }
+        i += 1;
+    }
+
+    if enabled {
+        // Build extensions regex: jpg,jpeg,png -> (jpg|jpeg|png)
+        let ext_list: Vec<&str> = extensions.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        let ext_regex = if ext_list.is_empty() {
+            "(jpg|jpeg|gif|png|js|css)".to_string()
+        } else {
+            format!("({})", ext_list.join("|"))
+        };
+
+        // Build valid_referers
+        let mut referers = Vec::new();
+        if allow_empty_referer {
+            referers.push("none".to_string());
+        }
+        referers.push("blocked".to_string());
+        referers.push("server_names".to_string());
+        for d in allowed_domains.lines() {
+            let d = d.trim();
+            if !d.is_empty() {
+                // Only add wildcard version (*.domain) which covers both subdomains and main domain
+                // Avoid adding both *.domain and domain to prevent nginx "conflicting parameter" error
+                if d.starts_with("*.") {
+                    referers.push(d.to_string());
+                } else {
+                    referers.push(format!("*.{}", d));
+                }
+            }
+        }
+        let valid_referers = referers.join(" ");
+
+        // Response: 403, 404, or a path
+        let return_directive = if response_code.trim().parse::<u16>().is_ok() {
+            format!("return {}", response_code.trim())
+        } else {
+            format!("return 403 \"{}\" ", response_code.trim())
+        };
+
+        let hotlink_block = format!(
+r#"    # Hotlink Protection Start
+    location ~* \.{ext}$ {{
+        valid_referers {referers};
+        if ($invalid_referer) {{
+            {ret};
+        }}
+    }}
+    # Hotlink Protection End"#,
+            ext = ext_regex,
+            referers = valid_referers,
+            ret = return_directive,
+        );
+
+        // Insert before the last closing brace
+        // Find the last `}` in the config
+        let mut insert_idx = lines.len();
+        for j in (0..lines.len()).rev() {
+            if lines[j].trim() == "}" {
+                insert_idx = j;
+                break;
+            }
+        }
+        lines.insert(insert_idx, hotlink_block);
+    }
+
+    let new_config = lines.join("\n");
+    ssh_mgr.write_file(session_id, config_path, &new_config).await?;
+    test_and_reload_nginx(ssh_mgr, session_id).await?;
+
+    Ok(if enabled { "Hotlink protection enabled".to_string() } else { "Hotlink protection disabled".to_string() })
+}
+
+/// Set or remove reverse proxy configuration for a site
+pub async fn set_reverse_proxy(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    config_path: &str,
+    enabled: bool,
+    proxy_path: &str,
+    proxy_target: &str,
+    websocket: bool,
+    preserve_host: bool,
+) -> Result<String, String> {
+    // Clean up corrupted proxy blocks in other sites BEFORE we do anything
+    cleanup_all_proxy_blocks(ssh_mgr, session_id, config_path).await;
+
+    // Read current config
+    let (config, _, _) = ssh_mgr
+        .exec_with_output(session_id, &format!("cat '{}'", config_path.replace('\'', "'\\''" )), 5)
+        .await?;
+
+    // Remove existing reverse proxy block (between markers)
+    let mut lines: Vec<String> = config.lines().map(|l| l.to_string()).collect();
+    let mut i = 0;
+    while i < lines.len() {
+        if lines[i].contains("# Reverse Proxy Start") {
+            let start = i;
+            while i < lines.len() && !lines[i].contains("# Reverse Proxy End") {
+                i += 1;
+            }
+            if i < lines.len() { i += 1; } // skip the End marker
+            lines.drain(start..i);
+            break;
+        }
+        i += 1;
+    }
+
+    if enabled {
+        // Validate proxy_target: remove whitespace and ensure it's a clean URL
+        let proxy_target_clean = proxy_target.trim().split_whitespace().next().unwrap_or(proxy_target);
+
+        let proxy_path_clean = if proxy_path.starts_with('/') {
+            proxy_path.to_string()
+        } else {
+            format!("/{}", proxy_path)
+        };
+
+        let mut headers = vec![
+            "proxy_set_header Host $host;".to_string(),
+            "proxy_set_header X-Real-IP $remote_addr;".to_string(),
+            "proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;".to_string(),
+            "proxy_set_header X-Forwarded-Proto $scheme;".to_string(),
+        ];
+
+        if !preserve_host {
+            headers[0] = format!("proxy_set_header Host {};", proxy_target_clean.replace("http://", "").replace("https://", "").trim_end_matches('/'));
+        }
+
+        if websocket {
+            headers.push("proxy_http_version 1.1;".to_string());
+            headers.push("proxy_set_header Upgrade $http_upgrade;".to_string());
+            headers.push("proxy_set_header Connection upgrade;".to_string());
+        }
+
+        let proxy_block = format!(
+"    # Reverse Proxy Start
+    location {} {{
+        proxy_pass {};
+{}
+        proxy_connect_timeout 60s;
+        proxy_read_timeout 120s;
+        proxy_send_timeout 60s;
+    }}
+    # Reverse Proxy End",
+            proxy_path_clean,
+            proxy_target_clean,
+            headers.iter().map(|h| format!("        {}", h)).collect::<Vec<_>>().join("\n"),
+        );
+
+        // Remove existing location block that conflicts with the proxy path
+        // e.g., remove `location / { try_files ... }` when adding proxy for /
+        let loc_pattern = format!("location {}", proxy_path_clean);
+        let mut j = 0;
+        while j < lines.len() {
+            let trimmed = lines[j].trim();
+            if trimmed.starts_with(&loc_pattern) && (trimmed.ends_with('{') || trimmed == &loc_pattern) {
+                let block_start = j;
+                // Find matching closing brace (track nesting)
+                let mut depth: isize = 0;
+                while j < lines.len() {
+                    if lines[j].contains('{') { depth += lines[j].matches('{').count() as isize; }
+                    if lines[j].contains('}') { depth -= lines[j].matches('}').count() as isize; }
+                    j += 1;
+                    if depth <= 0 { break; }
+                }
+                lines.drain(block_start..j);
+                break;
+            }
+            j += 1;
+        }
+
+        // Insert before the last closing brace
+        let mut insert_idx = lines.len();
+        for j in (0..lines.len()).rev() {
+            if lines[j].trim() == "}" {
+                insert_idx = j;
+                break;
+            }
+        }
+        lines.insert(insert_idx, proxy_block);
+    }
+
+    let new_config = lines.join("\n");
+    ssh_mgr.write_file(session_id, config_path, &new_config).await?;
+    test_and_reload_nginx(ssh_mgr, session_id).await?;
+
+    Ok(if enabled { "Reverse proxy enabled".to_string() } else { "Reverse proxy disabled".to_string() })
+}
+
+/// Remove ALL reverse proxy location blocks from all site configs in /etc/nginx/sites-enabled/
+/// This handles both marked blocks (with # Reverse Proxy Start/End) and unmarked/orphaned proxy locations
+async fn cleanup_all_proxy_blocks(ssh_mgr: &SshManager, session_id: &str, skip_path: &str) {
+    let (files_out, _, _) = match ssh_mgr
+        .exec_with_output(session_id, "ls -1 /etc/nginx/sites-enabled/ 2>/dev/null", 5)
+        .await
+    {
+        Ok(r) => r,
+        Err(_) => return,
+    };
+
+    for fname in files_out.split_whitespace() {
+        let fpath = format!("/etc/nginx/sites-enabled/{}", fname);
+        // Skip the config we're currently modifying (match by full path or filename)
+        let skip_fname = skip_path.rsplit('/').next().unwrap_or("");
+        if fpath == skip_path || fname == skip_fname
+            || fpath.replace("sites-enabled", "sites-available") == skip_path
+            || fpath.replace("sites-available", "sites-enabled") == skip_path
+        { continue; }
+
+        let (content, _, _) = match ssh_mgr
+            .exec_with_output(session_id, &format!("cat '{}'", fpath), 5)
+            .await
+        {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+
+        if !content.contains("proxy_pass") {
+            continue;
+        }
+
+        let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+        let mut changed = false;
+        let mut i = 0;
+        while i < lines.len() {
+            let trimmed = lines[i].trim();
+            // Remove marked proxy blocks
+            if trimmed.contains("# Reverse Proxy Start") {
+                let start = i;
+                while i < lines.len() && !lines[i].contains("# Reverse Proxy End") {
+                    i += 1;
+                }
+                if i < lines.len() { i += 1; }
+                lines.drain(start..i);
+                changed = true;
+                continue;
+            }
+            // Remove unmarked location blocks that contain proxy_pass
+            if trimmed.starts_with("location") && trimmed.ends_with('{') {
+                let block_start = i;
+                let mut depth: isize = 0;
+                let mut has_proxy_pass = false;
+                let mut j = i;
+                while j < lines.len() {
+                    if lines[j].contains('{') { depth += lines[j].matches('{').count() as isize; }
+                    if lines[j].contains('}') { depth -= lines[j].matches('}').count() as isize; }
+                    if lines[j].contains("proxy_pass") { has_proxy_pass = true; }
+                    j += 1;
+                    if depth <= 0 { break; }
+                }
+                if has_proxy_pass {
+                    lines.drain(block_start..j);
+                    changed = true;
+                    continue;
+                }
+            }
+            i += 1;
+        }
+
+        if changed {
+            let cleaned = lines.join("\n");
+            let _ = ssh_mgr.write_file(session_id, &fpath, &cleaned).await;
+        }
+    }
+}
+
+/// Helper: test nginx config and reload
+async fn test_and_reload_nginx(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<(), String> {
+    // Test config first
+    let (test_stdout, test_stderr, test_code) = ssh_mgr
+        .exec_with_output(session_id, "nginx -t 2>&1", 10)
+        .await?;
+    let test_combined = format!("{} {}", test_stdout, test_stderr).trim().to_string();
+    if test_code != 0 && !test_combined.contains("test is successful") && !test_combined.contains("syntax is ok") {
+        return Err(format!("Nginx config test failed: {}", test_combined));
+    }
+
+    // Try systemctl reload first
+    let (sys_stdout, sys_stderr, sys_code) = ssh_mgr
+        .exec_with_output(session_id, "systemctl reload nginx 2>&1", 10)
+        .await?;
+    let sys_combined = format!("{} {}", sys_stdout, sys_stderr).trim().to_string();
+    if sys_code == 0 || sys_combined.is_empty() {
+        return Ok(()); // Success or silent success
+    }
+
+    // Fallback: try nginx -s reload
+    let (ns_stdout, ns_stderr, ns_code) = ssh_mgr
+        .exec_with_output(session_id, "nginx -s reload 2>&1", 10)
+        .await?;
+    let ns_combined = format!("{} {}", ns_stdout, ns_stderr).trim().to_string();
+    if ns_code == 0 || ns_combined.is_empty() {
+        return Ok(());
+    }
+
+    // Both failed — check nginx error log for real reason
+    let (log_out, _, _) = ssh_mgr
+        .exec_with_output(session_id, "tail -5 /var/log/nginx/error.log 2>/dev/null || journalctl -u nginx --no-pager -n 5 2>/dev/null || echo 'No error log accessible'", 5)
+        .await?;
+    let log_info = log_out.trim();
+
+    Err(format!("Nginx reload failed. systemctl output: '{}', nginx -s output: '{}'. Recent errors: {}",
+        sys_combined, ns_combined, log_info))
+}
+
+/// Setup SSL certificate for a site using certbot (streaming output via events)
+pub async fn setup_ssl(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    domain: &str,
+    app_handle: &AppHandle,
+) -> Result<String, String> {
+    let safe_domain = domain.replace('\'', "'\\''");
+
+    let emit = |line: &str, status: &str| {
+        let _ = app_handle.emit("ssl-install-progress", serde_json::json!({
+            "sessionId": session_id,
+            "domain": domain,
+            "line": line,
+            "status": status,
+        }));
+    };
+
+    // Check if certbot and nginx plugin are installed
+    emit("Checking certbot...", "installing");
+    let (certbot_out, _, certbot_code) = ssh_mgr
+        .exec_with_output(session_id, "command -v certbot 2>/dev/null", 5)
+        .await?;
+    let certbot_installed = certbot_code == 0 && !certbot_out.trim().is_empty();
+
+    // Check nginx plugin: certbot plugins 2>/dev/null | grep -q nginx
+    let (plugin_out, _, plugin_code) = ssh_mgr
+        .exec_with_output(session_id, "certbot plugins 2>/dev/null | grep -q nginx && echo OK", 10)
+        .await?;
+    let nginx_plugin_installed = plugin_code == 0 && plugin_out.contains("OK");
+
+    if !certbot_installed || !nginx_plugin_installed {
+        if !certbot_installed {
+            emit("Installing certbot...", "installing");
+        } else {
+            emit("Installing certbot-nginx plugin...", "installing");
+        }
+        let os = detect_os(ssh_mgr, session_id).await?;
+        let install_cmd = if os.family == "debian" {
+            "apt-get install -y certbot python3-certbot-nginx"
+        } else {
+            "yum install -y certbot python3-certbot-nginx || dnf install -y certbot python3-certbot-nginx"
+        };
+        // Stream certbot install output
+        let mut install_channel = ssh_mgr.open_channel(session_id).await?;
+        install_channel.exec(true, install_cmd).await
+            .map_err(|e| format!("Failed to install certbot: {}", e))?;
+        let install_deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(180);
+        loop {
+            tokio::select! {
+                msg = install_channel.wait() => {
+                    match msg {
+                        Some(russh::ChannelMsg::Data { data }) | Some(russh::ChannelMsg::ExtendedData { data, .. }) => {
+                            let text = String::from_utf8_lossy(&data);
+                            for line in text.lines() {
+                                if !line.trim().is_empty() { emit(line, "installing"); }
+                            }
+                        }
+                        Some(russh::ChannelMsg::ExitStatus { .. }) | Some(russh::ChannelMsg::Eof) | Some(russh::ChannelMsg::Close) | None => break,
+                        _ => {}
+                    }
+                }
+                _ = tokio::time::sleep_until(install_deadline) => {
+                    return Err("Certbot installation timed out".to_string());
+                }
+            }
+        }
+
+        // ponytail: if package manager failed to provide nginx plugin, try pip fallback
+        let (pip_check, _, pip_code) = ssh_mgr
+            .exec_with_output(session_id, "certbot plugins 2>/dev/null | grep -q nginx && echo OK", 10)
+            .await?;
+        if pip_code != 0 || !pip_check.contains("OK") {
+            emit("Package install didn't provide nginx plugin, trying pip...", "installing");
+            let pip_cmd = "pip3 install certbot-nginx 2>&1 || pip install certbot-nginx 2>&1";
+            let (pip_out, _, _) = ssh_mgr
+                .exec_with_output(session_id, pip_cmd, 120)
+                .await?;
+            for line in pip_out.lines() {
+                if !line.trim().is_empty() { emit(line, "installing"); }
+            }
+        }
+    }
+
+    // Detect BT Panel nginx path: certbot expects /etc/nginx/nginx.conf by default
+    // BT Panel stores config at /www/server/nginx/conf/nginx.conf
+    let (nginx_root_check, _, _) = ssh_mgr
+        .exec_with_output(session_id,
+            "if [ ! -f /etc/nginx/nginx.conf ] && [ -f /www/server/nginx/conf/nginx.conf ]; then echo /www/server/nginx/conf; fi",
+            5).await?;
+    let nginx_server_root = nginx_root_check.trim().to_string();
+    let root_flag = if !nginx_server_root.is_empty() {
+        emit(&format!("BT Panel nginx detected, server root: {}", nginx_server_root), "installing");
+        // Create /etc/nginx symlink so certbot's internal path checks work
+        let _ = ssh_mgr.exec_with_output(session_id,
+            "[ ! -e /etc/nginx ] && ln -sf /www/server/nginx/conf /etc/nginx || true",
+            5).await?;
+        format!("--nginx-server-root '{}'", nginx_server_root)
+    } else {
+        String::new()
+    };
+
+    // Run certbot with streaming output
+    let cmd = format!(
+        "certbot --nginx {} -d '{}' --non-interactive --agree-tos --register-unsafely-without-email 2>&1",
+        root_flag, safe_domain
+    );
+    emit(&format!("Running: {}", cmd), "installing");
+
+    let mut channel = ssh_mgr.open_channel(session_id).await?;
+    channel.exec(true, cmd.as_str()).await
+        .map_err(|e| format!("Failed to start certbot: {}", e))?;
+
+    let mut full_output = String::new();
+    let mut exit_code: i32 = -1;
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(120);
+
+    loop {
+        tokio::select! {
+            msg = channel.wait() => {
+                match msg {
+                    Some(russh::ChannelMsg::Data { data }) => {
+                        let text = String::from_utf8_lossy(&data);
+                        full_output.push_str(&text);
+                        for line in text.lines() {
+                            if !line.trim().is_empty() { emit(line, "installing"); }
+                        }
+                    }
+                    Some(russh::ChannelMsg::ExtendedData { data, ext }) => {
+                        if ext == 1 {
+                            let text = String::from_utf8_lossy(&data);
+                            full_output.push_str(&text);
+                            for line in text.lines() {
+                                if !line.trim().is_empty() { emit(line, "installing"); }
+                            }
+                        }
+                    }
+                    Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
+                        exit_code = exit_status as i32;
+                    }
+                    Some(russh::ChannelMsg::Eof) | Some(russh::ChannelMsg::Close) | None => break,
+                    _ => {}
+                }
+            }
+            _ = tokio::time::sleep_until(deadline) => {
+                return Err("SSL setup timed out (2 minutes)".to_string());
+            }
+        }
+    }
+
+    // ponytail: russh may deliver ExitStatus after Eof/Close, so exit_code stays -1.
+    // Fall back to checking certbot's own success marker in output.
+    let script_succeeded = full_output.contains("Successfully deployed certificate")
+        || full_output.contains("Certificate is saved at");
+
+    if exit_code == 0 || script_succeeded {
+        emit(&format!("SSL certificate installed for {}", domain), "done");
+        
+        // Verify SSL config was added to nginx vhost
+        emit("Verifying SSL configuration...", "installing");
+        
+        // Check if the specific domain's config file contains ssl_certificate
+        let check_ssl_cmd = format!(
+            r#"if [ -f '/etc/nginx/sites-enabled/{domain}' ] && grep -q 'ssl_certificate' '/etc/nginx/sites-enabled/{domain}' 2>/dev/null; then echo 'FOUND:/etc/nginx/sites-enabled/{domain}'; elif [ -f '/etc/nginx/conf.d/{domain}.conf' ] && grep -q 'ssl_certificate' '/etc/nginx/conf.d/{domain}.conf' 2>/dev/null; then echo 'FOUND:/etc/nginx/conf.d/{domain}.conf'; elif [ -f '/www/server/panel/vhost/nginx/{domain}.conf' ] && grep -q 'ssl_certificate' '/www/server/panel/vhost/nginx/{domain}.conf' 2>/dev/null; then echo 'FOUND:/www/server/panel/vhost/nginx/{domain}.conf'; elif [ -f '/www/server/nginx/conf/vhost/{domain}.conf' ] && grep -q 'ssl_certificate' '/www/server/nginx/conf/vhost/{domain}.conf' 2>/dev/null; then echo 'FOUND:/www/server/nginx/conf/vhost/{domain}.conf'; else echo 'NOT_FOUND'; fi"#,
+            domain = safe_domain
+        );
+        let (verify_out, _, _) = ssh_mgr
+            .exec_with_output(session_id, &check_ssl_cmd, 5)
+            .await?;
+        
+        if verify_out.trim().starts_with("FOUND:") {
+            let config_path = verify_out.trim().strip_prefix("FOUND:").unwrap_or("");
+            emit(&format!("✓ SSL config verified in: {}", config_path), "done");
+            
+            // Reload nginx: run test and reload SEPARATELY
+            // SSH exit codes are unreliable (-1 means channel didn't receive ExitStatus)
+            emit("Reloading Nginx to apply SSL config...", "installing");
+            let (test_out, test_err, _test_code) = ssh_mgr
+                .exec_with_output(session_id, "nginx -t 2>&1", 5)
+                .await?;
+            let test_combined = format!("{}{}", test_out, test_err);
+            let test_ok = test_combined.contains("syntax is ok") && test_combined.contains("test is successful");
+            
+            if !test_ok {
+                emit(&format!("Nginx config test failed: {}", test_combined.trim()), "error");
+            } else {
+                let (reload_out, reload_err, _reload_code) = ssh_mgr
+                    .exec_with_output(session_id, "systemctl reload nginx 2>&1", 10)
+                    .await?;
+                let reload_combined = format!("{}{}", reload_out, reload_err);
+                if reload_combined.to_lowercase().contains("error") || reload_combined.to_lowercase().contains("fail") {
+                    emit(&format!("Nginx reload warning: {}", reload_combined.trim()), "error");
+                } else {
+                    emit("✓ Nginx reloaded successfully", "done");
+                }
+            }
+        } else {
+            emit("⚠ Warning: SSL directives not found in expected vhost files. Checking all configs...", "error");
+            // Check all enabled configs
+            let check_all_cmd = r#"for f in /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf /www/server/panel/vhost/nginx/*.conf /www/server/nginx/conf/vhost/*.conf; do [ -f "$f" ] && grep -q 'ssl_certificate' "$f" 2>/dev/null && echo "SSL found in: $f"; done 2>/dev/null || echo 'No SSL configs found'"#;
+            let (all_out, _, _) = ssh_mgr
+                .exec_with_output(session_id, check_all_cmd, 5)
+                .await?;
+            if !all_out.trim().is_empty() && all_out.trim() != "No SSL configs found" {
+                emit(&format!("Found SSL in other configs: {}", all_out.trim()), "installing");
+            } else {
+                emit(" No SSL configuration detected in any nginx vhost file", "error");
+            }
+        }
+        
+        Ok(format!("SSL certificate installed for {}", domain))
+    } else {
+        let err_msg = format!("SSL setup failed (exit code {})", exit_code);
+        emit(&err_msg, "error");
+        Err(format!("{}:\n{}", err_msg, full_output.trim()))
+    }
+}
+
+// ===== System Monitor =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MonitorData {
+    pub cpu_percent: u32,
+    pub mem_total_mb: u64,
+    pub mem_used_mb: u64,
+    pub swap_total_mb: u64,
+    pub swap_used_mb: u64,
+    pub load_avg: String,
+    pub net_rx: String,
+    pub net_tx: String,
+    pub disk_read: String,
+    pub disk_write: String,
+    pub top_processes: Vec<ProcessInfo>,
+    pub uptime: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ProcessInfo {
+    pub pid: String,
+    pub user: String,
+    pub cpu: String,
+    pub mem: String,
+    pub command: String,
+}
+
+/// Get real-time monitoring data
+pub async fn get_monitor_data(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<MonitorData, String> {
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(
+            session_id,
+            r#"
+# CPU usage (1-second sample)
+CPU_IDLE=$(top -bn1 | grep 'Cpu(s)' | awk '{print $8}' | tr -d '%,id,' 2>/dev/null)
+if [ -z "$CPU_IDLE" ]; then
+  CPU_IDLE=$(mpstat 1 1 2>/dev/null | tail -1 | awk '{print $NF}')
+fi
+CPU_USED=$(echo "$CPU_IDLE" | awk '{printf "%d", 100 - $1}')
+echo "CPU=$CPU_USED"
+
+# Memory
+free -m | awk '/^Mem:/ {print "MEM_TOTAL=" $2; print "MEM_USED=" $3}'
+free -m | awk '/^Swap:/ {print "SWAP_TOTAL=" $2; print "SWAP_USED=" $3}'
+
+# Load
+echo "LOAD=$(cat /proc/loadavg | awk '{print $1, $2, $3}')"
+
+# Uptime
+echo "UPTIME=$(uptime -p 2>/dev/null || uptime | sed 's/.*up /up /' | sed 's/,* *[0-9]* user.*//')"
+
+# Network (from /proc/net/dev)
+echo "---NET---"
+cat /proc/net/dev | grep -v 'lo:' | tail -n +3 | awk '{print $1, $2, $10}'
+
+# Disk I/O (from /proc/diskstats)
+echo "---DISK---"
+cat /proc/diskstats | grep -E '^(sd[a-z]|vd[a-z]|nvme[0-9]n[0-9]) ' | head -4
+
+# Top processes
+echo "---PROC---"
+ps aux --sort=-%cpu | head -11 | tail -10
+"#,
+            15,
+        )
+        .await?;
+
+    let mut data = MonitorData {
+        cpu_percent: 0,
+        mem_total_mb: 0,
+        mem_used_mb: 0,
+        swap_total_mb: 0,
+        swap_used_mb: 0,
+        load_avg: String::new(),
+        net_rx: "0 B".to_string(),
+        net_tx: "0 B".to_string(),
+        disk_read: "0 B".to_string(),
+        disk_write: "0 B".to_string(),
+        top_processes: Vec::new(),
+        uptime: String::new(),
+    };
+
+    let mut section = "";
+    let mut total_net_rx: u64 = 0;
+    let mut total_net_tx: u64 = 0;
+
+    for line in stdout.lines() {
+        if line.starts_with("---NET---") {
+            section = "net";
+            continue;
+        }
+        if line.starts_with("---DISK---") {
+            section = "disk";
+            continue;
+        }
+        if line.starts_with("---PROC---") {
+            section = "proc";
+            continue;
+        }
+
+        match section {
+            "net" => {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 3 {
+                    total_net_rx += parts[1].parse::<u64>().unwrap_or(0);
+                    total_net_tx += parts[2].parse::<u64>().unwrap_or(0);
+                }
+            }
+            "disk" => {
+                // Simplified: just sum up sectors read/written
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 10 {
+                    let r_sectors = parts[5].parse::<u64>().unwrap_or(0);
+                    let w_sectors = parts[9].parse::<u64>().unwrap_or(0);
+                    let r_mb = r_sectors * 512 / 1024 / 1024;
+                    let w_mb = w_sectors * 512 / 1024 / 1024;
+                    data.disk_read = format!("{} MB", r_mb);
+                    data.disk_write = format!("{} MB", w_mb);
+                }
+            }
+            "proc" => {
+                // ps aux output: USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 11 {
+                    data.top_processes.push(ProcessInfo {
+                        pid: parts[1].to_string(),
+                        user: parts[0].to_string(),
+                        cpu: parts[2].to_string(),
+                        mem: parts[3].to_string(),
+                        command: parts[10..].join(" "),
+                    });
+                }
+            }
+            _ => {
+                if let Some((key, val)) = line.split_once('=') {
+                    let val = val.trim();
+                    match key.trim() {
+                        "CPU" => data.cpu_percent = val.parse().unwrap_or(0),
+                        "MEM_TOTAL" => data.mem_total_mb = val.parse().unwrap_or(0),
+                        "MEM_USED" => data.mem_used_mb = val.parse().unwrap_or(0),
+                        "SWAP_TOTAL" => data.swap_total_mb = val.parse().unwrap_or(0),
+                        "SWAP_USED" => data.swap_used_mb = val.parse().unwrap_or(0),
+                        "LOAD" => data.load_avg = val.to_string(),
+                        "UPTIME" => data.uptime = val.replace("up ", ""),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    data.net_rx = format_bytes(total_net_rx);
+    data.net_tx = format_bytes(total_net_tx);
+
+    Ok(data)
+}
+
+fn format_bytes(bytes: u64) -> String {
+    if bytes > 1024 * 1024 * 1024 {
+        format!("{:.1} GB", bytes as f64 / 1024.0 / 1024.0 / 1024.0)
+    } else if bytes > 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / 1024.0 / 1024.0)
+    } else if bytes > 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
+// ===== Firewall Management =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FirewallRule {
+    pub id: String,          // unique identifier for the rule
+    pub port: String,        // e.g. "80", "8080-8090"
+    pub protocol: String,    // "tcp", "udp", "both"
+    pub action: String,      // "allow", "deny", "reject"
+    pub source: String,      // "Anywhere", specific IP, etc.
+    pub raw: String,         // original rule line for display
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FirewallInfo {
+    pub firewall_type: String, // "ufw", "firewalld", "iptables", "none"
+    pub enabled: bool,
+    pub rules: Vec<FirewallRule>,
+}
+
+pub async fn get_firewall_rules(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<FirewallInfo, String> {
+    // ponytail: cache firewall rules for 60s (changes only on add/remove)
+    if let Some(cached) = ssh_mgr.cache.get(session_id, "firewall", 60).await {
+        if let Ok(info) = serde_json::from_str::<FirewallInfo>(&cached) {
+            return Ok(info);
+        }
+    }
+    // ponytail: single SSH round-trip combining firewall detection + query (was 2 calls)
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(
+            session_id,
+            r#"
+if command -v ufw >/dev/null 2>&1; then
+  echo "FW_TYPE=ufw"
+  ufw status 2>/dev/null || echo "UFW_ERROR"
+elif command -v firewall-cmd >/dev/null 2>&1; then
+  echo "FW_TYPE=firewalld"
+  firewall-cmd --state 2>/dev/null
+  firewall-cmd --list-ports 2>/dev/null
+  echo "---"
+  firewall-cmd --list-rich-rules 2>/dev/null
+elif command -v iptables >/dev/null 2>&1; then
+  echo "FW_TYPE=iptables"
+  iptables -L -n --line-numbers 2>/dev/null
+else
+  echo "FW_TYPE=none"
+fi
+"#,
+            15,
+        )
+        .await?;
+
+    let fw_type = stdout
+        .lines()
+        .find(|l| l.starts_with("FW_TYPE="))
+        .map(|l| l.strip_prefix("FW_TYPE=").unwrap_or("none").to_string())
+        .unwrap_or_else(|| "none".to_string());
+
+    let result = match fw_type.as_str() {
+        "ufw" => parse_ufw_output(&stdout),
+        "firewalld" => parse_firewalld_output(&stdout),
+        "iptables" => parse_iptables_output(&stdout),
+        _ => Ok(FirewallInfo {
+            firewall_type: "none".to_string(),
+            enabled: false,
+            rules: vec![],
+        }),
+    };
+    // ponytail: cache firewall rules
+    if let Ok(ref info) = result {
+        if let Ok(json) = serde_json::to_string(info) {
+            ssh_mgr.cache.put(session_id, "firewall", json).await;
+        }
+    }
+    result
+}
+
+fn parse_ufw_output(stdout: &str) -> Result<FirewallInfo, String> {
+    if stdout.contains("UFW_ERROR") || stdout.contains("not found") {
+        return Ok(FirewallInfo { firewall_type: "none".to_string(), enabled: false, rules: vec![] });
+    }
+
+    let enabled = stdout.contains("Status: active");
+    let mut rules = Vec::new();
+    let mut id_counter = 0;
+    let mut past_separator = false;
+
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with("FW_TYPE=") { continue; }
+        if line.starts_with("Status:") { continue; }
+        if line.starts_with("--") && line.contains("--") && line.len() > 10 {
+            past_separator = true;
+            continue;
+        }
+        if !past_separator { continue; }
+
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 3 {
+            let port_proto = parts[0];
+            let action = parts[1];
+            let source = parts[2..].join(" ");
+            if action == "PROFILES:" || port_proto == "New" { continue; }
+            let (port, protocol) = if let Some((p, proto)) = port_proto.split_once('/') {
+                (p.to_string(), proto.to_string())
+            } else {
+                (port_proto.to_string(), "any".to_string())
+            };
+            id_counter += 1;
+            rules.push(FirewallRule {
+                id: id_counter.to_string(), port, protocol,
+                action: action.to_lowercase(), source, raw: line.to_string(),
+            });
+        }
+    }
+
+    Ok(FirewallInfo { firewall_type: "ufw".to_string(), enabled, rules })
+}
+
+fn parse_firewalld_output(stdout: &str) -> Result<FirewallInfo, String> {
+    let enabled = stdout.contains("running");
+    let mut rules = Vec::new();
+    let mut id_counter = 0;
+
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() || line == "running" || line == "not running" || line == "---" || line.starts_with("FW_TYPE=") { continue; }
+        for entry in line.split_whitespace() {
+            if entry.contains('/') {
+                let (port, protocol) = entry.split_once('/').unwrap_or((entry, "tcp"));
+                id_counter += 1;
+                rules.push(FirewallRule {
+                    id: id_counter.to_string(), port: port.to_string(),
+                    protocol: protocol.to_string(), action: "allow".to_string(),
+                    source: "Anywhere".to_string(), raw: entry.to_string(),
+                });
+            }
+        }
+        if line.starts_with("rule") {
+            id_counter += 1;
+            rules.push(FirewallRule {
+                id: id_counter.to_string(), port: "-".to_string(),
+                protocol: "-".to_string(), action: "allow".to_string(),
+                source: "Anywhere".to_string(), raw: line.to_string(),
+            });
+        }
+    }
+
+    Ok(FirewallInfo { firewall_type: "firewalld".to_string(), enabled, rules })
+}
+
+fn parse_iptables_output(stdout: &str) -> Result<FirewallInfo, String> {
+    let enabled = !stdout.contains("command not found") && !stdout.is_empty();
+    let mut rules = Vec::new();
+    let mut id_counter = 0;
+    let mut current_chain = String::new();
+
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with("FW_TYPE=") { continue; }
+        if line.starts_with("Chain ") {
+            current_chain = line.split_whitespace().nth(1).unwrap_or("").to_string();
+            continue;
+        }
+        if line.starts_with("num") || line.starts_with("target") { continue; }
+
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 6 {
+            let target = parts[1];
+            let protocol = parts[2];
+            let source = parts[4];
+            let dest = parts[5];
+            let extra = parts[6..].join(" ");
+            let port = if let Some(pos) = extra.find("dpt:") {
+                extra[pos + 4..].split_whitespace().next().unwrap_or("-").to_string()
+            } else if let Some(pos) = extra.find("dpts:") {
+                extra[pos + 5..].split_whitespace().next().unwrap_or("-").to_string()
+            } else {
+                "-".to_string()
+            };
+
+            if target == "ACCEPT" || target == "DROP" || target == "REJECT" {
+                id_counter += 1;
+                let action = match target {
+                    "ACCEPT" => "allow",
+                    "DROP" => "deny",
+                    "REJECT" => "reject",
+                    _ => target,
+                };
+                rules.push(FirewallRule {
+                    id: id_counter.to_string(),
+                    port,
+                    protocol: protocol.to_lowercase(),
+                    action: action.to_string(),
+                    source: if source == "0.0.0.0/0" { "Anywhere".to_string() } else { source.to_string() },
+                    raw: format!("[{}] {} {} {} -> {} {}", current_chain, target, protocol, source, dest, extra),
+                });
+            }
+        }
+    }
+
+    Ok(FirewallInfo { firewall_type: "iptables".to_string(), enabled: enabled || !rules.is_empty(), rules })
+}
+
+pub async fn add_firewall_rule(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    port: &str,
+    protocol: &str,
+    action: &str,
+) -> Result<String, String> {
+    // Detect firewall type
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(session_id, "command -v ufw && echo HAS_UFW; command -v firewall-cmd && echo HAS_FIREWALLD", 10)
+        .await?;
+
+    let cmd = if stdout.contains("HAS_UFW") {
+        let proto = if protocol == "both" || protocol == "any" { "" } else { protocol };
+        let action_ufw = if action == "allow" { "allow" } else { "deny" };
+        if proto.is_empty() {
+            format!("ufw {} {}", action_ufw, port)
+        } else {
+            format!("ufw {} {}/{}", action_ufw, port, proto)
+        }
+    } else if stdout.contains("HAS_FIREWALLD") {
+        let proto = if protocol == "both" || protocol == "any" { "tcp" } else { protocol };
+        format!("firewall-cmd --permanent --add-port={}/{}", port, proto)
+    } else {
+        let target = match action {
+            "allow" => "ACCEPT",
+            "deny" => "DROP",
+            _ => "REJECT",
+        };
+        let proto = if protocol == "both" || protocol == "any" { "tcp" } else { protocol };
+        format!("iptables -I INPUT -p {} --dport {} -j {}", proto, port, target)
+    };
+
+    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 15).await?;
+    // ponytail: ufw/firewalld may return non-zero exit on warnings; check for actual error text
+    let combined = format!("{} {}", stdout, stderr);
+    let has_real_error = combined.contains("ERROR") || combined.contains("denied")
+        || combined.contains("failed") || combined.contains("iptables: ");
+    if code != 0 && has_real_error {
+        return Err(format!("Failed: {}", combined.trim()));
+    }
+
+    // Reload if firewalld
+    if stdout.contains("HAS_FIREWALLD") || cmd.starts_with("firewall-cmd") {
+        let _ = ssh_mgr.exec_with_output(session_id, "firewall-cmd --reload", 15).await;
+    }
+
+    Ok(format!("Added rule: {}/{} ({})", port, protocol, action))
+}
+
+pub async fn remove_firewall_rule(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    port: &str,
+    protocol: &str,
+    action: &str,
+) -> Result<String, String> {
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(session_id, "command -v ufw && echo HAS_UFW; command -v firewall-cmd && echo HAS_FIREWALLD", 10)
+        .await?;
+
+    let cmd = if stdout.contains("HAS_UFW") {
+        let proto = if protocol == "both" || protocol == "any" { "" } else { protocol };
+        let action_ufw = if action == "allow" { "allow" } else { "deny" };
+        if proto.is_empty() {
+            format!("ufw delete {} {}", action_ufw, port)
+        } else {
+            format!("ufw delete {} {}/{}", action_ufw, port, proto)
+        }
+    } else if stdout.contains("HAS_FIREWALLD") {
+        let proto = if protocol == "both" || protocol == "any" { "tcp" } else { protocol };
+        format!("firewall-cmd --permanent --remove-port={}/{}", port, proto)
+    } else {
+        let target = match action {
+            "allow" => "ACCEPT",
+            "deny" => "DROP",
+            _ => "REJECT",
+        };
+        let proto = if protocol == "both" || protocol == "any" { "tcp" } else { protocol };
+        format!("iptables -D INPUT -p {} --dport {} -j {}", proto, port, target)
+    };
+
+    let (stdout_out, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 15).await?;
+    let combined = format!("{} {}", stdout_out, stderr);
+    let has_real_error = combined.contains("ERROR") || combined.contains("denied")
+        || combined.contains("failed") || combined.contains("iptables: ");
+    if code != 0 && has_real_error {
+        return Err(format!("Failed: {}", combined.trim()));
+    }
+
+    // Reload if firewalld
+    if cmd.starts_with("firewall-cmd") {
+        let _ = ssh_mgr.exec_with_output(session_id, "firewall-cmd --reload", 15).await;
+    }
+
+    Ok(format!("Removed rule: {}/{} ({})", port, protocol, action))
+}
+
+pub async fn toggle_firewall(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    enable: bool,
+) -> Result<bool, String> {
+    let (detect, _, _) = ssh_mgr
+        .exec_with_output(session_id, "command -v ufw && echo HAS_UFW; command -v firewall-cmd && echo HAS_FIREWALLD", 10)
+        .await?;
+
+    let action = if enable { "enable" } else { "disable" };
+
+    let (stdout, stderr, code) = if detect.contains("HAS_UFW") {
+        let cmd = if enable {
+            "echo 'y' | ufw --force enable"
+        } else {
+            "ufw --force disable"
+        };
+        ssh_mgr.exec_with_output(session_id, cmd, 15).await?
+    } else if detect.contains("HAS_FIREWALLD") {
+        let cmd = if enable {
+            "systemctl start firewalld && systemctl enable firewalld"
+        } else {
+            "systemctl stop firewalld && systemctl disable firewalld"
+        };
+        ssh_mgr.exec_with_output(session_id, cmd, 15).await?
+    } else {
+        return Err("No supported firewall found".to_string());
+    };
+
+    let combined = format!("{} {}", stdout, stderr);
+    if code != 0 && (combined.contains("ERROR") || combined.contains("failed")) {
+        return Err(format!("Failed to {} firewall: {}", action, combined.trim()));
+    }
+
+    Ok(enable)
+}
+
+// ===== Software Repository =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SoftwareInfo {
+    pub name: String,
+    pub display_name: String,
+    pub category: String,
+    pub installed: bool,
+    pub version: String,
+    pub service_name: String,
+    pub running: bool,
+}
+
+/// Get list of available software and their install status
+pub async fn get_software_list(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<Vec<SoftwareInfo>, String> {
+    // ponytail: cache software list for connection lifetime (changes only on install/uninstall)
+    if let Some(cached) = ssh_mgr.cache.get(session_id, "software_list", 0).await {
+        if let Ok(list) = serde_json::from_str::<Vec<SoftwareInfo>>(&cached) {
+            return Ok(list);
+        }
+    }
+    // ponytail: single SSH call to check all software status
+    let cmd = r#"
+# Check Nginx (standard + BT Panel)
+if command -v nginx &>/dev/null || [ -x /www/server/nginx/sbin/nginx ]; then
+  echo "NGINX_INSTALLED=1"
+  echo "NGINX_VERSION=$(nginx -v 2>&1 || /www/server/nginx/sbin/nginx -v 2>&1 | grep -oP '[\d.]+' || echo '')"
+  echo "NGINX_RUNNING=$(systemctl is-active nginx 2>/dev/null || echo inactive)"
+else
+  echo "NGINX_INSTALLED=0"
+fi
+
+# Check Apache versions (standard + BT Panel)
+# Detect actual installed version by querying the binary
+_apache_installed=0
+_apache_version=""
+_apache_running="inactive"
+_apache_service="apache2"
+
+# Check standard Apache
+if command -v apache2 &>/dev/null || [ -x /usr/sbin/apache2 ]; then
+  _apache_installed=1
+  _apache_version=$(apache2 -v 2>/dev/null | grep -oP 'Apache/[\d.]+' | head -1 | sed 's/Apache\///' || echo '')
+  if systemctl is-active apache2 &>/dev/null; then
+    _apache_running="active"
+  fi
+# Check BT Panel Apache
+elif [ -x /www/server/apache/bin/httpd ]; then
+  _apache_installed=1
+  _apache_version=$(/www/server/apache/bin/httpd -v 2>/dev/null | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1 || echo '')
+  # BT Panel may use different service name
+  for _svc in apache httpd Baota-Apache; do
+    if systemctl is-active "$_svc" &>/dev/null; then
+      _apache_running="active"
+      _apache_service="$_svc"
+      break
+    fi
+  done
+fi
+
+# Output based on detected major version (2.2 or 2.4)
+if [ $_apache_installed -eq 1 ]; then
+  # Determine major version from full version string
+  if [[ "$_apache_version" == 2.4* ]]; then
+    echo "APACHE_2_4_INSTALLED=1"
+    echo "APACHE_2_4_VERSION=$_apache_version"
+    echo "APACHE_2_4_RUNNING=$_apache_running"
+    echo "APACHE_2_4_SERVICE=$_apache_service"
+    echo "APACHE_2_2_INSTALLED=0"
+  elif [[ "$_apache_version" == 2.2* ]]; then
+    echo "APACHE_2_2_INSTALLED=1"
+    echo "APACHE_2_2_VERSION=$_apache_version"
+    echo "APACHE_2_2_RUNNING=$_apache_running"
+    echo "APACHE_2_2_SERVICE=$_apache_service"
+    echo "APACHE_2_4_INSTALLED=0"
+  else
+    # Default to 2.4 if version detection fails
+    echo "APACHE_2_4_INSTALLED=1"
+    echo "APACHE_2_4_VERSION=${_apache_version:-2.4.x}"
+    echo "APACHE_2_4_RUNNING=$_apache_running"
+    echo "APACHE_2_4_SERVICE=$_apache_service"
+    echo "APACHE_2_2_INSTALLED=0"
+  fi
+else
+  echo "APACHE_2_4_INSTALLED=0"
+  echo "APACHE_2_2_INSTALLED=0"
+fi
+
+# Legacy single Apache detection (fallback)
+if command -v apache2 &>/dev/null || command -v httpd &>/dev/null || [ -x /www/server/apache/bin/httpd ]; then
+  echo "APACHE_INSTALLED=1"
+  echo "APACHE_VERSION=$(apache2 -v 2>/dev/null || httpd -v 2>/dev/null || /www/server/apache/bin/httpd -v 2>/dev/null | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1 || echo '')"
+  APACHE_SVC=$(systemctl list-units --type=service 2>/dev/null | grep -E 'apache|httpd' | awk '{print $1}' | head -1 | sed 's/.service//')
+  echo "APACHE_SERVICE=$APACHE_SVC"
+  if [ -n "$APACHE_SVC" ] && systemctl is-active "$APACHE_SVC" &>/dev/null; then
+    echo "APACHE_RUNNING=active"
+  else
+    echo "APACHE_RUNNING=inactive"
+  fi
+else
+  echo "APACHE_INSTALLED=0"
+fi
+
+# Check MySQL/MariaDB (standard + BT Panel)
+# Check for MySQL/MariaDB server specifically (not just client)
+# Use server binary + package state as primary checks; systemctl as fallback
+if command -v mysqld &>/dev/null || command -v mariadbd &>/dev/null || [ -x /www/server/mysql/bin/mysqld ] || dpkg -l mysql-server mysql-community-server mariadb-server 2>/dev/null | grep -q '^ii' || rpm -q mysql-community-server MariaDB-server 2>/dev/null | grep -q '^mysql\|^MariaDB'; then
+  echo "MYSQL_INSTALLED=1"
+  echo "MYSQL_VERSION=$(mysqld --version 2>/dev/null || mariadbd --version 2>/dev/null || /www/server/mysql/bin/mysql --version 2>/dev/null | head -1 || mysql --version 2>/dev/null | head -1 || echo '')"
+  if systemctl is-active mysql &>/dev/null; then
+    echo "MYSQL_RUNNING=active"
+    echo "MYSQL_SERVICE=mysql"
+  elif systemctl is-active mysqld &>/dev/null; then
+    echo "MYSQL_RUNNING=active"
+    echo "MYSQL_SERVICE=mysqld"
+  elif systemctl is-active mariadb &>/dev/null; then
+    echo "MYSQL_RUNNING=active"
+    echo "MYSQL_SERVICE=mariadb"
+  else
+    echo "MYSQL_RUNNING=inactive"
+    echo "MYSQL_SERVICE=$(systemctl list-units --type=service 2>/dev/null | grep -E 'mysql|maria' | awk '{print $1}' | head -1 | sed 's/.service//')"
+  fi
+else
+  echo "MYSQL_INSTALLED=0"
+fi
+
+# Check PHP versions (standard + BT Panel)
+# Scan for all installed PHP-FPM versions
+for phpver in 5.6 7.0 7.1 7.2 7.3 7.4 8.0 8.1 8.2 8.3 8.4 8.5; do
+  _svc="php${phpver}-fpm"
+  _bin="/usr/sbin/php-fpm${phpver}"
+  _btbin="/www/server/php/${phpver}/sbin/php-fpm"
+  if systemctl is-enabled "$_svc" &>/dev/null || [ -x "$_bin" ] || [ -x "$_btbin" ]; then
+    echo "PHP_${phpver//./_}_INSTALLED=1"
+    _ver=$("$_bin" -v 2>/dev/null || "$_btbin" -v 2>/dev/null | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1 || echo "${phpver}.x")
+    echo "PHP_${phpver//./_}_VERSION=$_ver"
+    if systemctl is-active "$_svc" &>/dev/null; then
+      echo "PHP_${phpver//./_}_RUNNING=active"
+    else
+      echo "PHP_${phpver//./_}_RUNNING=inactive"
+    fi
+    echo "PHP_${phpver//./_}_SERVICE=$_svc"
+  else
+    echo "PHP_${phpver//./_}_INSTALLED=0"
+  fi
+done
+
+# Legacy single PHP detection (fallback)
+_btphp=$(ls /www/server/php/*/bin/php 2>/dev/null | tail -1)
+if command -v php &>/dev/null || [ -n "$_btphp" ]; then
+  echo "PHP_INSTALLED=1"
+  echo "PHP_VERSION=$(php -v 2>/dev/null || $_btphp -v 2>/dev/null | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1 || echo '')"
+  PHP_SVC=$(systemctl list-units --type=service 2>/dev/null | grep php | awk '{print $1}' | head -1 | sed 's/.service//')
+  echo "PHP_SERVICE=$PHP_SVC"
+  if [ -n "$PHP_SVC" ] && systemctl is-active "$PHP_SVC" &>/dev/null; then
+    echo "PHP_RUNNING=active"
+  else
+    echo "PHP_RUNNING=inactive"
+  fi
+else
+  echo "PHP_INSTALLED=0"
+fi
+
+# Check Redis
+if command -v redis-server &>/dev/null; then
+  echo "REDIS_INSTALLED=1"
+  echo "REDIS_VERSION=$(redis-server --version 2>/dev/null | grep -oP 'v=[\d.]+' | cut -d= -f2 || echo '')"
+  echo "REDIS_RUNNING=$(systemctl is-active redis 2>/dev/null || systemctl is-active redis-server 2>/dev/null || echo inactive)"
+else
+  echo "REDIS_INSTALLED=0"
+fi
+
+# Check Memcached
+if command -v memcached &>/dev/null; then
+  echo "MEMCACHED_INSTALLED=1"
+  echo "MEMCACHED_VERSION=$(memcached -h 2>/dev/null | head -1 | grep -oP '[\d.]+' || echo '')"
+  echo "MEMCACHED_RUNNING=$(systemctl is-active memcached 2>/dev/null || echo inactive)"
+else
+  echo "MEMCACHED_INSTALLED=0"
+fi
+
+# Check Node.js
+if command -v node &>/dev/null; then
+  echo "NODEJS_INSTALLED=1"
+  echo "NODEJS_VERSION=$(node -v 2>/dev/null | sed 's/^v//' || echo '')"
+  echo "NODEJS_RUNNING=n/a"
+else
+  echo "NODEJS_INSTALLED=0"
+fi
+
+# Check Docker
+if command -v docker &>/dev/null; then
+  echo "DOCKER_INSTALLED=1"
+  echo "DOCKER_VERSION=$(docker -v 2>/dev/null | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1 || echo '')"
+  echo "DOCKER_RUNNING=$(systemctl is-active docker 2>/dev/null || echo inactive)"
+else
+  echo "DOCKER_INSTALLED=0"
+fi
+
+# Check PostgreSQL
+# Check for PostgreSQL server specifically (not just psql client)
+# Use server binary + package state as primary checks; systemctl as fallback
+if command -v postgres &>/dev/null || [ -x /usr/lib/postgresql/*/bin/postgres ] || dpkg -l postgresql 2>/dev/null | grep -q '^ii' || rpm -q postgresql-server 2>/dev/null | grep -q '^postgresql'; then
+  echo "PGSQL_INSTALLED=1"
+  echo "PGSQL_VERSION=$(psql -V 2>/dev/null | grep -oP '[\d]+\.[\d]+' | head -1 || echo '')"
+  echo "PGSQL_RUNNING=$(systemctl is-active postgresql 2>/dev/null || echo inactive)"
+else
+  echo "PGSQL_INSTALLED=0"
+fi
+"#;
+
+    let (stdout, stderr, _) = ssh_mgr.exec_with_output(session_id, cmd, 20).await?;
+    let combined = format!("{}{}", stdout, stderr);
+
+    let get = |key: &str| -> String {
+        combined
+            .lines()
+            .find(|l| l.starts_with(key))
+            .map(|l| l.split('=').nth(1).unwrap_or("").trim().to_string())
+            .unwrap_or_default()
+    };
+
+    let mut list = Vec::new();
+
+    // Nginx
+    list.push(SoftwareInfo {
+        name: "nginx".to_string(),
+        display_name: "Nginx".to_string(),
+        category: "web".to_string(),
+        installed: get("NGINX_INSTALLED") == "1",
+        version: get("NGINX_VERSION"),
+        service_name: "nginx".to_string(),
+        running: get("NGINX_RUNNING") == "active",
+    });
+
+    // Apache - detect all installed versions
+    let apache_versions = ["2.2", "2.4"];
+    for apachever in &apache_versions {
+        let key = format!("APACHE_{}_INSTALLED", apachever.replace('.', "_"));
+        if get(&key) == "1" {
+            let ver_key = format!("APACHE_{}_VERSION", apachever.replace('.', "_"));
+            let run_key = format!("APACHE_{}_RUNNING", apachever.replace('.', "_"));
+            let svc_key = format!("APACHE_{}_SERVICE", apachever.replace('.', "_"));
+            list.push(SoftwareInfo {
+                name: format!("apache{}", apachever),
+                display_name: format!("Apache {}", apachever),
+                category: "web".to_string(),
+                installed: true,
+                version: get(&ver_key),
+                service_name: get(&svc_key),
+                running: get(&run_key) == "active",
+            });
+        }
+    }
+    // Fallback: if no versioned Apache found but legacy APACHE_INSTALLED=1, add generic entry
+    if list.iter().all(|s| !s.name.starts_with("apache")) && get("APACHE_INSTALLED") == "1" {
+        list.push(SoftwareInfo {
+            name: "apache".to_string(),
+            display_name: "Apache".to_string(),
+            category: "web".to_string(),
+            installed: true,
+            version: get("APACHE_VERSION"),
+            service_name: get("APACHE_SERVICE"),
+            running: get("APACHE_RUNNING") == "active",
+        });
+    }
+
+    // MySQL/MariaDB
+    list.push(SoftwareInfo {
+        name: "mysql".to_string(),
+        display_name: "MySQL / MariaDB".to_string(),
+        category: "database".to_string(),
+        installed: get("MYSQL_INSTALLED") == "1",
+        version: get("MYSQL_VERSION"),
+        service_name: get("MYSQL_SERVICE"),
+        running: get("MYSQL_RUNNING") == "active",
+    });
+
+    // PHP - detect all installed versions
+    let php_versions = ["5.6", "7.0", "7.1", "7.2", "7.3", "7.4", "8.0", "8.1", "8.2", "8.3", "8.4", "8.5"];
+    for phpver in &php_versions {
+        let key = format!("PHP_{}_INSTALLED", phpver.replace('.', "_"));
+        if get(&key) == "1" {
+            let ver_key = format!("PHP_{}_VERSION", phpver.replace('.', "_"));
+            let run_key = format!("PHP_{}_RUNNING", phpver.replace('.', "_"));
+            let svc_key = format!("PHP_{}_SERVICE", phpver.replace('.', "_"));
+            list.push(SoftwareInfo {
+                name: format!("php{}", phpver),
+                display_name: format!("PHP {} FPM", phpver),
+                category: "web".to_string(),
+                installed: true,
+                version: get(&ver_key),
+                service_name: get(&svc_key),
+                running: get(&run_key) == "active",
+            });
+        }
+    }
+    // Fallback: if no versioned PHP found but legacy PHP_INSTALLED=1, add generic entry
+    if list.iter().all(|s| !s.name.starts_with("php")) && get("PHP_INSTALLED") == "1" {
+        list.push(SoftwareInfo {
+            name: "php".to_string(),
+            display_name: "PHP-FPM".to_string(),
+            category: "web".to_string(),
+            installed: true,
+            version: get("PHP_VERSION"),
+            service_name: get("PHP_SERVICE"),
+            running: get("PHP_RUNNING") == "active",
+        });
+    }
+
+    // Redis
+    list.push(SoftwareInfo {
+        name: "redis".to_string(),
+        display_name: "Redis".to_string(),
+        category: "database".to_string(),
+        installed: get("REDIS_INSTALLED") == "1",
+        version: get("REDIS_VERSION"),
+        service_name: "redis".to_string(),
+        running: get("REDIS_RUNNING") == "active",
+    });
+
+    // Memcached
+    list.push(SoftwareInfo {
+        name: "memcached".to_string(),
+        display_name: "Memcached".to_string(),
+        category: "database".to_string(),
+        installed: get("MEMCACHED_INSTALLED") == "1",
+        version: get("MEMCACHED_VERSION"),
+        service_name: "memcached".to_string(),
+        running: get("MEMCACHED_RUNNING") == "active",
+    });
+
+    // Node.js
+    list.push(SoftwareInfo {
+        name: "nodejs".to_string(),
+        display_name: "Node.js".to_string(),
+        category: "runtime".to_string(),
+        installed: get("NODEJS_INSTALLED") == "1",
+        version: get("NODEJS_VERSION"),
+        service_name: String::new(),
+        running: false,
+    });
+
+    // Docker
+    list.push(SoftwareInfo {
+        name: "docker".to_string(),
+        display_name: "Docker".to_string(),
+        category: "container".to_string(),
+        installed: get("DOCKER_INSTALLED") == "1",
+        version: get("DOCKER_VERSION"),
+        service_name: "docker".to_string(),
+        running: get("DOCKER_RUNNING") == "active",
+    });
+
+    // PostgreSQL
+    list.push(SoftwareInfo {
+        name: "postgresql".to_string(),
+        display_name: "PostgreSQL".to_string(),
+        category: "database".to_string(),
+        installed: get("PGSQL_INSTALLED") == "1",
+        version: get("PGSQL_VERSION"),
+        service_name: "postgresql".to_string(),
+        running: get("PGSQL_RUNNING") == "active",
+    });
+
+    // ponytail: cache software list
+    if let Ok(json) = serde_json::to_string(&list) {
+        ssh_mgr.cache.put(session_id, "software_list", json).await;
+    }
+    Ok(list)
+}
+
+/// Install or uninstall software via SSH with real-time output
+pub async fn software_action(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    software: &str,
+    action: &str,
+    options: &str,
+    app_handle: &AppHandle,
+) -> Result<String, String> {
+    let os = detect_os(ssh_mgr, session_id).await?;
+    let is_debian = os.family == "debian";
+
+    let script = build_software_script(&os, software, action, options, is_debian);
+
+    ssh_mgr
+        .write_file(session_id, "/tmp/software-action.sh", &script)
+        .await?;
+
+    let mut channel = ssh_mgr.open_channel(session_id).await?;
+    channel
+        .exec(true, "bash /tmp/software-action.sh")
+        .await
+        .map_err(|e| format!("Failed to start script: {}", e))?;
+
+    let event_name = "software-action-progress";
+    let mut full_output = String::new();
+    let mut exit_code: i32 = -1;
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(600);
+
+    loop {
+        tokio::select! {
+            msg = channel.wait() => {
+                match msg {
+                    Some(russh::ChannelMsg::Data { data }) => {
+                        let text = String::from_utf8_lossy(&data);
+                        full_output.push_str(&text);
+                        for line in text.lines() {
+                            if !line.trim().is_empty() {
+                                let _ = app_handle.emit(event_name, serde_json::json!({
+                                    "sessionId": session_id,
+                                    "line": line,
+                                    "status": "running",
+                                }));
+                            }
+                        }
+                    }
+                    Some(russh::ChannelMsg::ExtendedData { data, ext }) => {
+                        if ext == 1 {
+                            let text = String::from_utf8_lossy(&data);
+                            full_output.push_str(&text);
+                            for line in text.lines() {
+                                if !line.trim().is_empty() {
+                                    let _ = app_handle.emit(event_name, serde_json::json!({
+                                        "sessionId": session_id,
+                                        "line": line,
+                                        "status": "running",
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                    Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
+                        exit_code = exit_status as i32;
+                    }
+                    Some(russh::ChannelMsg::Eof) | Some(russh::ChannelMsg::Close) | None => break,
+                    _ => {}
+                }
+            }
+            _ = tokio::time::sleep_until(deadline) => {
+                return Err("Operation timed out (10 minutes)".to_string());
+            }
+        }
+    }
+
+    // ponytail: russh exit code unreliable, use output marker as fallback
+    let success = full_output.contains("ACTION_SUCCESS");
+
+    if exit_code == 0 || success {
+        let _ = app_handle.emit(event_name, serde_json::json!({
+            "sessionId": session_id,
+            "line": format!("{} {} completed successfully!", action, software),
+            "status": "done",
+        }));
+        Ok(full_output)
+    } else {
+        let _ = app_handle.emit(event_name, serde_json::json!({
+            "sessionId": session_id,
+            "line": format!("{} {} failed (exit code {})", action, software, exit_code),
+            "status": "error",
+        }));
+        Err(format!("Operation failed (exit code {}):\n{}", exit_code, full_output))
+    }
+}
+
+fn build_software_script(
+    _os: &OsInfo,
+    software: &str,
+    action: &str,
+    options: &str,
+    is_debian: bool,
+) -> String {
+    let (pkg_mgr, pkg_install, pkg_remove) = if is_debian {
+        ("apt-get", "apt-get install -y", "apt-get purge -y")
+    } else {
+        ("yum", "yum install -y", "yum remove -y")
+    };
+
+    let (packages, service_name, post_install, post_remove) = match software {
+        "redis" => {
+            let ver = if options.is_empty() { "7" } else { options };
+            return format!(r#"#!/bin/bash
+echo "=== {} Redis ==="
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+fi
+if [ "{}" = "install" ]; then
+  if command -v redis-server &>/dev/null; then
+    echo "Redis is already installed: $(redis-server --version 2>/dev/null | head -1)"
+    echo "ACTION_SUCCESS"
+    exit 0
+  fi
+  echo "Installing Redis {}..."
+  if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    apt-get update -qq
+    apt-get install -y curl gnupg lsb-release
+    curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg 2>/dev/null
+    chmod 644 /usr/share/keyrings/redis-archive-keyring.gpg
+    echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" > /etc/apt/sources.list.d/redis.list
+    apt-get update -qq
+    apt-get install -y redis-server
+  else
+    yum install -y epel-release
+    yum module enable -y redis:{} 2>/dev/null || true
+    yum install -y redis
+  fi
+  systemctl enable redis-server && systemctl start redis-server 2>/dev/null || systemctl enable redis && systemctl start redis
+else
+  echo "Removing Redis..."
+  systemctl stop redis-server 2>/dev/null || systemctl stop redis 2>/dev/null || true
+  systemctl disable redis-server 2>/dev/null || systemctl disable redis 2>/dev/null || true
+  if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    apt-get purge -y redis-server 2>/dev/null || true
+    apt-get autoremove -y 2>/dev/null || true
+  else
+    yum remove -y redis 2>/dev/null || true
+  fi
+fi
+echo "ACTION_SUCCESS"
+"#, action, action, ver, ver);
+        }
+        "memcached" => (
+            "memcached",
+            "memcached",
+            "systemctl enable memcached && systemctl start memcached",
+            "systemctl stop memcached 2>/dev/null; systemctl disable memcached 2>/dev/null",
+        ),
+        "nodejs" => {
+            let node_version = if options.is_empty() { "20" } else { options };
+            return format!(r#"#!/bin/bash
+echo "=== {} Node.js ==="
+if [ "{}" = "install" ]; then
+  if command -v node &>/dev/null; then
+    echo "Uninstalling existing Node.js $(node -v)..."
+    {}
+  fi
+  echo "Setting up NodeSource repository for Node.js {}..."
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+      curl -fsSL https://deb.nodesource.com/setup_{}.x | bash -
+      apt-get install -y nodejs
+    else
+      curl -fsSL https://rpm.nodesource.com/setup_{}.x | bash -
+      yum install -y nodejs
+    fi
+  fi
+else
+  echo "Removing Node.js..."
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+      apt-get purge -y nodejs 2>/dev/null || true
+      apt-get autoremove -y 2>/dev/null || true
+    else
+      yum remove -y nodejs 2>/dev/null || true
+    fi
+  fi
+fi
+echo "ACTION_SUCCESS"
+"#, action, action, pkg_remove, node_version, node_version, node_version);
+        }
+        "docker" => {
+            return format!(r#"#!/bin/bash
+echo "=== {} Docker ==="
+if [ "{}" = "install" ]; then
+  if command -v docker &>/dev/null; then
+    echo "Docker already installed: $(docker -v)"
+    echo "ACTION_SUCCESS"
+    exit 0
+  fi
+  echo "Installing Docker..."
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+      apt-get update -qq
+      apt-get install -y ca-certificates curl gnupg
+      install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/$ID/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
+      chmod a+r /etc/apt/keyrings/docker.gpg
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$ID $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list
+      apt-get update -qq
+      apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    else
+      yum install -y yum-utils
+      yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+      yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    fi
+  fi
+  systemctl enable docker && systemctl start docker
+else
+  echo "Removing Docker..."
+  systemctl stop docker 2>/dev/null || true
+  systemctl disable docker 2>/dev/null || true
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+      apt-get purge -y docker-ce docker-ce-cli containerd.io docker-compose-plugin 2>/dev/null || true
+      apt-get autoremove -y 2>/dev/null || true
+    else
+      yum remove -y docker-ce docker-ce-cli containerd.io docker-compose-plugin 2>/dev/null || true
+    fi
+  fi
+  rm -rf /var/lib/docker 2>/dev/null || true
+fi
+echo "ACTION_SUCCESS"
+"#, action, action);
+        }
+        "nginx" => (
+            "nginx",
+            "nginx",
+            "systemctl enable nginx && systemctl start nginx",
+            "systemctl stop nginx 2>/dev/null; systemctl disable nginx 2>/dev/null",
+        ),
+        "mysql" => {
+            // Parse options: format "variant:version" e.g., "mysql:8.0" or "mariadb:10.11"
+            // Default to mysql:8.0 if no options provided
+            let (variant, version) = if options.contains(':') {
+                let parts: Vec<&str> = options.splitn(2, ':').collect();
+                (parts[0], parts[1])
+            } else if options == "mariadb" {
+                ("mariadb", "10.11")
+            } else {
+                ("mysql", "8.0")
+            };
+            
+            let pkg_name = if variant == "mariadb" { "mariadb-server" } else { "mysql-server" };
+            let svc_name = if variant == "mariadb" { "mariadb" } else { "mysql" };
+            
+            let script = "#!/bin/bash\necho \"=== __ACTION__ __PKG__ (__VER__) ===\"\nif [ -f /etc/os-release ]; then\n  . /etc/os-release\nfi\nif [ \"__ACTION__\" = \"install\" ]; then\n  echo \"Installing __PKG__ version __VER__...\"\n  if [ \"$ID\" = \"ubuntu\" ] || [ \"$ID\" = \"debian\" ]; then\n    # Remove broken MySQL repo from previous failed attempts\n    rm -f /etc/apt/sources.list.d/mysql.list 2>/dev/null || true\n    apt-get update -qq\n    if [ \"__VARIANT__\" = \"mysql\" ]; then\n      # Map MySQL version to APT repo component name\n      case \"__VER__\" in\n        5.7) APT_COMP=mysql-5.7 ;;\n        8.0) APT_COMP=mysql-8.0 ;;\n        8.4) APT_COMP=mysql-8.4-lts ;;\n        9.x|9.*) APT_COMP=mysql-innovation ;;\n        *) APT_COMP=mysql-__VER__ ;;\n      esac\n      # Try codenames in order: native -> jammy -> focal\n      for CODENAME in $(lsb_release -cs) jammy focal; do\n        echo \"Trying MySQL __VER__ ($APT_COMP) repo for $CODENAME...\"\n        echo \"deb [trusted=yes] http://repo.mysql.com/apt/ubuntu/ $CODENAME $APT_COMP\" > /etc/apt/sources.list.d/mysql.list\n        if apt-get update -qq 2>/dev/null && apt-cache show mysql-community-server &>/dev/null; then\n          echo \"Found MySQL __VER__ packages (using $CODENAME repo)\"\n          break\n        fi\n      done\n      apt-get install -y debconf-utils 2>/dev/null || true\n      echo \"mysql-community-server mysql-community-server/root-pass password \" | debconf-set-selections 2>/dev/null || true\n      echo \"mysql-community-server mysql-community-server/re-root-pass password \" | debconf-set-selections 2>/dev/null || true\n      DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-community-server\n    else\n      apt-get install -y software-properties-common gnupg 2>/dev/null || true\n      apt-key adv --fetch-keys 'https://mariadb.org/mariadb_release_signing_key.asc' 2>/dev/null || true\n      add-apt-repository 'deb [arch=amd64,arm64,ppc64el] https://mirror.mariadb.org/repo/__VER__/ubuntu '$(lsb_release -cs)' main' 2>/dev/null || true\n      apt-get update -qq\n      apt-get install -y mariadb-server 2>/dev/null || true\n    fi\n  else\n    if [ \"__VARIANT__\" = \"mysql\" ]; then\n      RHEL_VER=$(rpm -E %{rhel})\n      echo \"Detected RHEL/CentOS $RHEL_VER\"\n      case \"__VER__\" in\n        5.7) YUM_PKG=mysql57 ;;\n        8.0) YUM_PKG=mysql80 ;;\n        8.4) YUM_PKG=mysql84 ;;\n        9.x|9.*) YUM_PKG=mysql-innovation ;;\n        *) YUM_PKG=mysql__VER__ ;;\n      esac\n      yum install -y https://dev.mysql.com/get/$YUM_PKG-community-release-el$RHEL_VER-latest.noarch.rpm 2>/dev/null || true\n      yum install -y mysql-community-server 2>/dev/null || true\n    else\n      printf '[mariadb]\\nname = MariaDB\\nbaseurl = https://mirror.mariadb.org/yum/__VER__/centos$releasever/$basearch\\ngpgkey=https://mirror.mariadb.org/yum/RPM-GPG-KEY-MariaDB\\ngpgcheck=1\\n' > /etc/yum.repos.d/MariaDB.repo\n      yum install -y MariaDB-server 2>/dev/null || true\n    fi\n  fi\n  systemctl enable __SVC__ && systemctl start __SVC__\nelse\n  echo \"Removing __PKG__...\"\n  systemctl stop __SVC__ 2>/dev/null || true\n  systemctl disable __SVC__ 2>/dev/null || true\n  if [ \"$ID\" = \"ubuntu\" ] || [ \"$ID\" = \"debian\" ]; then\n    apt-get install -y debconf-utils 2>/dev/null || true\n    echo \"mysql-community-server mysql-community-server/remove-data-directories boolean true\" | debconf-set-selections 2>/dev/null || true\n    DEBIAN_FRONTEND=noninteractive apt-get purge -y __PKG__ mysql-community-server mysql-community-client mysql-community-server-core mysql-community-client-core mysql-common 2>/dev/null || true\n    DEBIAN_FRONTEND=noninteractive apt-get autoremove -y 2>/dev/null || true\n    rm -rf /var/lib/mysql /etc/mysql 2>/dev/null || true\n  else\n    yum remove -y __PKG__ 2>/dev/null || true\n  fi\nfi\necho \"ACTION_SUCCESS\"\n";
+            return script
+                .replace("__ACTION__", action)
+                .replace("__PKG__", pkg_name)
+                .replace("__VER__", version)
+                .replace("__VARIANT__", variant)
+                .replace("__SVC__", svc_name);
+        }
+        "php" | "php5.6" | "php7.0" | "php7.1" | "php7.2" | "php7.3" | "php7.4" | "php8.0" | "php8.1" | "php8.2" | "php8.3" | "php8.4" | "php8.5" => {
+            // Extract version from software name (e.g., "php8.2" -> "8.2", "php" -> use options)
+            let php_ver = if software == "php" {
+                if options.is_empty() { "8.2" } else { options }
+            } else {
+                software.strip_prefix("php").unwrap_or("8.2")
+            };
+            let extensions = format!(
+                "php{}-fpm php{}-mysql php{}-curl php{}-mbstring php{}-xml php{}-zip php{}-gd php{}-bcmath php{}-opcache",
+                php_ver, php_ver, php_ver, php_ver, php_ver, php_ver, php_ver, php_ver, php_ver
+            );
+            let svc_name = format!("php{}-fpm", php_ver);
+            let script = "#!/bin/bash\nset -e\necho \"=== __ACTION__ PHP __VER__ ===\"\nif [ -f /etc/os-release ]; then\n  . /etc/os-release\nfi\nif [ \"__ACTION__\" = \"install\" ]; then\n  echo \"Installing PHP __VER__...\"\n  if [ \"$ID\" = \"ubuntu\" ] || [ \"$ID\" = \"debian\" ]; then\n    apt-get update -qq\n    apt-get install -y software-properties-common\n    add-apt-repository -y ppa:ondrej/php 2>/dev/null || true\n    apt-get update -qq\n    apt-get install -y __EXT__\n  else\n    yum install -y epel-release 2>/dev/null || true\n    yum install -y https://rpms.remirepo.net/enterprise/remi-release-$(rpm -E %{rhel}).rpm 2>/dev/null || true\n    yum module enable -y php:remi-__VER__ 2>/dev/null || true\n    yum install -y php__VER__-fpm php__VER__-mysqlnd php__VER__-curl php__VER__-mbstring php__VER__-xml php__VER__-zip php__VER__-gd php__VER__-bcmath php__VER__-opcache\n  fi\n  # Start PHP-FPM\n  systemctl enable __SVC__ && systemctl start __SVC__\nelse\n  echo \"Removing PHP __VER__...\"\n  systemctl stop __SVC__ 2>/dev/null || true\n  systemctl disable __SVC__ 2>/dev/null || true\n  if [ \"$ID\" = \"ubuntu\" ] || [ \"$ID\" = \"debian\" ]; then\n    apt-get purge -y __EXT__ 2>/dev/null || true\n  else\n    yum remove -y php__VER__-fpm php__VER__-mysqlnd php__VER__-curl php__VER__-mbstring php__VER__-xml php__VER__-zip php__VER__-gd php__VER__-bcmath php__VER__-opcache 2>/dev/null || true\n  fi\nfi\necho \"ACTION_SUCCESS\"\n";
+            return script
+                .replace("__ACTION__", action)
+                .replace("__VER__", php_ver)
+                .replace("__EXT__", &extensions)
+                .replace("__SVC__", &svc_name);
+        }
+        "apache" | "apache2.2" | "apache2.4" => {
+            // Extract version from software name (e.g., "apache2.4" -> "2.4", "apache" -> use options)
+            let apache_ver = if software == "apache" {
+                if options.is_empty() { "2.4" } else { options }
+            } else {
+                software.strip_prefix("apache").unwrap_or("2.4")
+            };
+            let svc_name = "apache2";
+            // ponytail: uninstall must handle both Ubuntu/Debian and RHEL/CentOS properly
+            // and remove ALL apache packages to prevent partial uninstall issues
+            let script = r#"#!/bin/bash
+set -e
+echo "=== __ACTION__ Apache __VER__ ==="
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+fi
+
+if [ "__ACTION__" = "install" ]; then
+  echo "Installing Apache __VER__..."
+  if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    apt-get update -qq
+    apt-get install -y apache2 apache2-utils
+  else
+    yum install -y httpd httpd-tools mod_ssl
+  fi
+  # Start Apache
+  systemctl enable __SVC__ && systemctl start __SVC__
+else
+  echo "Removing Apache __VER__..."
+  # Stop and disable service first
+  systemctl stop __SVC__ 2>/dev/null || true
+  systemctl disable __SVC__ 2>/dev/null || true
+  
+  # Also try alternative service names (BT Panel, etc.)
+  for alt_svc in apache httpd Baota-Apache; do
+    systemctl stop "$alt_svc" 2>/dev/null || true
+    systemctl disable "$alt_svc" 2>/dev/null || true
+  done
+  
+  # Remove packages based on distro
+  if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    # Remove ALL apache2 related packages to ensure clean uninstall
+    DEBIAN_FRONTEND=noninteractive apt-get purge -y apache2 apache2-bin apache2-data apache2-utils libapache2-mod-* 2>/dev/null || true
+    apt-get autoremove -y 2>/dev/null || true
+  else
+    # RHEL/CentOS
+    yum remove -y httpd httpd-tools mod_ssl httpd-manual 2>/dev/null || true
+    yum autoremove -y 2>/dev/null || true
+  fi
+  
+  # Clean up config directories if they exist
+  rm -rf /etc/apache2 2>/dev/null || true
+  rm -rf /var/www/html 2>/dev/null || true
+  rm -rf /etc/httpd 2>/dev/null || true
+fi
+echo "ACTION_SUCCESS"
+"#;
+            return script
+                .replace("__ACTION__", action)
+                .replace("__VER__", apache_ver)
+                .replace("__SVC__", svc_name);
+        }
+        "postgresql" => {
+            return format!(r#"#!/bin/bash
+echo "=== {} PostgreSQL ==="
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+fi
+if [ "{}" = "install" ]; then
+  if command -v postgres &>/dev/null; then
+    echo "PostgreSQL already installed: $(psql -V 2>/dev/null | head -1)"
+    echo "ACTION_SUCCESS"
+    exit 0
+  fi
+  echo "Installing PostgreSQL..."
+  if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    apt-get update -qq
+    apt-get install -y postgresql postgresql-contrib
+  else
+    yum install -y postgresql-server postgresql-contrib
+    postgresql-setup --initdb 2>/dev/null || true
+  fi
+  systemctl enable postgresql && systemctl start postgresql
+else
+  echo "Removing PostgreSQL..."
+  systemctl stop postgresql 2>/dev/null || true
+  systemctl disable postgresql 2>/dev/null || true
+  if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    echo "postgresql-* postgresql/remove_data_directory boolean true" | debconf-set-selections 2>/dev/null || true
+    DEBIAN_FRONTEND=noninteractive apt-get purge -y postgresql postgresql-* 2>/dev/null || true
+    apt-get autoremove -y 2>/dev/null || true
+    rm -rf /var/lib/postgresql /etc/postgresql 2>/dev/null || true
+  else
+    yum remove -y postgresql-server postgresql-contrib postgresql 2>/dev/null || true
+    rm -rf /var/lib/pgsql /etc/postgresql 2>/dev/null || true
+  fi
+fi
+echo "ACTION_SUCCESS"
+"#, action, action);
+        }
+        _ => return format!("echo 'Unknown software: {}'", software),
+    };
+
+    format!(r#"#!/bin/bash
+set -e
+echo "=== {} {} ==="
+if [ "{}" = "install" ]; then
+  if command -v {} &>/dev/null || dpkg -l {} 2>/dev/null | grep -q ^ii; then
+    echo "{} is already installed"
+  else
+    echo "Installing {}..."
+    {} {} 2>&1
+    {}
+  fi
+else
+  echo "Removing {}..."
+  systemctl stop {} 2>/dev/null || true
+  {} {} 2>&1
+  {}
+  # Clean up auto-installed dependencies
+  {} autoremove -y 2>/dev/null || true
+fi
+echo "ACTION_SUCCESS"
+"#,
+        action, software, action,
+        if software == "mysql" { "mysql" } else { software },
+        packages,
+        software,
+        software,
+        pkg_install, packages,
+        if action == "install" { post_install } else { "" },
+        software,
+        service_name,
+        pkg_remove, packages,
+        post_remove,
+        pkg_mgr,
+    )
+}
+
+// ===== Server Settings =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SshKeyPair {
+    pub private_key_pem: String,
+    pub public_key_openssh: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SshAuthMode {
+    pub password: bool,
+    pub pubkey: bool,
+}
+
+/// Generate SSH key pair locally (no SSH connection needed)
+pub fn generate_ssh_keypair(algorithm: &str) -> Result<SshKeyPair, String> {
+    use russh_keys::PublicKeyBase64;
+
+    let key_pair = match algorithm {
+        "ed25519" => KeyPair::generate_ed25519()
+            .ok_or_else(|| "Failed to generate Ed25519 key pair".to_string())?,
+        "rsa" => KeyPair::generate_rsa(4096, SignatureHash::SHA2_256)
+            .ok_or_else(|| "Failed to generate RSA key pair".to_string())?,
+        _ => return Err(format!("Unsupported algorithm: {}. Use 'ed25519' or 'rsa'.", algorithm)),
+    };
+
+    let mut pem_buf = Vec::new();
+    russh_keys::encode_pkcs8_pem(&key_pair, &mut pem_buf)
+        .map_err(|e| format!("Failed to encode private key: {}", e))?;
+    let private_key_pem = String::from_utf8(pem_buf)
+        .map_err(|e| format!("Invalid UTF-8 in PEM output: {}", e))?;
+
+    let public_key = key_pair.clone_public_key()
+        .map_err(|e| format!("Failed to extract public key: {}", e))?;
+    let public_key_openssh = format!("{} {}", public_key.name(), public_key.public_key_base64());
+
+    Ok(SshKeyPair {
+        private_key_pem,
+        public_key_openssh,
+    })
+}
+
+/// Reboot the server
+pub async fn reboot_server(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    force: bool,
+) -> Result<String, String> {
+    let cmd = if force { "reboot -f" } else { "reboot" };
+    let (_, stderr, code) = ssh_mgr.exec_with_output(session_id, cmd, 10).await?;
+    // reboot may kill SSH before returning exit code, so treat timeout/connection loss as success
+    if code != 0 && !stderr.is_empty() && !stderr.contains("Connection") && !stderr.contains("closed") {
+        return Err(format!("Reboot failed: {}", stderr.trim()));
+    }
+    Ok("Server is rebooting. SSH connection will be disconnected.".to_string())
+}
+
+/// Get server boot time and uptime duration
+pub async fn get_server_uptime(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<(String, String), String> {
+    // Get boot time as ISO timestamp
+    let (boot_stdout, _, boot_code) = ssh_mgr
+        .exec_with_output(session_id, "date -d \"$(uptime -s)\" +\"%Y-%m-%d %H:%M:%S\" 2>/dev/null || who -b 2>/dev/null | awk '{print $3, $4}' || echo 'unknown'", 5)
+        .await?;
+    let boot_time = boot_stdout.trim().to_string();
+    if boot_code != 0 || boot_time.is_empty() || boot_time == "unknown" {
+        return Err("Failed to get boot time".to_string());
+    }
+
+    // Get uptime duration using /proc/uptime (seconds)
+    let (up_stdout, _, _) = ssh_mgr
+        .exec_with_output(session_id, "cat /proc/uptime 2>/dev/null | awk '{print int($1)}'", 5)
+        .await?;
+    let total_secs: u64 = up_stdout.trim().parse().unwrap_or(0);
+    let days = total_secs / 86400;
+    let hours = (total_secs % 86400) / 3600;
+    let mins = (total_secs % 3600) / 60;
+    let uptime_str = if days > 0 {
+        format!("{}d {}h {}m", days, hours, mins)
+    } else if hours > 0 {
+        format!("{}h {}m", hours, mins)
+    } else {
+        format!("{}m", mins)
+    };
+
+    Ok((boot_time, uptime_str))
+}
+
+/// Change SSH user password
+pub async fn change_ssh_password(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    username: &str,
+    new_password: &str,
+) -> Result<String, String> {
+    // Escape single quotes in password to prevent shell injection
+    let safe_password = new_password.replace('\'', "'\\''");
+    let cmd = format!("echo '{}:{}' | chpasswd", username, safe_password);
+    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 15).await?;
+    if code != 0 {
+        return Err(format!("Failed to change password: {}", stderr.trim()));
+    }
+    let _ = stdout;
+    Ok(format!("Password changed successfully for user '{}'.", username))
+}
+
+/// Deploy SSH public key to remote server's authorized_keys
+pub async fn deploy_ssh_pubkey(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    pubkey: &str,
+) -> Result<String, String> {
+    // Escape any special characters in pubkey
+    let safe_key = pubkey.replace('"', "\\\"");
+    let cmd = format!(
+        "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo \"{}\" >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && echo KEY_DEPLOYED",
+        safe_key
+    );
+    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 15).await?;
+    if code != 0 || !stdout.contains("KEY_DEPLOYED") {
+        return Err(format!("Failed to deploy public key: {}", stderr.trim()));
+    }
+    Ok("Public key deployed successfully.".to_string())
+}
+
+/// Get SSH authentication mode from sshd_config
+pub async fn get_ssh_auth_mode(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<SshAuthMode, String> {
+    // ponytail: cache SSH auth mode for connection lifetime
+    if let Some(cached) = ssh_mgr.cache.get(session_id, "ssh_auth_mode", 0).await {
+        if let Ok(mode) = serde_json::from_str::<SshAuthMode>(&cached) {
+            return Ok(mode);
+        }
+    }
+    let cmd = r#"
+grep -E '^\s*PasswordAuthentication' /etc/ssh/sshd_config 2>/dev/null | tail -1
+grep -E '^\s*PubkeyAuthentication' /etc/ssh/sshd_config 2>/dev/null | tail -1
+echo "DONE"
+"#;
+    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, cmd, 10).await?;
+    if code != 0 && !stderr.is_empty() && !stdout.contains("DONE") {
+        return Err(format!("Failed to read sshd_config: {}", stderr.trim()));
+    }
+
+    let mut password = true; // default: enabled
+    let mut pubkey = true;   // default: enabled
+
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("PasswordAuthentication") {
+            password = trimmed.to_lowercase().contains("yes");
+        } else if trimmed.starts_with("PubkeyAuthentication") {
+            pubkey = trimmed.to_lowercase().contains("yes");
+        }
+    }
+
+    let result = SshAuthMode { password, pubkey };
+    // ponytail: cache SSH auth mode
+    if let Ok(json) = serde_json::to_string(&result) {
+        ssh_mgr.cache.put(session_id, "ssh_auth_mode", json).await;
+    }
+    Ok(result)
+}
+
+/// Set SSH authentication mode by modifying sshd_config and restarting sshd
+pub async fn set_ssh_auth_mode(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    password_enabled: bool,
+    pubkey_enabled: bool,
+) -> Result<String, String> {
+    let pw_val = if password_enabled { "yes" } else { "no" };
+    let pk_val = if pubkey_enabled { "yes" } else { "no" };
+
+    // Use sed to update sshd_config, handling both commented and uncommented lines
+    let cmd = format!(r#"
+# Update or add PasswordAuthentication
+if grep -qE '^\s*PasswordAuthentication' /etc/ssh/sshd_config; then
+  sed -i 's/^\s*PasswordAuthentication.*/PasswordAuthentication {}/' /etc/ssh/sshd_config
+elif grep -qE '^\s*#\s*PasswordAuthentication' /etc/ssh/sshd_config; then
+  sed -i 's/^\s*#\s*PasswordAuthentication.*/PasswordAuthentication {}/' /etc/ssh/sshd_config
+else
+  echo 'PasswordAuthentication {}' >> /etc/ssh/sshd_config
+fi
+
+# Update or add PubkeyAuthentication
+if grep -qE '^\s*PubkeyAuthentication' /etc/ssh/sshd_config; then
+  sed -i 's/^\s*PubkeyAuthentication.*/PubkeyAuthentication {}/' /etc/ssh/sshd_config
+elif grep -qE '^\s*#\s*PubkeyAuthentication' /etc/ssh/sshd_config; then
+  sed -i 's/^\s*#\s*PubkeyAuthentication.*/PubkeyAuthentication {}/' /etc/ssh/sshd_config
+else
+  echo 'PubkeyAuthentication {}' >> /etc/ssh/sshd_config
+fi
+
+# Restart SSH service
+systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null || service sshd restart 2>/dev/null
+echo "MODE_UPDATED"
+"#,
+        pw_val, pw_val, pw_val, pk_val, pk_val, pk_val
+    );
+
+    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 20).await?;
+    if !stdout.contains("MODE_UPDATED") {
+        return Err(format!("Failed to update SSH auth mode: {}", stderr.trim()));
+    }
+    let _ = code; // sshd restart may cause connection drop, so don't fail on non-zero
+    Ok("SSH authentication mode updated successfully.".to_string())
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct BbrStatus {
+    pub enabled: bool,
+    pub congestion_control: String,
+    pub qdisc: String,
+}
+
+/// Get BBR congestion control status
+pub async fn get_bbr_status(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<BbrStatus, String> {
+    // ponytail: cache BBR status for connection lifetime
+    if let Some(cached) = ssh_mgr.cache.get(session_id, "bbr_status", 0).await {
+        if let Ok(status) = serde_json::from_str::<BbrStatus>(&cached) {
+            return Ok(status);
+        }
+    }
+    let cmd = r#"
+CC=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo unknown)
+QD=$(sysctl -n net.core.default_qdisc 2>/dev/null || echo unknown)
+echo "CC=$CC"
+echo "QD=$QD"
+"#;
+    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, cmd, 10).await?;
+    if code != 0 && stderr.contains("No such file") {
+        return Ok(BbrStatus { enabled: false, congestion_control: "unknown".into(), qdisc: "unknown".into() });
+    }
+    let mut cc = "unknown".to_string();
+    let mut qd = "unknown".to_string();
+    for line in stdout.lines() {
+        if let Some(v) = line.strip_prefix("CC=") { cc = v.trim().to_string(); }
+        if let Some(v) = line.strip_prefix("QD=") { qd = v.trim().to_string(); }
+    }
+    let result = BbrStatus {
+        enabled: cc == "bbr",
+        congestion_control: cc,
+        qdisc: qd,
+    };
+    // ponytail: cache BBR status
+    if let Ok(json) = serde_json::to_string(&result) {
+        ssh_mgr.cache.put(session_id, "bbr_status", json).await;
+    }
+    Ok(result)
+}
+
+/// Enable or disable BBR congestion control
+pub async fn set_bbr_status(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    enable: bool,
+) -> Result<String, String> {
+    let cmd = if enable {
+        r#"
+# Check kernel version (BBR requires 4.9+)
+KVER=$(uname -r | cut -d'-' -f1)
+MAJOR=$(echo "$KVER" | cut -d'.' -f1)
+MINOR=$(echo "$KVER" | cut -d'.' -f2)
+if [ "$MAJOR" -lt 4 ] || ([ "$MAJOR" -eq 4 ] && [ "$MINOR" -lt 9 ]); then
+  echo "BBR_ERROR: Kernel $KVER too old, BBR requires 4.9+"
+  exit 1
+fi
+
+# Load BBR module
+modprobe tcp_bbr 2>/dev/null || true
+
+# Apply BBR settings
+sysctl -w net.core.default_qdisc=fq
+sysctl -w net.ipv4.tcp_congestion_control=bbr
+
+# Persist to sysctl.conf
+sed -i '/^net\.core\.default_qdisc/d' /etc/sysctl.conf 2>/dev/null
+sed -i '/^net\.ipv4\.tcp_congestion_control/d' /etc/sysctl.conf 2>/dev/null
+echo 'net.core.default_qdisc=fq' >> /etc/sysctl.conf
+echo 'net.ipv4.tcp_congestion_control=bbr' >> /etc/sysctl.conf
+
+echo "BBR_ENABLED"
+"#
+    } else {
+        r#"
+# Restore default congestion control
+sysctl -w net.core.default_qdisc=fq_codel
+sysctl -w net.ipv4.tcp_congestion_control=cubic
+
+# Remove BBR from sysctl.conf
+sed -i '/^net\.core\.default_qdisc=fq$/d' /etc/sysctl.conf 2>/dev/null
+sed -i '/^net\.ipv4\.tcp_congestion_control=bbr$/d' /etc/sysctl.conf 2>/dev/null
+
+echo "BBR_DISABLED"
+"#
+    };
+
+    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, cmd, 15).await?;
+    if stdout.contains("BBR_ERROR") {
+        let err_msg = stdout.lines()
+            .find(|l| l.contains("BBR_ERROR"))
+            .unwrap_or("Unknown error");
+        return Err(err_msg.replace("BBR_ERROR: ", ""));
+    }
+    if code != 0 {
+        return Err(format!("Failed to {} BBR: {}", if enable { "enable" } else { "disable" }, stderr.trim()));
+    }
+    if enable && !stdout.contains("BBR_ENABLED") {
+        return Err("Failed to enable BBR".to_string());
+    }
+    if !enable && !stdout.contains("BBR_DISABLED") {
+        return Err("Failed to disable BBR".to_string());
+    }
+    Ok(if enable { "BBR enabled successfully." } else { "BBR disabled successfully." }.to_string())
+}
+
+// ===== Site Logs =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SiteLogInfo {
+    pub path: String,
+    pub log_type: String,  // "access" or "error"
+    pub size: u64,
+}
+
+/// Get available log files for a site
+pub async fn get_site_logs(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    domain: &str,
+) -> Result<Vec<SiteLogInfo>, String> {
+    let safe_domain = domain.replace('\'', "'\\''");
+    // ponytail: simple find+grep approach — scan all known log dirs for files containing domain name
+    let cmd = format!(r#"
+for dir in /var/log/nginx /www/wwwlogs; do
+  [ -d "$dir" ] || continue
+  find "$dir" -maxdepth 1 -type f -name "*{safe_domain}*" 2>/dev/null | while read -r f; do
+    SIZE=$(stat -c%s "$f" 2>/dev/null || echo 0)
+    case "$(basename "$f")" in
+      *error*) echo "LOG|$f|error|$SIZE" ;;
+      *)       echo "LOG|$f|access|$SIZE" ;;
+    esac
+  done
+done
+
+# Also extract log paths from nginx config (access_log / error_log directives)
+for dir in /etc/nginx/sites-enabled /etc/nginx/conf.d /www/server/panel/vhost/nginx /www/server/nginx/conf/vhost; do
+  [ -d "$dir" ] || continue
+  for conf in "$dir"/*; do
+    [ -f "$conf" ] || continue
+    grep -q '{safe_domain}' "$conf" 2>/dev/null || continue
+    sed -n 's/.*access_log[[:space:]][[:space:]]*\([^ ;]*\).*/\1/p' "$conf" 2>/dev/null | while read -r p; do
+      [ -f "$p" ] && echo "LOG|$p|access|$(stat -c%s "$p" 2>/dev/null || echo 0)"
+    done
+    sed -n 's/.*error_log[[:space:]][[:space:]]*\([^ ;]*\).*/\1/p' "$conf" 2>/dev/null | while read -r p; do
+      [ -f "$p" ] && echo "LOG|$p|error|$(stat -c%s "$p" 2>/dev/null || echo 0)"
+    done
+  done
+done
+echo "DONE"
+"#, safe_domain = safe_domain);
+
+    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 15).await?;
+    if code != 0 && !stdout.contains("DONE") {
+        return Err(format!("Failed to get site logs: {}", stderr.trim()));
+    }
+
+    let mut logs = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for line in stdout.lines() {
+        if let Some(rest) = line.strip_prefix("LOG|") {
+            let parts: Vec<&str> = rest.splitn(3, '|').collect();
+            if parts.len() != 3 { continue; }
+            let path = parts[0].to_string();
+            if !seen.insert(path.clone()) { continue; }
+            let log_type = parts[1].to_string();
+            let size = parts[2].parse::<u64>().unwrap_or(0);
+            logs.push(SiteLogInfo { path, log_type, size });
+        }
+    }
+
+    Ok(logs)
+}
+
+/// Read last N lines of a log file, optionally filtered by date range
+pub async fn read_site_log(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    log_path: &str,
+    lines: usize,
+    date_from: Option<&str>,
+    date_to: Option<&str>,
+) -> Result<String, String> {
+    let safe_path = log_path.replace('\'', "'\\''");
+    
+    // Check if file is gzip compressed (ends with .gz)
+    let is_gzipped = log_path.to_lowercase().ends_with(".gz");
+    
+    // Choose the appropriate command based on compression
+    // Use gunzip -c as it's more universally available than zcat
+    let read_cmd = if is_gzipped {
+        "gunzip -c"  // Decompress and output to stdout
+    } else {
+        "cat"        // Regular file read
+    };
+    
+    let cmd = if date_from.is_some() || date_to.is_some() {
+        // Use awk to filter by date range.
+        // Converts nginx log date [DD/Mon/YYYY:HH:MM:SS +ZZZZ] → "YYYY-MM-DD HH:MM:SS"
+        // then does string comparison (works because YYYY-MM-DD HH:MM:SS sorts chronologically).
+        let from = date_from.unwrap_or("");
+        let to = date_to.unwrap_or("");
+        // Use [\\/] character class to match forward slash in awk regex
+        format!(
+            "{} '{}' | tail -n {} | awk 'BEGIN{{split(\"Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec\",m,\" \");for(i=1;i<=12;i++)mn[m[i]]=sprintf(\"%02d\",i)}}{{if(match($0,/\\[([0-9]+)[\\/ ]([A-Za-z]+)[\\/ ]([0-9]+):([0-9:]+)/,a)){{d=sprintf(\"%s-%s-%s %s\",a[3],mn[a[2]],a[1],a[4]);if(\"{}\"==\"\"||d>=\"{}\"){{if(\"{}\"==\"\"||d<=\"{}\")print}}}}}}'",
+            read_cmd, safe_path, lines.min(10000), from, from, to, to
+        )
+    } else {
+        format!("{} '{}' | tail -n {}", read_cmd, safe_path, lines.min(10000))
+    };
+    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 30).await?;
+    if code != 0 {
+        let err_msg = if !stderr.trim().is_empty() { stderr.trim() } else { stdout.trim() };
+        return Err(format!("Failed to read log: {}", err_msg));
+    }
+    Ok(stdout)
+}
+
+// ===== Docker Management =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DockerStatus {
+    pub installed: bool,
+    pub version: String,
+    pub compose_version: String,
+    pub running: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DockerContainer {
+    pub id: String,
+    pub name: String,
+    pub image: String,
+    pub status: String,
+    pub state: String,
+    pub ports: String,
+    pub created: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DockerImage {
+    pub id: String,
+    pub repository: String,
+    pub tag: String,
+    pub size: String,
+    pub created: String,
+}
+
+/// Check Docker installation status
+pub async fn check_docker(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<DockerStatus, String> {
+    // ponytail: cache Docker status for connection lifetime
+    if let Some(cached) = ssh_mgr.cache.get(session_id, "docker_status", 0).await {
+        if let Ok(status) = serde_json::from_str::<DockerStatus>(&cached) {
+            return Ok(status);
+        }
+    }
+    let (stdout, _, _) = ssh_mgr
+        .exec_with_output(
+            session_id,
+            r#"
+if command -v docker &>/dev/null; then
+    echo "INSTALLED=true"
+    echo "VERSION=$(docker --version 2>/dev/null | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+    echo "RUNNING=$(docker info &>/dev/null && echo true || echo false)"
+else
+    echo "INSTALLED=false"
+    echo "VERSION="
+    echo "RUNNING=false"
+fi
+
+if command -v docker-compose &>/dev/null; then
+    echo "COMPOSE=$(docker-compose --version 2>/dev/null | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+elif docker compose version &>/dev/null 2>&1; then
+    echo "COMPOSE=$(docker compose version 2>/dev/null | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+else
+    echo "COMPOSE="
+fi
+"#,
+            15,
+        )
+        .await?;
+
+    let mut status = DockerStatus {
+        installed: false,
+        version: String::new(),
+        compose_version: String::new(),
+        running: false,
+    };
+
+    for line in stdout.lines() {
+        let line = line.trim();
+        if let Some(v) = line.strip_prefix("INSTALLED=") {
+            status.installed = v == "true";
+        } else if let Some(v) = line.strip_prefix("VERSION=") {
+            status.version = v.to_string();
+        } else if let Some(v) = line.strip_prefix("COMPOSE=") {
+            status.compose_version = v.to_string();
+        } else if let Some(v) = line.strip_prefix("RUNNING=") {
+            status.running = v == "true";
+        }
+    }
+
+    // ponytail: cache Docker status
+    if let Ok(json) = serde_json::to_string(&status) {
+        ssh_mgr.cache.put(session_id, "docker_status", json).await;
+    }
+    Ok(status)
+}
+
+/// Helper: run an SSH command with streaming output via Tauri events
+async fn docker_stream_exec(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    cmd: &str,
+    timeout_secs: u64,
+    app_handle: &AppHandle,
+) -> Result<String, String> {
+    let mut channel = ssh_mgr.open_channel(session_id).await?;
+    channel
+        .exec(true, cmd)
+        .await
+        .map_err(|e| format!("Failed to execute command: {}", e))?;
+
+    let mut full_output = String::new();
+    let mut exit_code: i32 = -1;
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(timeout_secs);
+
+    loop {
+        tokio::select! {
+            msg = channel.wait() => {
+                match msg {
+                    Some(russh::ChannelMsg::Data { data }) => {
+                        let text = String::from_utf8_lossy(&data);
+                        full_output.push_str(&text);
+                        for line in text.lines() {
+                            if !line.trim().is_empty() {
+                                let _ = app_handle.emit("docker-action-progress", serde_json::json!({
+                                    "sessionId": session_id,
+                                    "line": line,
+                                    "status": "running",
+                                }));
+                            }
+                        }
+                    }
+                    Some(russh::ChannelMsg::ExtendedData { data, ext }) => {
+                        if ext == 1 {
+                            let text = String::from_utf8_lossy(&data);
+                            full_output.push_str(&text);
+                            for line in text.lines() {
+                                if !line.trim().is_empty() {
+                                    let _ = app_handle.emit("docker-action-progress", serde_json::json!({
+                                        "sessionId": session_id,
+                                        "line": line,
+                                        "status": "running",
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                    Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
+                        exit_code = exit_status as i32;
+                    }
+                    Some(russh::ChannelMsg::Eof) | Some(russh::ChannelMsg::Close) | None => break,
+                    _ => {}
+                }
+            }
+            _ = tokio::time::sleep_until(deadline) => {
+                return Err(format!("Command timed out after {} seconds", timeout_secs));
+            }
+        }
+    }
+
+    if exit_code != 0 {
+        // ponytail: russh may deliver ExitStatus after Eof/Close, so exit_code stays -1.
+        // Only treat as failure if we actually got a non-zero exit code.
+        if exit_code > 0 {
+            return Err(full_output);
+        }
+    }
+
+    Ok(full_output)
+}
+
+/// Generic helper: stream SSH command output via a custom event name
+async fn stream_ssh_command(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    cmd: &str,
+    timeout_secs: u64,
+    app_handle: &AppHandle,
+    event_name: &str,
+) -> Result<(String, i32), String> {
+    let mut channel = ssh_mgr.open_channel(session_id).await?;
+    channel
+        .exec(true, cmd)
+        .await
+        .map_err(|e| format!("Failed to execute command: {}", e))?;
+
+    let mut full_output = String::new();
+    let mut exit_code: i32 = -1;
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(timeout_secs);
+
+    loop {
+        tokio::select! {
+            msg = channel.wait() => {
+                match msg {
+                    Some(russh::ChannelMsg::Data { data }) => {
+                        let text = String::from_utf8_lossy(&data);
+                        full_output.push_str(&text);
+                        for line in text.lines() {
+                            if !line.trim().is_empty() {
+                                let _ = app_handle.emit(event_name, serde_json::json!({
+                                    "sessionId": session_id,
+                                    "line": line,
+                                    "status": "running",
+                                }));
+                            }
+                        }
+                    }
+                    Some(russh::ChannelMsg::ExtendedData { data, ext }) => {
+                        if ext == 1 {
+                            let text = String::from_utf8_lossy(&data);
+                            full_output.push_str(&text);
+                            for line in text.lines() {
+                                if !line.trim().is_empty() {
+                                    let _ = app_handle.emit(event_name, serde_json::json!({
+                                        "sessionId": session_id,
+                                        "line": line,
+                                        "status": "running",
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                    Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
+                        exit_code = exit_status as i32;
+                    }
+                    Some(russh::ChannelMsg::Eof) | Some(russh::ChannelMsg::Close) | None => break,
+                    _ => {}
+                }
+            }
+            _ = tokio::time::sleep_until(deadline) => {
+                return Err(format!("Command timed out after {} seconds", timeout_secs));
+            }
+        }
+    }
+
+    Ok((full_output.trim().to_string(), exit_code))
+}
+
+/// Install Docker
+pub async fn install_docker(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    use_mirror: bool,
+    app_handle: &AppHandle,
+) -> Result<String, String> {
+    let script = if use_mirror {
+        r#"
+set -e
+if command -v docker &>/dev/null; then
+    echo "Docker is already installed: $(docker --version)"
+    exit 0
+fi
+export CHANNEL=stable
+curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+sh /tmp/get-docker.sh --mirror Aliyun
+rm -f /tmp/get-docker.sh
+systemctl enable docker
+systemctl start docker
+usermod -aG docker $(whoami) 2>/dev/null || true
+echo "Docker installed successfully: $(docker --version)"
+"#
+    } else {
+        r#"
+set -e
+if command -v docker &>/dev/null; then
+    echo "Docker is already installed: $(docker --version)"
+    exit 0
+fi
+curl -fsSL https://get.docker.com | sh
+systemctl enable docker
+systemctl start docker
+usermod -aG docker $(whoami) 2>/dev/null || true
+echo "Docker installed successfully: $(docker --version)"
+"#
+    };
+
+    let output = docker_stream_exec(ssh_mgr, session_id, script, 300, app_handle).await
+        .map_err(|e| format!("Docker installation failed: {}", e))?;
+
+    let _ = app_handle.emit("docker-action-progress", serde_json::json!({
+        "sessionId": session_id,
+        "line": "Installation completed!",
+        "status": "done",
+    }));
+
+    Ok(output)
+}
+
+/// Uninstall Docker
+pub async fn uninstall_docker(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    app_handle: &AppHandle,
+) -> Result<String, String> {
+    let script = r#"
+set -e
+if ! command -v docker &>/dev/null; then
+    echo "Docker is not installed"
+    exit 0
+fi
+
+# Stop all running containers
+echo "Stopping containers..."
+docker ps -q | xargs -r docker stop 2>/dev/null || true
+docker ps -aq | xargs -r docker rm -f 2>/dev/null || true
+
+# Detect package manager and uninstall
+echo "Removing Docker packages..."
+if command -v apt-get &>/dev/null; then
+    apt-get remove -y docker-ce docker-ce-cli docker-ce-rootless-extras docker-buildx-plugin docker-compose-plugin containerd.io 2>/dev/null || true
+    apt-get autoremove -y 2>/dev/null || true
+elif command -v yum &>/dev/null; then
+    yum remove -y docker-ce docker-ce-cli docker-ce-rootless-extras docker-buildx-plugin docker-compose-plugin containerd.io 2>/dev/null || true
+fi
+
+systemctl daemon-reload 2>/dev/null || true
+echo "Docker uninstalled successfully"
+"#;
+
+    let output = docker_stream_exec(ssh_mgr, session_id, script, 120, app_handle).await
+        .map_err(|e| format!("Docker uninstall failed: {}", e))?;
+
+    let _ = app_handle.emit("docker-action-progress", serde_json::json!({
+        "sessionId": session_id,
+        "line": "Uninstall completed!",
+        "status": "done",
+    }));
+
+    Ok(output)
+}
+
+/// List Docker containers
+pub async fn docker_container_list(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<Vec<DockerContainer>, String> {
+    let cmd = r#"docker ps -a --format '{{.ID}}|||{{.Names}}|||{{.Image}}|||{{.Status}}|||{{.State}}|||{{.Ports}}|||{{.CreatedAt}}'"#;
+    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, cmd, 30).await?;
+
+    let mut containers = Vec::new();
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = line.splitn(7, "|||").collect();
+        if parts.len() >= 7 {
+            containers.push(DockerContainer {
+                id: parts[0].to_string(),
+                name: parts[1].to_string(),
+                image: parts[2].to_string(),
+                status: parts[3].to_string(),
+                state: parts[4].to_string(),
+                ports: parts[5].to_string(),
+                created: parts[6].to_string(),
+            });
+        }
+    }
+
+    // ponytail: docker may return non-zero with warnings but still output valid data
+    // exit_code -1 means ExitStatus was not received (russh may deliver it after Eof/Close)
+    if containers.is_empty() && code > 0 {
+        let err = if !stderr.trim().is_empty() {
+            stderr.trim().to_string()
+        } else if !stdout.trim().is_empty() {
+            stdout.trim().to_string()
+        } else {
+            format!("Command failed with exit code {}", code)
+        };
+        return Err(format!("Failed to list containers: {}", err));
+    }
+
+    Ok(containers)
+}
+
+/// Perform action on a container (start/stop/restart/pause/unpause)
+pub async fn docker_container_action(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    container_id: &str,
+    action: &str,
+) -> Result<String, String> {
+    let valid_actions = ["start", "stop", "restart", "pause", "unpause"];
+    if !valid_actions.contains(&action) {
+        return Err(format!("Invalid action: {}", action));
+    }
+
+    let safe_id = container_id.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect::<String>();
+    let cmd = format!("docker {} {}", action, safe_id);
+    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 30).await?;
+    // ponytail: exit_code -1 means ExitStatus not received (russh behavior)
+    if code > 0 {
+        let err = if !stderr.trim().is_empty() {
+            stderr.trim().to_string()
+        } else if !stdout.trim().is_empty() {
+            stdout.trim().to_string()
+        } else {
+            format!("Command failed with exit code {}", code)
+        };
+        return Err(format!(
+            "Failed to {} container: {}",
+            action, err
+        ));
+    }
+    Ok(format!("Container {} {}ed successfully", safe_id, action))
+}
+
+/// Remove a container
+pub async fn docker_container_remove(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    container_id: &str,
+    force: bool,
+) -> Result<String, String> {
+    let safe_id = container_id.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect::<String>();
+    let cmd = if force {
+        format!("docker rm -f {}", safe_id)
+    } else {
+        format!("docker rm {}", safe_id)
+    };
+    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 30).await?;
+    // ponytail: exit_code -1 means ExitStatus not received (russh behavior)
+    if code > 0 {
+        let err = if !stderr.trim().is_empty() {
+            stderr.trim().to_string()
+        } else if !stdout.trim().is_empty() {
+            stdout.trim().to_string()
+        } else {
+            format!("Command failed with exit code {}", code)
+        };
+        return Err(format!("Failed to remove container: {}", err));
+    }
+    Ok(format!("Container {} removed successfully", safe_id))
+}
+
+/// Get container logs
+pub async fn docker_container_logs(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    container_id: &str,
+    lines: usize,
+) -> Result<String, String> {
+    let safe_id = container_id.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect::<String>();
+    let cmd = format!("docker logs --tail {} {} 2>&1", lines.min(5000), safe_id);
+    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 30).await?;
+    if code != 0 {
+        return Err(format!(
+            "Failed to get logs: {}",
+            if stderr.trim().is_empty() { stdout.trim() } else { stderr.trim() }
+        ));
+    }
+    Ok(stdout)
+}
+
+/// List Docker images
+pub async fn docker_image_list(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<Vec<DockerImage>, String> {
+    let cmd = r#"docker images --format '{{.ID}}|||{{.Repository}}|||{{.Tag}}|||{{.Size}}|||{{.CreatedAt}}'"#;
+    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, cmd, 30).await?;
+
+    let mut images = Vec::new();
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = line.splitn(5, "|||").collect();
+        if parts.len() >= 5 {
+            images.push(DockerImage {
+                id: parts[0].to_string(),
+                repository: parts[1].to_string(),
+                tag: parts[2].to_string(),
+                size: parts[3].to_string(),
+                created: parts[4].to_string(),
+            });
+        }
+    }
+
+    // ponytail: docker may return non-zero with warnings but still output valid data
+    // exit_code -1 means ExitStatus was not received (russh may deliver it after Eof/Close)
+    if images.is_empty() && code > 0 {
+        let err = if !stderr.trim().is_empty() {
+            stderr.trim().to_string()
+        } else if !stdout.trim().is_empty() {
+            stdout.trim().to_string()
+        } else {
+            format!("Command failed with exit code {}", code)
+        };
+        return Err(format!("Failed to list images: {}", err));
+    }
+
+    Ok(images)
+}
+
+/// Pull a Docker image
+pub async fn docker_image_pull(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    image_name: &str,
+    app_handle: &AppHandle,
+) -> Result<String, String> {
+    // Validate image name format
+    if image_name.is_empty() || image_name.contains(|c: char| c.is_whitespace() || c == ';' || c == '|' || c == '&') {
+        return Err("Invalid image name".to_string());
+    }
+
+    // ponytail: Docker requires lowercase repository names, auto-convert to avoid user error
+    let image_name_lower = image_name.to_lowercase();
+    let cmd = format!("docker pull {}", image_name_lower);
+    let output = docker_stream_exec(ssh_mgr, session_id, &cmd, 600, app_handle).await
+        .map_err(|e| format!("Failed to pull image: {}", e))?;
+
+    let _ = app_handle.emit("docker-action-progress", serde_json::json!({
+        "sessionId": session_id,
+        "line": format!("Image {} pulled successfully!", image_name),
+        "status": "done",
+    }));
+
+    Ok(output)
+}
+
+/// Remove a Docker image
+pub async fn docker_image_remove(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    image_id: &str,
+) -> Result<String, String> {
+    let safe_id = image_id.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_' || *c == ':' || *c == '/' || *c == '.').collect::<String>();
+    let cmd = format!("docker rmi {}", safe_id);
+    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 30).await?;
+    // ponytail: exit_code -1 means ExitStatus not received (russh behavior)
+    if code > 0 {
+        let err = if !stderr.trim().is_empty() {
+            stderr.trim().to_string()
+        } else if !stdout.trim().is_empty() {
+            stdout.trim().to_string()
+        } else {
+            format!("Command failed with exit code {}", code)
+        };
+        return Err(format!("Failed to remove image: {}", err));
+    }
+    Ok(format!("Image {} removed successfully", safe_id))
+}
+
+/// Get Docker mirror/registry configuration
+pub async fn docker_get_mirror_config(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<Vec<String>, String> {
+    let cmd = r#"cat /etc/docker/daemon.json 2>/dev/null | python3 -c "import sys,json;d=json.load(sys.stdin);print('\n'.join(d.get('registry-mirrors',[])))" 2>/dev/null || echo """#;
+    let (stdout, _, _) = ssh_mgr.exec_with_output(session_id, cmd, 10).await?;
+    let mirrors: Vec<String> = stdout
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    Ok(mirrors)
+}
+
+/// Set Docker mirror/registry configuration
+pub async fn docker_set_mirror_config(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    mirrors: &[String],
+) -> Result<String, String> {
+    // Build JSON for daemon.json
+    let mirrors_json: Vec<String> = mirrors.iter().map(|m| format!("\"{}\"" , m)).collect();
+    let mirrors_array = mirrors_json.join(",");
+
+    let script = format!(r#"
+mkdir -p /etc/docker
+cat > /etc/docker/daemon.json << 'DAEMON_EOF'
+{{
+  "registry-mirrors": [{mirrors}]
+}}
+DAEMON_EOF
+systemctl daemon-reload
+systemctl restart docker
+echo "Docker mirror configured: {mirrors}"
+"#, mirrors = mirrors_array);
+
+    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &script, 30).await?;
+    if code != 0 {
+        return Err(format!(
+            "Failed to configure mirror: {}",
+            if stderr.trim().is_empty() { stdout.trim() } else { stderr.trim() }
+        ));
+    }
+    Ok("Docker mirror configured successfully. Docker service restarted.".to_string())
+}
+
+// ===== Database Management =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DbInfo {
+    pub name: String,
+    pub size_mb: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct BackupInfo {
+    pub filename: String,
+    pub size_bytes: u64,
+    pub created_at: String,
+}
+
+/// Try to get a mysql command prefix with credentials.
+/// Tries multiple authentication methods in order of preference.
+async fn get_mysql_cmd(ssh_mgr: &SshManager, session_id: &str) -> String {
+    // Method 1: Check /root/.my.cnf for password
+    let (cnf, _, _) = ssh_mgr
+        .exec_with_output(session_id, "cat /root/.my.cnf 2>/dev/null", 5)
+        .await
+        .unwrap_or((String::new(), String::new(), -1));
+    
+    for line in cnf.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("password") {
+            // formats: password=xxx, password = xxx, password="xxx"
+            let val = rest.trim_start_matches([' ', '=', '"', '\'']).trim_end_matches(['"', '\'']).to_string();
+            if !val.is_empty() {
+                return format!("mysql -u root -p'{}'", val);
+            }
+        }
+    }
+    
+    // Method 2: Try debian-sys-maint user (Debian/Ubuntu specific)
+    let (debian_cnf, _, _) = ssh_mgr
+        .exec_with_output(session_id, "cat /etc/mysql/debian.cnf 2>/dev/null", 5)
+        .await
+        .unwrap_or((String::new(), String::new(), -1));
+    
+    let mut debian_user = String::new();
+    let mut debian_pass = String::new();
+    for line in debian_cnf.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("user") {
+            debian_user = rest.trim_start_matches([' ', '=']).trim().to_string();
+        } else if let Some(rest) = trimmed.strip_prefix("password") {
+            debian_pass = rest.trim_start_matches([' ', '=', '"', '\'']).trim_end_matches(['"', '\'']).to_string();
+        }
+    }
+    
+    if !debian_user.is_empty() && !debian_pass.is_empty() {
+        return format!("mysql -u {} -p'{}'", debian_user, debian_pass);
+    }
+    
+    // Method 3: Try plain mysql (works if socket auth is configured or running as root)
+    // Test it first
+    let (_, _, test_code) = ssh_mgr
+        .exec_with_output(session_id, "mysql -e 'SELECT 1' 2>&1", 5)
+        .await
+        .unwrap_or((String::new(), String::new(), -1));
+    
+    if test_code == 0 {
+        return "mysql".to_string();
+    }
+    
+    // Method 4: Use sudo to run mysql as root (bypasses password requirement)
+    // This works if the SSH user has sudo privileges
+    "sudo mysql".to_string()
+}
+
+/// List all user databases (excluding system databases)
+pub async fn list_databases(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<Vec<DbInfo>, String> {
+    // Check cache first (30 seconds TTL for database list)
+    if let Some(cached) = ssh_mgr.cache.get(session_id, "database_list", 30).await {
+        // Parse cached JSON
+        if let Ok(dbs) = serde_json::from_str::<Vec<DbInfo>>(&cached) {
+            return Ok(dbs);
+        }
+    }
+
+    // Use sudo mysql directly for faster response
+    // This is the most reliable method and avoids multiple SSH calls
+    let mysql_cmd = "sudo mysql";
+
+    // Use SQL query to directly get user databases only (excludes system databases)
+    // This avoids parsing issues with SHOW DATABASES output format variations
+    let query = r#"SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') ORDER BY SCHEMA_NAME"#;
+    
+    let (stdout, stderr, code) = ssh_mgr
+        .exec_with_output(
+            session_id,
+            &format!("{} --batch --skip-column-names -e \"{}\"", mysql_cmd, query),
+            5,
+        )
+        .await?;
+
+    // Parse database names from output (one per line, no header due to --skip-column-names)
+    // Even if exit code is non-zero, if we have stdout content and no stderr, treat as success
+    let mut dbs = Vec::new();
+    
+    for line in stdout.lines() {
+        let db_name = line.trim();
+        if !db_name.is_empty() {
+            // No size query - just add database with 0.0 size as requested
+            dbs.push(DbInfo { name: db_name.to_string(), size_mb: 0.0 });
+        }
+    }
+    
+    // If we got databases, cache and return them even if exit code was non-zero
+    // (MySQL may return warnings but still succeed)
+    if !dbs.is_empty() {
+        // Cache result for 60 seconds to speed up repeated loads
+        if let Ok(json) = serde_json::to_string(&dbs) {
+            ssh_mgr.cache.put(session_id, "database_list", json).await;
+        }
+        return Ok(dbs);
+    }
+    
+    // Only report error if we have no results and there's an actual error
+    if code != 0 {
+        let err_msg = if !stderr.trim().is_empty() {
+            format!("Failed to list databases: {}", stderr.trim())
+        } else {
+            "Failed to list databases: unknown error".to_string()
+        };
+        return Err(err_msg);
+    }
+    
+    Ok(dbs)
+}
+
+/// Validate IP address or CIDR notation (e.g., 192.168.1.100, 192.168.1.%, 10.0.0.0/8)
+fn is_valid_ip_or_cidr(ip: &str) -> bool {
+    // Allow wildcard %
+    if ip == "%" {
+        return true;
+    }
+    
+    // Check for CIDR notation (e.g., 10.0.0.0/8)
+    if let Some((ip_part, cidr_part)) = ip.split_once('/') {
+        // Validate CIDR part is a number between 0-32
+        if let Ok(cidr) = cidr_part.parse::<u32>() {
+            if cidr > 32 {
+                return false;
+            }
+        } else {
+            return false;
+        }
+        // Validate IP part
+        return is_valid_ipv4(ip_part);
+    }
+    
+    // Check for wildcard pattern (e.g., 192.168.1.%)
+    if ip.contains('%') {
+        let parts: Vec<&str> = ip.split('.').collect();
+        if parts.len() != 4 {
+            return false;
+        }
+        // Each part should be either a number (0-255) or %
+        for part in parts {
+            if part == "%" {
+                continue;
+            }
+            if let Ok(num) = part.parse::<u32>() {
+                if num > 255 {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    // Standard IPv4 validation
+    is_valid_ipv4(ip)
+}
+
+/// Validate IPv4 address
+fn is_valid_ipv4(ip: &str) -> bool {
+    let parts: Vec<&str> = ip.split('.').collect();
+    if parts.len() != 4 {
+        return false;
+    }
+    for part in parts {
+        if let Ok(num) = part.parse::<u32>() {
+            if num > 255 {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+    true
+}
+
+/// Create a database with user and grant privileges
+pub async fn create_database(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    db_name: &str,
+    db_user: &str,
+    db_pass: &str,
+    charset: &str,
+    access_type: &str,
+    allowed_ip: &str,
+) -> Result<String, String> {
+    // ponytail: skip redundant `command -v mysql` check — the SQL exec below will
+    // fail with a clear error if mysql client is missing, saving 5s per call
+    let safe_db = db_name.replace('`', "");
+    let safe_user = db_user.replace('`', "");
+    let safe_pw = db_pass.replace('`', "");
+    
+    // Validate and sanitize charset (whitelist approach)
+    let valid_charsets = ["utf8mb4", "utf8", "gbk", "big5", "latin1"];
+    let safe_charset = if valid_charsets.contains(&charset) {
+        charset
+    } else {
+        "utf8mb4" // Default fallback
+    };
+    
+    // Parse multiple IPs from allowed_ip (newline separated)
+    let access_hosts: Vec<&str> = match access_type {
+        "local" => vec!["localhost"],
+        "any" => vec!["%"],
+        "ip" => {
+            // Split by newline, trim each line, filter empty lines
+            let ips: Vec<&str> = allowed_ip
+                .split('\n')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+            
+            if ips.is_empty() {
+                return Err("No IP addresses provided".to_string());
+            }
+            
+            // Basic validation for each IP
+            for ip in &ips {
+                if !is_valid_ip_or_cidr(ip) {
+                    return Err(format!("Invalid IP address format: {}", ip));
+                }
+            }
+            ips
+        },
+        _ => vec!["localhost"], // Default fallback
+    };
+    
+    // Build SQL for multiple access hosts
+    let mut sql = format!(
+        "CREATE DATABASE IF NOT EXISTS `{}` CHARACTER SET {} COLLATE {}_general_ci;\n",
+        safe_db, safe_charset, safe_charset
+    );
+    
+    // Create user and grant privileges for each access host
+    for host in &access_hosts {
+        sql.push_str(&format!(
+            "CREATE USER IF NOT EXISTS '{}'@'{}' IDENTIFIED BY '{}';\n\
+             GRANT ALL PRIVILEGES ON `{}`.* TO '{}'@'{}';\n",
+            safe_user, host, safe_pw, safe_db, safe_user, host
+        ));
+    }
+    
+    sql.push_str("FLUSH PRIVILEGES;\n");
+
+    let mysql_cmd = get_mysql_cmd(ssh_mgr, session_id).await;
+
+    // Write SQL via SFTP (reliable escaping, same pattern as create_site)
+    let tmp_sql = "/tmp/db_setup.sql";
+    ssh_mgr.write_file(session_id, tmp_sql, &sql).await?;
+
+    let (db_out, db_err, db_code) = ssh_mgr
+        .exec_with_output(session_id, &format!("{} < {} 2>&1", mysql_cmd, tmp_sql), 30)
+        .await?;
+
+    // Verify database was created
+    let verify_cmd = format!("{} -e 'SHOW DATABASES' 2>&1 | grep -iw '{}'", mysql_cmd, safe_db.replace('\'', ""));
+    let (verify_out, _, _) = ssh_mgr
+        .exec_with_output(session_id, &verify_cmd, 10)
+        .await?;
+    let db_exists = !verify_out.trim().is_empty();
+
+    // Cleanup temp file
+    let _ = ssh_mgr.exec_with_output(session_id, &format!("rm -f {}", tmp_sql), 5).await;
+
+    if db_code != 0 && !db_exists {
+        let full_output = format!("{} {}", db_out, db_err).trim().to_string();
+        return Err(if full_output.is_empty() {
+            "Database creation failed (unknown error)".to_string()
+        } else {
+            full_output
+        });
+    }
+
+    // Invalidate database list cache so next list reflects the new db
+    ssh_mgr.cache.invalidate(session_id, &["database_list"]).await;
+    Ok(format!("Database '{}' created successfully", db_name))
+}
+
+/// Delete a database and its associated user
+pub async fn delete_database(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    db_name: &str,
+    db_user: &str,
+) -> Result<String, String> {
+    let safe_db = db_name.replace('`', "");
+    let safe_user = db_user.replace('`', "");
+    let sql = format!(
+        "DROP DATABASE IF EXISTS `{}`;\n\
+         DROP USER IF EXISTS '{}'@'localhost';\n\
+         FLUSH PRIVILEGES;\n",
+        safe_db, safe_user
+    );
+
+    let mysql_cmd = get_mysql_cmd(ssh_mgr, session_id).await;
+
+    let tmp_sql = "/tmp/db_drop.sql";
+    ssh_mgr.write_file(session_id, tmp_sql, &sql).await?;
+
+    let (db_out, db_err, db_code) = ssh_mgr
+        .exec_with_output(session_id, &format!("{} < {} 2>&1", mysql_cmd, tmp_sql), 30)
+        .await?;
+
+    let _ = ssh_mgr.exec_with_output(session_id, &format!("rm -f {}", tmp_sql), 5).await;
+
+    // Any non-zero exit code = error
+    if db_code != 0 {
+        let combined = format!("{} {}", db_out, db_err).trim().to_string();
+        return Err(if combined.is_empty() {
+            "Database deletion failed (unknown error)".to_string()
+        } else {
+            combined
+        });
+    }
+
+    // Invalidate database list cache so next list reflects the deletion
+    ssh_mgr.cache.invalidate(session_id, &["database_list"]).await;
+    Ok(format!("Database '{}' deleted successfully", db_name))
+}
+
+/// Change database access permission
+pub async fn change_db_access(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    db_name: &str,
+    db_user: &str,
+    access_type: &str,
+    allowed_ip: &str,
+) -> Result<String, String> {
+    let safe_db = db_name.replace('`', "");
+    let safe_user = db_user.replace('`', "");
+    
+    // Parse multiple IPs from allowed_ip (newline separated)
+    let access_hosts: Vec<&str> = match access_type {
+        "local" => vec!["localhost"],
+        "any" => vec!["%"],
+        "ip" => {
+            // Split by newline, trim each line, filter empty lines
+            let ips: Vec<&str> = allowed_ip
+                .split('\n')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+            
+            if ips.is_empty() {
+                return Err("No IP addresses provided".to_string());
+            }
+            
+            // Basic validation for each IP
+            for ip in &ips {
+                if !is_valid_ip_or_cidr(ip) {
+                    return Err(format!("Invalid IP address format: {}", ip));
+                }
+            }
+            ips
+        },
+        _ => vec!["localhost"], // Default fallback
+    };
+    
+    // Build SQL to drop all old users and create new ones with different hosts
+    let mut sql = String::new();
+    
+    // Drop existing users for common hosts
+    sql.push_str(&format!(
+        "DROP USER IF EXISTS '{}'@'localhost';\n\
+         DROP USER IF EXISTS '{}'@'%';\n",
+        safe_user, safe_user
+    ));
+    
+    // Create user and grant privileges for each new access host
+    for host in &access_hosts {
+        sql.push_str(&format!(
+            "CREATE USER IF NOT EXISTS '{}'@'{}' IDENTIFIED BY '{}';\n\
+             GRANT ALL PRIVILEGES ON `{}`.* TO '{}'@'{}';\n",
+            safe_user, host, "", safe_db, safe_user, host
+        ));
+    }
+    
+    sql.push_str("FLUSH PRIVILEGES;\n");
+
+    let mysql_cmd = get_mysql_cmd(ssh_mgr, session_id).await;
+
+    let tmp_sql = "/tmp/db_access.sql";
+    ssh_mgr.write_file(session_id, tmp_sql, &sql).await?;
+
+    let (db_out, db_err, db_code) = ssh_mgr
+        .exec_with_output(session_id, &format!("{} < {} 2>&1", mysql_cmd, tmp_sql), 30)
+        .await?;
+
+    let _ = ssh_mgr.exec_with_output(session_id, &format!("rm -f {}", tmp_sql), 5).await;
+
+    // Any non-zero exit code = error
+    if db_code != 0 {
+        let combined = format!("{} {}", db_out, db_err).trim().to_string();
+        return Err(if combined.is_empty() {
+            "Failed to change database access permission (unknown error)".to_string()
+        } else {
+            combined
+        });
+    }
+
+    Ok(format!("Database '{}' access permission changed to {}", db_name, access_type))
+}
+
+// ===== Redis Management =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct RedisKeyInfo {
+    pub key: String,
+    pub value_preview: String,
+    pub data_type: String,
+    pub length: usize,
+    pub ttl: i64, // -1 means no expiry
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct RedisDbSize {
+    pub db_index: u8,
+    pub key_count: usize,
+}
+
+/// Check if Redis is installed and running
+/// Returns: Ok(true) if running, Ok(false) if installed but stopped, Err("not_installed") if not installed
+pub async fn check_redis_status(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<bool, String> {
+    // Try redis-cli ping directly
+    let (out, stderr, code) = ssh_mgr
+        .exec_with_output(session_id, "redis-cli ping 2>&1", 5)
+        .await?;
+
+    log::info!("[REDIS] ping => stdout='{}' stderr='{}' exit_code={}", out, stderr, code);
+
+    let combined = format!("{}{}", out, stderr).to_lowercase();
+
+    // Got PONG response - Redis is running
+    if combined.contains("pong") {
+        log::info!("[REDIS] RUNNING (PONG received)");
+        return Ok(true);
+    }
+
+    // redis-cli command not found - not installed
+    if combined.contains("command not found")
+        || combined.contains("no such file or directory")
+        || combined.contains("not found")
+    {
+        log::info!("[REDIS] NOT INSTALLED");
+        return Err("not_installed".to_string());
+    }
+
+    // redis-cli exists but ping failed (connection refused, auth required, etc.)
+    // Fallback: check if redis-server process is running
+    let (p_out, _, _) = ssh_mgr
+        .exec_with_output(session_id, "pgrep -x redis-server || pgrep redis-server", 3)
+        .await?;
+    log::info!("[REDIS] pgrep output='{}'", p_out);
+
+    // If pgrep found a process, redis-server is running
+    if !p_out.trim().is_empty() {
+        log::info!("[REDIS] RUNNING (process found via pgrep)");
+        return Ok(true);
+    }
+
+    // Installed but not running
+    log::info!("[REDIS] STOPPED");
+    Ok(false)
+}
+
+/// Get Redis version
+pub async fn get_redis_version(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<String, String> {
+    let (out, _, code) = ssh_mgr
+        .exec_with_output(session_id, "redis-cli --version 2>&1", 5)
+        .await?;
+    
+    if code != 0 {
+        return Err("Redis not found".to_string());
+    }
+    
+    // Parse version from output like "redis-cli 7.2.4"
+    let parts: Vec<&str> = out.split_whitespace().collect();
+    if parts.len() >= 2 {
+        Ok(parts[1].to_string())
+    } else {
+        Ok(out.trim().to_string())
+    }
+}
+
+/// Get sizes of all databases (0-15)
+pub async fn redis_dbsize_all(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<Vec<RedisDbSize>, String> {
+    // Optimize: Query all DB sizes in a single command using bash loop
+    // redis-cli DBSIZE returns "(integer) N", so we extract just the number
+    let cmd = "for i in $(seq 0 15); do echo -n \"$i:\"; redis-cli -n $i DBSIZE | grep -o '[0-9]\\+'; done";
+    
+    let (out, _, code) = ssh_mgr
+        .exec_with_output(session_id, cmd, 10)
+        .await?;
+    
+    if code != 0 {
+        return Err(format!("Failed to get database sizes: {}", out));
+    }
+    
+    let mut results = Vec::new();
+    for line in out.lines() {
+        let parts: Vec<&str> = line.split(':').collect();
+        if parts.len() == 2 {
+            if let Ok(db_idx) = parts[0].parse::<u8>() {
+                let count = parts[1].trim().parse::<usize>().unwrap_or(0);
+                results.push(RedisDbSize {
+                    db_index: db_idx,
+                    key_count: count,
+                });
+            }
+        }
+    }
+    
+    // Fill missing DBs with 0 count
+    while results.len() < 16 {
+        results.push(RedisDbSize {
+            db_index: results.len() as u8,
+            key_count: 0,
+        });
+    }
+    
+    Ok(results)
+}
+
+/// Scan keys in a database with pattern matching and pagination
+/// Optimized: single SSH call with bash loop instead of per-key SSH calls
+/// ponytail: bash loop spawns ~4N local redis-cli processes on remote, but avoids 4N SSH round-trips
+pub async fn redis_scan_keys(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    db_index: u8,
+    pattern: &str,
+    search_type: &str,
+    cursor: usize,
+    count: usize,
+) -> Result<(Vec<RedisKeyInfo>, usize), String> {
+    let match_pattern = if pattern.is_empty() { "*" } else { pattern };
+    // Escape single quotes for bash
+    let safe_pat = match_pattern.replace('\'', "'\\''");
+    
+    // For value search, we need to scan all keys and filter by value
+    let cmd = if search_type == "value" {
+        // Search by value: SCAN all keys, then GET each and grep for pattern
+        format!(
+            "_s=$(redis-cli -n {db} SCAN {cur} MATCH '*' COUNT {cnt} 2>&1) || {{ echo ERROR:$_s; exit 1; }}; \
+             _c=$(echo \"$_s\" | head -1); echo \"CURSOR:$_c\"; \
+             echo \"$_s\" | tail -n +2 | while IFS= read -r _k; do \
+               [ -z \"$_k\" ] && continue; \
+               _v=$(redis-cli -n {db} GET \"$_k\" 2>/dev/null); \
+               if echo \"$_v\" | grep -q '{pat}'; then \
+                 _t=$(redis-cli -n {db} TYPE \"$_k\"); \
+                 _t=$(echo $_t | tr -d '\\r\\n'); \
+                 _ttl=$(redis-cli -n {db} TTL \"$_k\"); \
+                 _ttl=$(echo $_ttl | tr -d '\\r\\n'); \
+                 case \"$_t\" in \
+                   string) _l=$(redis-cli -n {db} STRLEN \"$_k\") ;; \
+                   list)   _l=$(redis-cli -n {db} LLEN \"$_k\") ;; \
+                   set)    _l=$(redis-cli -n {db} SCARD \"$_k\") ;; \
+                   hash)   _l=$(redis-cli -n {db} HLEN \"$_k\") ;; \
+                   zset)   _l=$(redis-cli -n {db} ZCARD \"$_k\") ;; \
+                   *)      _l=0 ;; \
+                 esac; \
+                 _l=$(echo $_l | tr -d '\\r\\n'); \
+                 _vp=$(echo \"$_v\" | head -1 | tr -d '\\r'); \
+                 printf '%s\t%s\t%s\t%s\t%s\n' \"$_k\" \"$_t\" \"$_ttl\" \"$_l\" \"$_vp\"; \
+               fi; \
+             done",
+            db = db_index, cur = cursor, pat = safe_pat, cnt = count
+        )
+    } else {
+        // Search by key name (default)
+        format!(
+            "_s=$(redis-cli -n {db} SCAN {cur} MATCH '{pat}' COUNT {cnt} 2>&1) || {{ echo ERROR:$_s; exit 1; }}; \
+             _c=$(echo \"$_s\" | head -1); echo \"CURSOR:$_c\"; \
+             echo \"$_s\" | tail -n +2 | while IFS= read -r _k; do \
+               [ -z \"$_k\" ] && continue; \
+               _t=$(redis-cli -n {db} TYPE \"$_k\"); \
+               _t=$(echo $_t | tr -d '\\r\\n'); \
+               _ttl=$(redis-cli -n {db} TTL \"$_k\"); \
+               _ttl=$(echo $_ttl | tr -d '\\r\\n'); \
+               case \"$_t\" in \
+                 string) _l=$(redis-cli -n {db} STRLEN \"$_k\"); _v=$(redis-cli -n {db} GETRANGE \"$_k\" 0 199) ;; \
+                 list)   _l=$(redis-cli -n {db} LLEN \"$_k\");   _v=\"List with $_l elements\" ;; \
+                 set)    _l=$(redis-cli -n {db} SCARD \"$_k\");   _v=\"Set with $_l members\" ;; \
+                 hash)   _l=$(redis-cli -n {db} HLEN \"$_k\");    _v=\"Hash with $_l fields\" ;; \
+                 zset)   _l=$(redis-cli -n {db} ZCARD \"$_k\");   _v=\"Sorted set with $_l members\" ;; \
+                 *)      _l=0; _v=\"<Unknown type>\" ;; \
+               esac; \
+               _l=$(echo $_l | tr -d '\\r\\n'); \
+               _v=$(echo \"$_v\" | head -1 | tr -d '\\r'); \
+               printf '%s\t%s\t%s\t%s\t%s\n' \"$_k\" \"$_t\" \"$_ttl\" \"$_l\" \"$_v\"; \
+             done",
+            db = db_index, cur = cursor, pat = safe_pat, cnt = count
+        )
+    };
+
+    let (out, _, code) = ssh_mgr.exec_with_output(session_id, &cmd, 30).await?;
+
+    if code != 0 {
+        return Err(format!("Failed to scan keys: {}", out));
+    }
+
+    let mut next_cursor = 0usize;
+    let mut keys = Vec::new();
+
+    for line in out.lines() {
+        let line = line.trim();
+        if line.is_empty() { continue; }
+
+        if let Some(c) = line.strip_prefix("CURSOR:") {
+            next_cursor = c.trim().parse().unwrap_or(0);
+            continue;
+        }
+
+        // Tab-separated: key\ttype\tttl\tlength\tvalue_preview
+        let f: Vec<&str> = line.split('\t').collect();
+        if f.len() >= 5 {
+            keys.push(RedisKeyInfo {
+                key: f[0].to_string(),
+                data_type: f[1].to_string(),
+                ttl: f[2].parse().unwrap_or(-1),
+                length: f[3].parse().unwrap_or(0),
+                value_preview: f[4].to_string(),
+            });
+        }
+    }
+
+    Ok((keys, next_cursor))
+}
+
+/// Set or update a key-value pair
+pub async fn redis_set_key(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    db_index: u8,
+    key: &str,
+    value: &str,
+    ttl: Option<i64>,
+) -> Result<String, String> {
+    let escaped_key = key.replace('\'', "'\\''");
+    let escaped_value = value.replace('\'', "'\\''");
+    
+    let cmd = if let Some(ttl_val) = ttl {
+        format!("redis-cli -n {} SET '{}' '{}' EX {}", db_index, escaped_key, escaped_value, ttl_val)
+    } else {
+        format!("redis-cli -n {} SET '{}' '{}'", db_index, escaped_key, escaped_value)
+    };
+    
+    let (out, err, code) = ssh_mgr.exec_with_output(session_id, &cmd, 10).await?;
+    
+    if code != 0 || !out.trim().to_lowercase().contains("ok") {
+        return Err(format!("Failed to set key: {} {}", out, err));
+    }
+    
+    Ok(format!("Key '{}' set successfully", key))
+}
+
+/// Delete one or more keys
+pub async fn redis_del_key(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    db_index: u8,
+    keys: &[String],
+) -> Result<usize, String> {
+    if keys.is_empty() {
+        return Ok(0);
+    }
+    
+    let escaped_keys: Vec<String> = keys
+        .iter()
+        .map(|k| k.replace('\'', "'\\''"))
+        .collect();
+    
+    let cmd = format!(
+        "redis-cli -n {} DEL {}",
+        db_index,
+        escaped_keys.iter().map(|k| format!("'{}'", k)).collect::<Vec<_>>().join(" ")
+    );
+    
+    let (out, _, code) = ssh_mgr.exec_with_output(session_id, &cmd, 10).await?;
+    
+    if code != 0 {
+        return Err(format!("Failed to delete keys: {}", out));
+    }
+    
+    let deleted = out.trim().parse::<usize>().unwrap_or(0);
+    Ok(deleted)
+}
+
+/// Flush a database (delete all keys)
+pub async fn redis_flushdb(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    db_index: u8,
+) -> Result<String, String> {
+    let cmd = format!("redis-cli -n {} FLUSHDB", db_index);
+    let (out, err, code) = ssh_mgr.exec_with_output(session_id, &cmd, 10).await?;
+    
+    if code != 0 {
+        return Err(format!("Failed to flush database: {} {}", out, err));
+    }
+    
+    Ok(format!("Database {} flushed successfully", db_index))
+}
+
+/// Create a backup using BGSAVE
+pub async fn redis_save_backup(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<String, String> {
+    // Trigger background save
+    let (out, _, code) = ssh_mgr
+        .exec_with_output(session_id, "redis-cli BGSAVE 2>&1", 10)
+        .await?;
+    
+    if code != 0 {
+        return Err(format!("Failed to trigger backup: {}", out));
+    }
+    
+    // Wait a bit for the save to complete
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    
+    // Find latest RDB file
+    let (ls_out, _, _) = ssh_mgr
+        .exec_with_output(session_id, "ls -lht /var/lib/redis/*.rdb 2>/dev/null | head -1", 5)
+        .await?;
+    
+    if ls_out.trim().is_empty() {
+        // Try alternative location
+        let (alt_out, _, _) = ssh_mgr
+            .exec_with_output(session_id, "find /var -name '*.rdb' -type f -mmin -5 2>/dev/null | head -1", 5)
+            .await?;
+        
+        if alt_out.trim().is_empty() {
+            return Err("Backup file not found".to_string());
+        }
+        
+        return Ok(alt_out.trim().to_string());
+    }
+    
+    // Extract filename from ls output
+    let parts: Vec<&str> = ls_out.split_whitespace().collect();
+    if parts.len() >= 9 {
+        Ok(parts[8].to_string())
+    } else {
+        Err("Could not parse backup file path".to_string())
+    }
+}
+
+/// List available backup files
+pub async fn redis_list_backups(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<Vec<BackupInfo>, String> {
+    let (out, _, code) = ssh_mgr
+        .exec_with_output(session_id, "ls -lh /var/lib/redis/*.rdb 2>/dev/null", 5)
+        .await?;
+    
+    if code != 0 || out.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    
+    let mut backups = Vec::new();
+    for line in out.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 9 {
+            let size_str = parts[4];
+            let month = parts[5];
+            let day = parts[6];
+            let time_or_year = parts[7];
+            let filename = parts[8];
+            
+            // Parse size
+            let size_bytes = parse_size_string(size_str);
+            
+            // Parse date
+            let created_at = format!("{} {} {}", month, day, time_or_year);
+            
+            backups.push(BackupInfo {
+                filename: filename.to_string(),
+                size_bytes,
+                created_at,
+            });
+        }
+    }
+    
+    Ok(backups)
+}
+
+fn parse_size_string(size_str: &str) -> u64 {
+    let size_str = size_str.trim();
+    if let Some(num) = size_str.strip_suffix('K') {
+        (num.parse::<f64>().unwrap_or(0.0) * 1024.0) as u64
+    } else if let Some(num) = size_str.strip_suffix('M') {
+        (num.parse::<f64>().unwrap_or(0.0) * 1024.0 * 1024.0) as u64
+    } else if let Some(num) = size_str.strip_suffix('G') {
+        (num.parse::<f64>().unwrap_or(0.0) * 1024.0 * 1024.0 * 1024.0) as u64
+    } else {
+        size_str.parse::<u64>().unwrap_or(0)
+    }
+}
+
+/// Change MySQL root password
+pub async fn change_mysql_root_password(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    new_password: &str,
+) -> Result<String, String> {
+    // Use sudo mysql directly (most reliable)
+    let mysql_cmd = "sudo mysql";
+    
+    let safe_pw = new_password.replace('`', "").replace('\'', "\\'");
+    let sql = format!("ALTER USER 'root'@'localhost' IDENTIFIED BY '{}';\nFLUSH PRIVILEGES;\n", safe_pw);
+    
+    // Write SQL via SFTP
+    let tmp_sql = "/tmp/mysql_change_root_pw.sql";
+    ssh_mgr.write_file(session_id, tmp_sql, &sql).await?;
+    
+    let (out, err, code) = ssh_mgr
+        .exec_with_output(session_id, &format!("{} < {} 2>&1", mysql_cmd, tmp_sql), 30)
+        .await?;
+    
+    // Cleanup temp file
+    let _ = ssh_mgr.exec_with_output(session_id, &format!("rm -f {}", tmp_sql), 5).await;
+    
+    if code != 0 {
+        let combined = format!("{} {}", out, err).trim().to_string();
+        return Err(if combined.is_empty() {
+            "Failed to change root password (unknown error)".to_string()
+        } else {
+            combined
+        });
+    }
+    
+    Ok("MySQL root password changed successfully".to_string())
+}
+
+/// Change MySQL database user password
+pub async fn change_db_user_password(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    db_user: &str,
+    new_password: &str,
+    access_type: &str,
+    allowed_ip: &str,
+) -> Result<String, String> {
+    let safe_user = db_user.replace('`', "");
+    let safe_pw = new_password.replace('`', "").replace('\'', "\\'");
+
+    let access_hosts: Vec<&str> = match access_type {
+        "local" => vec!["localhost"],
+        "any" => vec!["%"],
+        "ip" => {
+            let ips: Vec<&str> = allowed_ip
+                .split('\n')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if ips.is_empty() {
+                return Err("No IP addresses provided".to_string());
+            }
+            ips
+        },
+        _ => vec!["localhost"],
+    };
+
+    let mut sql = String::new();
+    for host in &access_hosts {
+        sql.push_str(&format!(
+            "ALTER USER '{}'@'{}' IDENTIFIED BY '{}';\n",
+            safe_user, host, safe_pw
+        ));
+    }
+    sql.push_str("FLUSH PRIVILEGES;\n");
+
+    let mysql_cmd = get_mysql_cmd(ssh_mgr, session_id).await;
+    let tmp_sql = "/tmp/db_change_pw.sql";
+    ssh_mgr.write_file(session_id, tmp_sql, &sql).await?;
+
+    let (out, err, code) = ssh_mgr
+        .exec_with_output(session_id, &format!("{} < {} 2>&1", mysql_cmd, tmp_sql), 30)
+        .await?;
+
+    let _ = ssh_mgr.exec_with_output(session_id, &format!("rm -f {}", tmp_sql), 5).await;
+
+    if code != 0 {
+        let combined = format!("{} {}", out, err).trim().to_string();
+        return Err(if combined.is_empty() {
+            "Failed to change database user password (unknown error)".to_string()
+        } else {
+            combined
+        });
+    }
+
+    Ok("Database user password changed successfully".to_string())
+}
+
+// ===== Database Remarks Management =====
+
+/// Save database remark to SQLite
+pub async fn save_db_remark(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    db_name: &str,
+    remark: &str,
+) -> Result<String, String> {
+    let db_conn = crate::db::init_db()
+        .map_err(|e| format!("Failed to init DB: {}", e))?;
+    let conn = db_conn.lock().map_err(|_| "DB lock failed".to_string())?;
+    
+    // Get server host from session
+    let server_host = ssh_mgr.get_host(session_id)
+        .ok_or(format!("Session not found: {}", session_id))?;
+    
+    crate::db::DbRemarksManager::save(&conn, &server_host, db_name, remark)?;
+    
+    Ok("Remark saved successfully".to_string())
+}
+
+/// Get all database remarks for a server
+pub async fn get_db_remarks(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let db_conn = crate::db::init_db()
+        .map_err(|e| format!("Failed to init DB: {}", e))?;
+    let conn = db_conn.lock().map_err(|_| "DB lock failed".to_string())?;
+    
+    // Get server host from session
+    let server_host = ssh_mgr.get_host(session_id)
+        .ok_or(format!("Session not found: {}", session_id))?;
+    
+    Ok(crate::db::DbRemarksManager::list_for_server(&conn, &server_host))
+}
+
+// ===== Database Credentials =====
+
+/// Save database credentials (password, access_type, allowed_ip)
+pub async fn save_db_credentials(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    db_name: &str,
+    password: &str,
+    access_type: &str,
+    allowed_ip: &str,
+) -> Result<String, String> {
+    let db_conn = crate::db::init_db()
+        .map_err(|e| format!("Failed to init DB: {}", e))?;
+    let conn = db_conn.lock().map_err(|_| "DB lock failed".to_string())?;
+    let server_host = ssh_mgr.get_host(session_id)
+        .ok_or(format!("Session not found: {}", session_id))?;
+    crate::db::DbCredentialsManager::save(&conn, &server_host, db_name, password, access_type, allowed_ip)?;
+    Ok("Credentials saved".to_string())
+}
+
+/// List all database credentials for a server
+pub async fn get_db_credentials(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<Vec<crate::db::DbCredential>, String> {
+    let db_conn = crate::db::init_db()
+        .map_err(|e| format!("Failed to init DB: {}", e))?;
+    let conn = db_conn.lock().map_err(|_| "DB lock failed".to_string())?;
+    let server_host = ssh_mgr.get_host(session_id)
+        .ok_or(format!("Session not found: {}", session_id))?;
+    Ok(crate::db::DbCredentialsManager::list_for_server(&conn, &server_host))
+}
+
+/// Get credentials for a specific database
+pub async fn get_db_credential(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    db_name: &str,
+) -> Result<Option<crate::db::DbCredential>, String> {
+    let db_conn = crate::db::init_db()
+        .map_err(|e| format!("Failed to init DB: {}", e))?;
+    let conn = db_conn.lock().map_err(|_| "DB lock failed".to_string())?;
+    let server_host = ssh_mgr.get_host(session_id)
+        .ok_or(format!("Session not found: {}", session_id))?;
+    Ok(crate::db::DbCredentialsManager::get(&conn, &server_host, db_name))
+}
+
+/// Update only the password for a database
+pub async fn update_db_credential_password(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    db_name: &str,
+    password: &str,
+) -> Result<String, String> {
+    let db_conn = crate::db::init_db()
+        .map_err(|e| format!("Failed to init DB: {}", e))?;
+    let conn = db_conn.lock().map_err(|_| "DB lock failed".to_string())?;
+    let server_host = ssh_mgr.get_host(session_id)
+        .ok_or(format!("Session not found: {}", session_id))?;
+    if password.is_empty() {
+        crate::db::DbCredentialsManager::clear_password(&conn, &server_host, db_name)?;
+    } else {
+        crate::db::DbCredentialsManager::update_password(&conn, &server_host, db_name, password)?;
+    }
+    Ok("Password updated".to_string())
+}
+
+// ===== Database Backup and Import =====
+
+/// Create a backup of the specified database using mysqldump
+pub async fn backup_database(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    db_name: &str,
+    db_user: &str,
+    db_password: &str,
+) -> Result<String, String> {
+    // Validate database name (alphanumeric + underscore only)
+    if !db_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        return Err("Invalid database name".to_string());
+    }
+
+    if db_user.is_empty() || db_password.is_empty() {
+        return Err("数据库账号或密码为空，请先在本地保存密码".to_string());
+    }
+
+    // Create backup directory if it doesn't exist
+    let create_dir_cmd = "mkdir -p /tmp/db_backups";
+    let (_, _, code) = ssh_mgr
+        .exec_with_output(session_id, create_dir_cmd, 5)
+        .await?;
+    
+    if code != 0 {
+        return Err("Failed to create backup directory".to_string());
+    }
+
+    // Generate timestamp for filename
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("Time error: {}", e))?
+        .as_secs();
+    
+    let sql_filename = format!("{}_{}.sql", db_name, timestamp);
+    let zip_filename = format!("{}_{}.zip", db_name, timestamp);
+    let sql_path = format!("/tmp/db_backups/{}", sql_filename);
+    let zip_path = format!("/tmp/db_backups/{}", zip_filename);
+
+    // Execute mysqldump using db's own credentials
+    let dump_cmd = format!(
+        "mysqldump --user={} --password={} {} > {}",
+        db_user, db_password, db_name, sql_path
+    );
+    
+    let (_stdout, stderr, code) = ssh_mgr
+        .exec_with_output(session_id, &dump_cmd, 300)
+        .await?;
+    
+    if code != 0 {
+        return Err(format!("Backup failed: {}", stderr));
+    }
+
+    // Verify SQL file exists
+    let verify_cmd = format!("test -f {} && echo 'exists'", sql_path);
+    let (verify_out, _, verify_code) = ssh_mgr
+        .exec_with_output(session_id, &verify_cmd, 5)
+        .await?;
+    
+    if verify_code != 0 || !verify_out.trim().contains("exists") {
+        return Err("SQL backup file was not created".to_string());
+    }
+
+    // Compress to zip and remove original SQL file
+    let compress_cmd = format!(
+        "cd /tmp/db_backups && zip -9 {} {} && rm -f {}",
+        zip_filename, sql_filename, sql_filename
+    );
+    
+    let (_, stderr, code) = ssh_mgr
+        .exec_with_output(session_id, &compress_cmd, 60)
+        .await?;
+    
+    if code != 0 {
+        return Err(format!("Compression failed: {}", stderr));
+    }
+
+    // Verify zip file exists
+    let verify_zip_cmd = format!("test -f {} && echo 'exists'", zip_path);
+    let (verify_zip_out, _, verify_zip_code) = ssh_mgr
+        .exec_with_output(session_id, &verify_zip_cmd, 5)
+        .await?;
+    
+    if verify_zip_code != 0 || !verify_zip_out.trim().contains("exists") {
+        return Err("ZIP backup file was not created".to_string());
+    }
+
+    Ok(zip_filename)
+}
+
+/// List all backup files for a specific database
+pub async fn list_db_backups(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    db_name: &str,
+) -> Result<Vec<BackupInfo>, String> {
+    // Validate database name
+    if !db_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        return Err("Invalid database name".to_string());
+    }
+
+    // List backup files for this database (both .sql and .zip)
+    let pattern = format!("/tmp/db_backups/{}*", db_name);
+    let cmd = format!("ls -lht {} 2>/dev/null | grep -E '\\.(sql|zip)$'", pattern);
+    
+    let (out, _, code) = ssh_mgr
+        .exec_with_output(session_id, &cmd, 5)
+        .await?;
+    
+    if code != 0 || out.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    
+    let mut backups = Vec::new();
+    for line in out.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 9 {
+            let size_str = parts[4];
+            let month = parts[5];
+            let day = parts[6];
+            let time_or_year = parts[7];
+            let filename = parts[8];
+            
+            // Parse size
+            let size_bytes = parse_size_string(size_str);
+            
+            // Parse date
+            let created_at = format!("{} {} {}", month, day, time_or_year);
+            
+            backups.push(BackupInfo {
+                filename: filename.to_string(),
+                size_bytes,
+                created_at,
+            });
+        }
+    }
+    
+    Ok(backups)
+}
+
+/// Delete a specific backup file
+pub async fn delete_db_backup(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    backup_filename: &str,
+) -> Result<String, String> {
+    // Validate filename (prevent path traversal)
+    if backup_filename.contains("..") {
+        return Err("Invalid backup filename".to_string());
+    }
+    
+    if !backup_filename.ends_with(".sql") && !backup_filename.ends_with(".zip") {
+        return Err("Invalid backup file extension".to_string());
+    }
+
+    // Support both full path and relative filename
+    let backup_path = if backup_filename.starts_with("/") {
+        backup_filename.to_string()
+    } else {
+        format!("/tmp/db_backups/{}", backup_filename)
+    };
+    let cmd = format!("rm -f {}", backup_path);
+    
+    let (_, _, code) = ssh_mgr
+        .exec_with_output(session_id, &cmd, 5)
+        .await?;
+    
+    if code != 0 {
+        return Err("Failed to delete backup file".to_string());
+    }
+    
+    Ok(format!("Backup {} deleted successfully", backup_filename))
+}
+
+/// Download database backup file content as bytes
+pub async fn download_db_backup(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    backup_filename: &str,
+) -> Result<Vec<u8>, String> {
+    // Validate filename (prevent path traversal)
+    // Allow full paths like /tmp/db_backups/file.sql or just filenames
+    if backup_filename.contains("..") {
+        return Err("Invalid backup filename".to_string());
+    }
+    
+    if !backup_filename.ends_with(".sql") && !backup_filename.ends_with(".zip") {
+        return Err("Invalid backup file extension".to_string());
+    }
+
+    // Use the provided path directly (it should already be /tmp/db_backups/filename.sql or .zip)
+    let backup_path = if backup_filename.starts_with("/") {
+        backup_filename.to_string()
+    } else {
+        format!("/tmp/db_backups/{}", backup_filename)
+    };
+    
+    // Check if file exists
+    let check_cmd = format!("test -f {} && echo 'exists'", backup_path);
+    let (stdout, _, code) = ssh_mgr
+        .exec_with_output(session_id, &check_cmd, 5)
+        .await?;
+    
+    if code != 0 || !stdout.trim().contains("exists") {
+        return Err("Backup file not found".to_string());
+    }
+    
+    // Read file content using cat
+    let read_cmd = format!("cat {}", backup_path);
+    let (content, _, code) = ssh_mgr
+        .exec_with_output(session_id, &read_cmd, 30)
+        .await?;
+    
+    if code != 0 {
+        return Err("Failed to read backup file".to_string());
+    }
+    
+    // Return raw bytes (UTF-8 encoded SQL text)
+    Ok(content.into_bytes())
+}
+
+/// Import database from uploaded SQL content
+pub async fn import_database_from_file(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    db_name: &str,
+    db_user: &str,
+    db_password: &str,
+    sql_content: &str,
+) -> Result<String, String> {
+    // Validate database name
+    if !db_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        return Err("Invalid database name".to_string());
+    }
+
+    if db_user.is_empty() || db_password.is_empty() {
+        return Err("数据库账号或密码为空，请先在本地保存密码".to_string());
+    }
+
+    // Create temporary file with unique name
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("Time error: {}", e))?
+        .as_secs();
+    
+    let temp_path = format!("/tmp/import_{}.sql", timestamp);
+
+    // Write SQL content to temporary file
+    let write_cmd = format!("cat > {} << 'SQLEOF'\n{}\nSQLEOF", temp_path, sql_content);
+    let (_stdout, stderr, code) = ssh_mgr
+        .exec_with_output(session_id, &write_cmd, 10)
+        .await?;
+    
+    if code != 0 {
+        return Err(format!("Failed to write SQL file: {}", stderr));
+    }
+
+    // Import SQL file into database using db's own credentials
+    let import_cmd = format!(
+        "mysql --user={} --password={} {} < {}",
+        db_user, db_password, db_name, temp_path
+    );
+    
+    let (_import_stdout, import_stderr, import_code) = ssh_mgr
+        .exec_with_output(session_id, &import_cmd, 300)
+        .await?;
+    
+    // Clean up temp file
+    let _ = ssh_mgr.exec_with_output(session_id, &format!("rm -f {}", temp_path), 5).await;
+    
+    if import_code != 0 {
+        return Err(format!("Import failed: {}", import_stderr));
+    }
+    
+    Ok(format!("Database {} imported successfully", db_name))
+}
+
+/// Import database from existing backup file
+pub async fn import_database_from_backup(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    db_name: &str,
+    db_user: &str,
+    db_password: &str,
+    backup_filename: &str,
+) -> Result<String, String> {
+    // Validate database name and backup filename
+    if !db_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        return Err("Invalid database name".to_string());
+    }
+    
+    if backup_filename.contains('/') || backup_filename.contains("..") {
+        return Err("Invalid backup filename".to_string());
+    }
+    
+    if !backup_filename.ends_with(".sql") && !backup_filename.ends_with(".zip") {
+        return Err("Invalid backup file extension".to_string());
+    }
+
+    if db_user.is_empty() || db_password.is_empty() {
+        return Err("数据库账号或密码为空，请先在本地保存密码".to_string());
+    }
+
+    let backup_path = format!("/tmp/db_backups/{}", backup_filename);
+    
+    // Verify backup file exists
+    let verify_cmd = format!("test -f {} && echo 'exists'", backup_path);
+    let (verify_out, _, verify_code) = ssh_mgr
+        .exec_with_output(session_id, &verify_cmd, 5)
+        .await?;
+    
+    if verify_code != 0 || !verify_out.trim().contains("exists") {
+        return Err("Backup file not found".to_string());
+    }
+
+    // If it's a zip file, extract it first
+    let sql_path = if backup_filename.ends_with(".zip") {
+        let temp_sql = format!("/tmp/import_{}.sql", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| format!("Time error: {}", e))?
+            .as_secs());
+        
+        let unzip_cmd = format!("unzip -p {} > {}", backup_path, temp_sql);
+        let (_, stderr, code) = ssh_mgr
+            .exec_with_output(session_id, &unzip_cmd, 60)
+            .await?;
+        
+        if code != 0 {
+            return Err(format!("Failed to extract zip: {}", stderr));
+        }
+        temp_sql
+    } else {
+        backup_path.clone()
+    };
+
+    // Import SQL into database using db's own credentials
+    let import_cmd = format!(
+        "mysql --user={} --password={} {} < {}",
+        db_user, db_password, db_name, sql_path
+    );
+    
+    let (_import_stdout, import_stderr, import_code) = ssh_mgr
+        .exec_with_output(session_id, &import_cmd, 300)
+        .await?;
+    
+    // Clean up extracted SQL file if it was a zip
+    if backup_filename.ends_with(".zip") {
+        let _ = ssh_mgr.exec_with_output(session_id, &format!("rm -f {}", sql_path), 5).await;
+    }
+    
+    if import_code != 0 {
+        return Err(format!("Import failed: {}", import_stderr));
+    }
+    
+    Ok(format!("Database {} imported from backup {} successfully", db_name, backup_filename))
+}

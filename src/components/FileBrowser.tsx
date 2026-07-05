@@ -1,0 +1,2026 @@
+import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react'
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
+
+interface FileEntry {
+  name: string
+  isDir: boolean
+  isSymlink: boolean
+  size: number
+  permissions: string
+  mtime: number
+  owner: string
+}
+
+interface FileBrowserProps {
+  sessionId: string | null
+  connHost?: string
+  jumpToPath?: string | null
+  onTerminalCommand?: (cmd: string) => void
+  onCdHere?: (path: string) => void
+  onStartUpload?: (files: { file: File; fileName: string; remotePath: string }[]) => void
+}
+
+export interface FileBrowserHandle {
+  jumpToPath: (path: string) => void
+  refreshCurrentDirectory: () => void
+}
+
+interface FileContextMenu {
+  x: number
+  y: number
+  entry: FileEntry
+}
+
+interface EditorState {
+  path: string
+  name: string
+  content: string
+  originalContent: string
+  saving: boolean
+  maximized?: boolean
+  minimized?: boolean
+}
+
+interface Clipboard {
+  paths: string[]
+  names: string[]
+  isDirs: boolean[]
+  hasDirs: boolean
+  mode: 'copy' | 'cut'
+}
+
+interface Toast {
+  message: string
+  type: 'success' | 'error' | 'info'
+}
+
+interface FileInfo {
+  entry: FileEntry
+  path: string
+}
+
+interface ConflictItem {
+  name: string
+  isDir: boolean
+}
+
+interface ConflictDialog {
+  item: ConflictItem
+  remaining: number
+  resolve: (result: { action: 'replace' | 'rename' | 'skip', applyToAll: boolean }) => void
+}
+
+interface ConfirmDialog {
+  message: string
+  onConfirm: () => void
+}
+
+function formatSize(bytes: number): string {
+  if (bytes === 0) return '—'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  const val = bytes / Math.pow(1024, i)
+  return val >= 100 ? `${Math.round(val)} ${units[i]}` : `${val.toFixed(1)} ${units[i]}`
+}
+
+function formatTime(unix: number): string {
+  if (unix === 0) return '—'
+  const d = new Date(unix * 1000)
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function getFileExtension(name: string): string {
+  const i = name.lastIndexOf('.')
+  return i > 0 ? name.substring(i + 1).toLowerCase() : ''
+}
+
+const TEXT_EXTS = new Set([
+  'txt', 'md', 'log', 'json', 'xml', 'yml', 'yaml', 'toml', 'ini', 'cfg', 'conf',
+  'js', 'ts', 'jsx', 'tsx', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp',
+  'css', 'html', 'htm', 'scss', 'less', 'vue', 'svelte',
+  'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
+  'sql', 'graphql', 'proto', 'dockerfile', 'makefile',
+  'env', 'gitignore', 'editorconfig', 'htaccess',
+  'php', 'lua', 'pl', 'swift', 'kt', 'scala', 'r', 'm',
+])
+
+function isTextFile(name: string): boolean {
+  const ext = getFileExtension(name)
+  return TEXT_EXTS.has(ext) || name.startsWith('.') || !name.includes('.')
+}
+
+const IMAGE_EXTS = new Set([
+  'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif',
+])
+
+function isImageFile(name: string): boolean {
+  return IMAGE_EXTS.has(getFileExtension(name))
+}
+
+// SVG Icons
+const FolderIcon = () => (
+  <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+    <path d="M4 10C4 8.89543 4.89543 8 6 8H18L22 12H42C43.1046 12 44 12.8954 44 14V38C44 39.1046 43.1046 40 42 40H6C4.89543 40 4 39.1046 4 38V10Z" fill="#E8A838"/>
+    <path d="M4 14H44V38C44 39.1046 43.1046 40 42 40H6C4.89543 40 4 39.1046 4 38V14Z" fill="#F5C451"/>
+  </svg>
+)
+
+const FileIcon = () => (
+  <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+    <path d="M10 4H30L40 14V42C40 43.1046 39.1046 44 38 44H10C8.89543 44 8 43.1046 8 42V6C8 4.89543 8.89543 4 10 4Z" fill="#3B4252"/>
+    <path d="M30 4L40 14H32C30.8954 14 30 13.1046 30 12V4Z" fill="#4C566A"/>
+    <path d="M14 22H34M14 28H34M14 34H26" stroke="#8892A8" strokeWidth="1.5" strokeLinecap="round"/>
+  </svg>
+)
+
+const SymlinkIcon = () => (
+  <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+    <path d="M10 4H30L40 14V42C40 43.1046 39.1046 44 38 44H10C8.89543 44 8 43.1046 8 42V6C8 4.89543 8.89543 4 10 4Z" fill="#2E3440"/>
+    <path d="M30 4L40 14H32C30.8954 14 30 13.1046 30 12V4Z" fill="#4C566A"/>
+    <path d="M20 20L28 24L20 28" stroke="#88C0D0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M28 24H16" stroke="#88C0D0" strokeWidth="2" strokeLinecap="round"/>
+  </svg>
+)
+
+const BackIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+    <path d="M7.78 1.22a.75.75 0 0 1 0 1.06L4.56 5.5H12a.75.75 0 0 1 0 1.5H4.56l3.22 3.22a.75.75 0 1 1-1.06 1.06l-4.5-4.5a.75.75 0 0 1 0-1.06l4.5-4.5a.75.75 0 0 1 1.06 0Z"/>
+  </svg>
+)
+
+const RefreshIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+    <path d="M8 3a5 5 0 0 0-4.546 2.914.5.5 0 1 1-.908-.418A6 6 0 0 1 14 8a.5.5 0 0 1-1 0 5 5 0 0 0-5-5Z"/>
+    <path d="M8 13a5 5 0 0 0 4.546-2.914.5.5 0 1 1 .908.418A6 6 0 0 1 2 8a.5.5 0 0 1 1 0 5 5 0 0 0 5 5Z"/>
+  </svg>
+)
+
+export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrowser({ sessionId, connHost, jumpToPath, onTerminalCommand, onCdHere, onStartUpload }, ref) {
+  const [currentPath, setCurrentPath] = useState('/')
+  const [files, setFiles] = useState<FileEntry[]>([])
+  const [loading, setLoading] = useState(false)
+  const [cacheTime, setCacheTime] = useState<number>(0) // ponytail: cached_at ms
+  const initializedRef = useRef(false)
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
+  const [lastClickedFile, setLastClickedFile] = useState<string | null>(null)
+  const [rubberBand, setRubberBand] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null)
+  const [editor, setEditor] = useState<EditorState | null>(null)
+  const [contextMenu, setContextMenu] = useState<FileContextMenu | null>(null)
+  const [clipboard, setClipboard] = useState<Clipboard | null>(null)
+  const [operationLog, setOperationLog] = useState<{ lines: string[] } | null>(null)
+  const [fileInfo, setFileInfo] = useState<FileInfo | null>(null)
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog | null>(null)
+  const [conflictDialog, setConflictDialog] = useState<ConflictDialog | null>(null)
+  const [promptDialog, setPromptDialog] = useState<{ title: string; value: string; onSubmit: (v: string) => void } | null>(null)
+  const [permissionDialog, setPermissionDialog] = useState<{ path: string; name: string; currentPerms: string; mode: string } | null>(null)
+  const [deleteLog, setDeleteLog] = useState<string | null>(null)
+  const [archiveProgress, setArchiveProgress] = useState<{ type: string; logs: string[]; done: boolean } | null>(null)
+  const [copyProgress, setCopyProgress] = useState<{ logs: string[]; done: boolean } | null>(null)
+  const [bgContextMenu, setBgContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [downloadDialog, setDownloadDialog] = useState<{ url: string } | null>(null)
+  const [downloadProgress, setDownloadProgress] = useState<{ progress: number; status: string } | null>(null)
+  const [compressDialog, setCompressDialog] = useState<{ names: string[] } | null>(null)
+  const [dropActive, setDropActive] = useState(false)
+  const dragItemRef = useRef<FileEntry | null>(null)
+  const [dragOverTarget, setDragOverTarget] = useState<string | null>(null)
+  const [dragGhost, setDragGhost] = useState<{ name: string; isDir: boolean; x: number; y: number } | null>(null)
+  const [draggingName, setDraggingName] = useState<string | null>(null)
+  const [pathInputValue, setPathInputValue] = useState('/')
+  const dragStartPos = useRef<{ x: number; y: number } | null>(null)
+  const isDragging = useRef(false)
+  const pathInputRef = useRef<HTMLInputElement>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const bgMenuRef = useRef<HTMLDivElement>(null)
+  const promptInputRef = useRef<HTMLInputElement>(null)
+  const archiveLogRef = useRef<HTMLPreElement>(null)
+  const copyLogRef = useRef<HTMLPreElement>(null)
+  const operationLogRef = useRef<HTMLPreElement>(null)
+  const favoritesDropdownRef = useRef<HTMLDivElement>(null)
+  const fileBrowserRef = useRef<HTMLDivElement>(null)
+
+  // Favorites management
+  const [favorites, setFavorites] = useState<string[]>([])
+  const [showFavoritesDropdown, setShowFavoritesDropdown] = useState(false)
+
+  // Helper: resolve full remote path for a file entry
+  const resolvePath = useCallback((entry: FileEntry) =>
+    currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`
+  , [currentPath])
+
+  // Helper: get all currently selected FileEntry objects
+  const getSelectedEntries = useCallback((): FileEntry[] =>
+    files.filter(f => selectedFiles.has(f.name))
+  , [files, selectedFiles])
+
+  // Toast system → append to operation log floating panel
+  const showToast = useCallback((message: string, type: Toast['type'] = 'info') => {
+    const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️'
+    setOperationLog(prev => ({ lines: [...(prev?.lines ?? []), `${icon} ${message}`] }))
+  }, [])
+
+  // Confirm dialog (replaces native confirm)
+  const showConfirm = useCallback((message: string, onConfirm: () => void) => {
+    setConfirmDialog({ message, onConfirm })
+  }, [])
+
+  // Prompt dialog (replaces native prompt)
+  const showPrompt = useCallback((title: string, onSubmit: (v: string) => void, defaultValue = '') => {
+    setPromptDialog({ title, value: defaultValue, onSubmit })
+    setTimeout(() => {
+      const input = promptInputRef.current
+      if (input) {
+        input.focus()
+        input.select()
+      }
+    }, 50)
+  }, [])
+
+  // Conflict dialog (ask user to replace, rename, or skip)
+  const showConflict = useCallback((item: ConflictItem, remaining: number): Promise<{ action: 'replace' | 'rename' | 'skip', applyToAll: boolean }> => {
+    return new Promise((resolve) => {
+      setConflictDialog({ item, remaining, resolve })
+    })
+  }, [])
+
+  // Load favorites from SQLite
+  useEffect(() => {
+    if (sessionId) {
+      invoke<string[]>('fb_favorites_list', { sessionId }).then(setFavorites).catch(() => {})
+    }
+  }, [sessionId])
+
+  const addFavorite = useCallback((path: string) => {
+    if (!favorites.includes(path)) {
+      setFavorites(prev => [...prev, path])
+      if (sessionId) invoke('fb_favorites_add', { sessionId, path }).catch(() => {})
+      showToast(`Added to favorites: ${path}`, 'success')
+    } else {
+      showToast('Already in favorites', 'info')
+    }
+  }, [favorites, sessionId, showToast])
+
+  const removeFavorite = useCallback((path: string) => {
+    setFavorites(prev => prev.filter(p => p !== path))
+    if (sessionId) invoke('fb_favorites_remove', { sessionId, path }).catch(() => {})
+    showToast(`Removed from favorites: ${path}`, 'info')
+  }, [sessionId, showToast])
+
+  const isFavorite = useCallback((path: string) => {
+    return favorites.includes(path)
+  }, [favorites])
+
+  const navigateTo = useCallback(async (path: string, forceRefresh?: boolean) => {
+    if (!sessionId) return
+    setSelectedFiles(new Set())
+    setLastClickedFile(null)
+    const resolvedPath = path.startsWith('/')
+      ? path
+      : currentPath === '/' ? `/${path}` : `${currentPath}/${path}`
+
+    // ponytail: SWR - show cache immediately, revalidate in background
+    let cachedJson: string | null = null
+    if (!forceRefresh) {
+      try {
+        const result = await invoke<[string, number] | null>('fb_cache_get', { sessionId, path: resolvedPath })
+        if (result) {
+          cachedJson = result[0]
+          setCacheTime(result[1])
+        }
+      } catch { /* ignore */ }
+    }
+
+    if (cachedJson) {
+      try {
+        const cached: FileEntry[] = JSON.parse(cachedJson)
+        cached.sort((a, b) => a.isDir !== b.isDir ? (a.isDir ? -1 : 1) : a.name.localeCompare(b.name))
+        setFiles(cached)
+        setCurrentPath(resolvedPath)
+        setPathInputValue(resolvedPath)
+      } catch { /* bad cache, fall through to loading */ }
+    }
+
+    setLoading(!cachedJson) // only show spinner if no cache
+    try {
+      const json = await invoke<string>('ssh_list_dir', { sessionId, path: resolvedPath })
+      let entries: FileEntry[] = JSON.parse(json)
+      entries.sort((a, b) => {
+        if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
+        return a.name.localeCompare(b.name)
+      })
+      // ponytail: update UI + cache if data changed or force refresh; otherwise just touch timestamp
+      if (json !== cachedJson || forceRefresh) {
+        setFiles(entries)
+        setCurrentPath(resolvedPath)
+        setPathInputValue(resolvedPath)
+        invoke('fb_cache_put', { sessionId, path: resolvedPath, data: json, fileCount: entries.length }).catch(() => {})
+        setCacheTime(Date.now())
+      } else {
+        // ponytail: data unchanged - refresh cache timestamp only
+        invoke('fb_cache_touch', { sessionId, path: resolvedPath }).catch(() => {})
+        setCacheTime(Date.now())
+      }
+      if (connHost) invoke('ui_state_set', { key: `fb_path_${connHost}`, value: resolvedPath }).catch(() => {})
+      onTerminalCommand?.(`cd ${resolvedPath} && ls -la`)
+    } catch (e) {
+      console.error('list_dir error:', e)
+    } finally {
+      setLoading(false)
+    }
+  }, [sessionId, currentPath, connHost, onTerminalCommand])
+
+
+  useImperativeHandle(ref, () => ({
+    jumpToPath: (path: string) => navigateTo(path),
+    refreshCurrentDirectory: () => navigateTo(currentPath)
+  }), [navigateTo, currentPath])
+
+  // Get unique filename in current directory
+  const getUniqueName = useCallback((name: string) => {
+    const existing = new Set(files.map(f => f.name))
+    if (!existing.has(name)) return name
+    const dotIdx = name.lastIndexOf('.')
+    const base = dotIdx > 0 ? name.substring(0, dotIdx) : name
+    const ext = dotIdx > 0 ? name.substring(dotIdx) : ''
+    for (let i = 1; i < 1000; i++) {
+      const candidate = `${base} (copy ${i})${ext}`
+      if (!existing.has(candidate)) return candidate
+    }
+    return `${base}_copy${ext}`
+  }, [files])
+
+  // Check disk space and write permission before paste/download
+  const checkDirReady = useCallback(async (): Promise<{ ok: boolean; existingFiles: Set<string> }> => {
+    if (!sessionId) return { ok: false, existingFiles: new Set() }
+    try {
+      const raw = await invoke<string>('ssh_check_space', { sessionId, path: currentPath })
+      const parts = raw.split('---').map(s => s.trim())
+      const availBytes = parseInt(parts[0]) || 0
+      const writeOk = parts[1] === 'OK'
+      const fileList = new Set((parts[2] || '').split('\n').filter(Boolean))
+
+      if (!writeOk) {
+        showToast('No write permission in this directory', 'error')
+        return { ok: false, existingFiles: fileList }
+      }
+      if (availBytes < 1024) {
+        showToast('Insufficient disk space', 'error')
+        return { ok: false, existingFiles: fileList }
+      }
+      return { ok: true, existingFiles: fileList }
+    } catch {
+      return { ok: true, existingFiles: new Set(files.map(f => f.name)) }
+    }
+  }, [sessionId, currentPath, files, showToast])
+
+  // Listen for download progress events
+  useEffect(() => {
+    const unlisten = listen<{ progress: number; status: string; error?: string }>('download-progress', (e) => {
+      setDownloadProgress({ progress: e.payload.progress, status: e.payload.status })
+      if (e.payload.status === 'done') {
+        showToast('Download complete', 'success')
+        setTimeout(() => {
+          setDownloadProgress(null)
+          setDownloadDialog(null)
+          navigateTo(currentPath)
+        }, 800)
+      } else if (e.payload.status === 'error') {
+        showToast(`Download failed: ${e.payload.error || 'unknown'}`, 'error')
+        setTimeout(() => setDownloadProgress(null), 2000)
+      }
+    })
+    return () => { unlisten.then(f => f()) }
+  }, [currentPath, navigateTo, showToast]) // eslint-disable-line
+
+  // Listen for archive progress events
+  useEffect(() => {
+    const unlisten = listen<{ sessionId: string; line: string; status: string }>('archive-progress', (e) => {
+      setArchiveProgress(prev => {
+        if (!prev) return prev
+        const isDone = e.payload.status === 'done'
+        return {
+          ...prev,
+          logs: [...prev.logs, e.payload.line],
+          done: isDone || prev.done,
+        }
+      })
+    })
+    return () => { unlisten.then(f => f()) }
+  }, [])
+
+  // Listen for copy progress events
+  useEffect(() => {
+    const unlisten = listen<{ sessionId: string; line: string; status: string }>('copy-progress', (e) => {
+      setCopyProgress(prev => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          logs: [...prev.logs, e.payload.line],
+          done: e.payload.status === 'error' || prev.done,
+        }
+      })
+    })
+    return () => { unlisten.then(f => f()) }
+  }, [])
+
+  // Auto-scroll archive log to bottom
+  useEffect(() => {
+    if (archiveLogRef.current) {
+      archiveLogRef.current.scrollTop = archiveLogRef.current.scrollHeight
+    }
+  }, [archiveProgress?.logs.length])
+
+  // Auto-scroll copy log to bottom
+  useEffect(() => {
+    if (copyLogRef.current) {
+      copyLogRef.current.scrollTop = copyLogRef.current.scrollHeight
+    }
+  }, [copyProgress?.logs.length])
+
+  // Auto-scroll operation log to bottom
+  useEffect(() => {
+    if (operationLogRef.current) {
+      operationLogRef.current.scrollTop = operationLogRef.current.scrollHeight
+    }
+  }, [operationLog?.lines.length])
+
+  // Auto-dismiss operation log 5s after last entry
+  useEffect(() => {
+    if (operationLog) {
+      const timer = setTimeout(() => setOperationLog(null), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [operationLog?.lines.length])
+
+  // Auto-dismiss archive panel 5s after completion
+  useEffect(() => {
+    if (archiveProgress?.done) {
+      const timer = setTimeout(() => setArchiveProgress(null), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [archiveProgress?.done])
+
+  // Auto-dismiss copy panel 5s after completion
+  useEffect(() => {
+    if (copyProgress?.done) {
+      const timer = setTimeout(() => setCopyProgress(null), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [copyProgress?.done])
+
+  // Prevent WebView2 from intercepting file drops at native level
+  // This MUST use native DOM listeners (not React synthetic events)
+  // Only preventDefault — do NOT stopPropagation so React events still fire
+  useEffect(() => {
+    const prevent = (e: DragEvent) => {
+      e.preventDefault()
+    }
+    window.addEventListener('dragover', prevent, false)
+    window.addEventListener('drop', prevent, false)
+    return () => {
+      window.removeEventListener('dragover', prevent, false)
+      window.removeEventListener('drop', prevent, false)
+    }
+  }, [])
+
+  // Handle files dropped from local computer
+  const handleDropFiles = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDropActive(false)
+    if (!sessionId) return
+
+    const items = e.dataTransfer.files
+    if (!items || items.length === 0) return
+
+    const { ok, existingFiles } = await checkDirReady()
+    if (!ok) return
+
+    // Collect conflict names (files that already exist on remote)
+    const conflictNames: string[] = []
+    for (let i = 0; i < items.length; i++) {
+      if (existingFiles.has(items[i].name)) {
+        conflictNames.push(items[i].name)
+      }
+    }
+
+    // Resolve conflicts: map name -> 'replace' | 'rename' | 'skip'
+    const resolutions = new Map<string, 'replace' | 'rename' | 'skip'>()
+    if (conflictNames.length > 0) {
+      let globalAction: 'replace' | 'rename' | 'skip' | null = null
+      for (let i = 0; i < conflictNames.length; i++) {
+        const name = conflictNames[i]
+        if (globalAction) {
+          // Apply the global action chosen by user
+          resolutions.set(name, globalAction)
+        } else {
+          const existing = files.find(f => f.name === name)
+          const remaining = conflictNames.length - i - 1
+          const result = await showConflict({ name, isDir: existing?.isDir ?? false }, remaining)
+          resolutions.set(name, result.action)
+          if (result.applyToAll) {
+            globalAction = result.action
+          }
+        }
+      }
+    }
+
+    // Upload each file respecting resolutions
+    const uploadFiles: { file: File; fileName: string; remotePath: string }[] = []
+    for (let i = 0; i < items.length; i++) {
+      const file = items[i]
+      let fileName = file.name
+      const resolution = resolutions.get(fileName)
+      if (resolution === 'skip') continue
+      if (resolution === 'rename') {
+        fileName = getUniqueName(fileName)
+      }
+      const remotePath = currentPath === '/' ? `/${fileName}` : `${currentPath}/${fileName}`
+      uploadFiles.push({ file, fileName, remotePath })
+    }
+
+    if (uploadFiles.length === 0) return
+    onStartUpload?.(uploadFiles)
+    navigateTo(currentPath)
+  }, [sessionId, currentPath, checkDirReady, getUniqueName, navigateTo, showToast, showConflict, files, onStartUpload])
+
+  // Track drag-enter/leave with a counter to avoid flicker on child elements
+  const dragCounterRef = useRef(0)
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }, [])
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.dataTransfer.types.includes('Files')) {
+      dragCounterRef.current += 1
+      setDropActive(true)
+    }
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current -= 1
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0
+      setDropActive(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!sessionId) return
+    // Use jumpToPath prop to navigate (triggered when value changes)
+    if (jumpToPath) {
+      setLoading(true)
+      navigateTo(jumpToPath)
+      initializedRef.current = true
+      return
+    }
+    // If not initialized yet, restore saved path on first mount
+    if (!initializedRef.current && !loading) {
+      setLoading(true)
+      initializedRef.current = true
+      ;(async () => {
+        const saved = connHost ? await invoke<string>('ui_state_get', { key: `fb_path_${connHost}` }).catch(() => '') : ''
+        if (saved) {
+          try {
+            await invoke<string>('ssh_list_dir', { sessionId, path: saved })
+            navigateTo(saved)
+          } catch {
+            invoke<string>('ssh_get_cwd', { sessionId })
+              .then(cwd => navigateTo(cwd))
+              .catch(() => navigateTo('/root'))
+          }
+        } else {
+          invoke<string>('ssh_get_cwd', { sessionId })
+            .then(cwd => navigateTo(cwd))
+            .catch(() => navigateTo('/root'))
+        }
+      })()
+    }
+  }, [sessionId, jumpToPath]) // eslint-disable-line
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (favoritesDropdownRef.current && !favoritesDropdownRef.current.contains(e.target as Node)) {
+        setShowFavoritesDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Path edit: validate and go
+  const handleGoToPath = async () => {
+    if (!sessionId) return
+    const p = pathInputValue.trim() || '/'
+    const target = p.startsWith('/') ? p : '/' + p
+    try {
+      await invoke<string>('ssh_list_dir', { sessionId, path: target })
+      // Path exists, navigate
+      navigateTo(target)
+    } catch {
+      showToast(`Directory not found: ${target}`, 'error')
+      // Keep input open, content unchanged
+    }
+  }
+
+  // Pointer-based drag and drop (reliable in WebView2)
+  const handleItemMouseDown = (e: React.MouseEvent, entry: FileEntry) => {
+    if (e.button !== 0) return // left button only
+    dragItemRef.current = entry
+    dragStartPos.current = { x: e.clientX, y: e.clientY }
+    isDragging.current = false
+  }
+
+  // Global mousemove/mouseup for drag
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!dragItemRef.current || !dragStartPos.current) return
+      const dx = e.clientX - dragStartPos.current.x
+      const dy = e.clientY - dragStartPos.current.y
+      // Require 5px movement before starting drag (avoid accidental drags on click)
+      if (!isDragging.current) {
+        if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return
+        isDragging.current = true
+        document.body.classList.add('dragging-files')
+        setDraggingName(dragItemRef.current.name)
+      }
+      setDragGhost({ name: dragItemRef.current.name, isDir: dragItemRef.current.isDir, x: e.clientX, y: e.clientY })
+
+      // Find drop target using elementFromPoint
+      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null
+      if (el) {
+        const fbItem = el.closest('[data-fb-name]') as HTMLElement | null
+        if (fbItem) {
+          const targetName = fbItem.dataset.fbName || ''
+          if (targetName && targetName !== dragItemRef.current.name) {
+            setDragOverTarget(targetName)
+            return
+          }
+        }
+      }
+      setDragOverTarget(null)
+    }
+
+    const onMouseUp = async (e: MouseEvent) => {
+      if (!dragItemRef.current) return
+      const dragged = dragItemRef.current
+      const wasDragging = isDragging.current
+
+      // Reset state
+      dragItemRef.current = null
+      dragStartPos.current = null
+      isDragging.current = false
+      setDragGhost(null)
+      setDraggingName(null)
+      document.body.classList.remove('dragging-files')
+
+      if (!wasDragging) {
+        setDragOverTarget(null)
+        return
+      }
+
+      // Find drop target
+      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null
+      setDragOverTarget(null)
+      if (!el) return
+
+      const fbItem = el.closest('[data-fb-name]') as HTMLElement | null
+      if (!fbItem) return
+
+      const targetName = fbItem.dataset.fbName || ''
+      if (!targetName || targetName === dragged.name) return
+
+      const targetIsDir = fbItem.dataset.fbIsdir === 'true'
+
+      if (targetIsDir) {
+        // Move file(s) into folder — move all selected items if dragged item is selected
+        if (!sessionId) return
+        const toMove = selectedFiles.has(dragged.name) && selectedFiles.size > 1
+          ? files.filter(f => selectedFiles.has(f.name))
+          : [dragged]
+        let ok = 0, fail = 0
+        for (const item of toMove) {
+          const srcPath = currentPath === '/' ? `/${item.name}` : `${currentPath}/${item.name}`
+          const dstPath = currentPath === '/' ? `/${targetName}/${item.name}` : `${currentPath}/${targetName}/${item.name}`
+          try {
+            await invoke('ssh_rename_file', { sessionId, oldPath: srcPath, newPath: dstPath })
+            ok++
+          } catch { fail++ }
+        }
+        if (fail === 0) showToast(`Moved ${ok} item${ok > 1 ? 's' : ''} → ${targetName}/`, 'success')
+        else showToast(`Moved ${ok}, failed ${fail}`, 'error')
+        setSelectedFiles(new Set())
+        navigateTo(currentPath)
+      } else {
+        // Reorder files in the local array
+        setFiles(prev => {
+          const newFiles = [...prev]
+          const dragIdx = newFiles.findIndex(f => f.name === dragged.name)
+          const targetIdx = newFiles.findIndex(f => f.name === targetName)
+          if (dragIdx < 0 || targetIdx < 0) return prev
+          const [removed] = newFiles.splice(dragIdx, 1)
+          newFiles.splice(targetIdx, 0, removed)
+          return newFiles
+        })
+      }
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [sessionId, currentPath, showToast, navigateTo, selectedFiles, files])
+
+  const handleItemClick = (entry: FileEntry, e: React.MouseEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      // Toggle individual selection
+      setSelectedFiles(prev => {
+        const next = new Set(prev)
+        if (next.has(entry.name)) next.delete(entry.name)
+        else next.add(entry.name)
+        return next
+      })
+      setLastClickedFile(entry.name)
+    } else if (e.shiftKey && lastClickedFile) {
+      // Range selection
+      const lastIdx = files.findIndex(f => f.name === lastClickedFile)
+      const currIdx = files.findIndex(f => f.name === entry.name)
+      if (lastIdx >= 0 && currIdx >= 0) {
+        const [start, end] = [Math.min(lastIdx, currIdx), Math.max(lastIdx, currIdx)]
+        setSelectedFiles(new Set(files.slice(start, end + 1).map(f => f.name)))
+      }
+    } else {
+      // Single select
+      setSelectedFiles(new Set([entry.name]))
+      setLastClickedFile(entry.name)
+    }
+  }
+
+  const handleItemDoubleClick = (entry: FileEntry) => {
+    if (entry.isDir) {
+      const newPath = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`
+      navigateTo(newPath)
+    } else if (isImageFile(entry.name)) {
+      openImageLocal(entry)
+    } else {
+      openEditor(entry)
+    }
+  }
+
+  const openImageLocal = async (entry: FileEntry) => {
+    if (!sessionId) return
+    const filePath = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`
+    showToast(`Downloading ${entry.name}...`, 'info')
+    try {
+      const localPath = await invoke<string>('ssh_download_to_local', {
+        sessionId,
+        remotePath: filePath,
+        fileName: entry.name,
+      })
+      showToast(`Opened: ${entry.name}`, 'success')
+      onTerminalCommand?.(`# Downloaded ${filePath} -> ${localPath}`)
+    } catch (e) {
+      showToast(`Failed to open image: ${e}`, 'error')
+    }
+  }
+
+  const openEditor = async (entry: FileEntry) => {
+    if (!isTextFile(entry.name) || entry.size >= 1024 * 1024) {
+      showToast('Binary or large file — use terminal', 'info')
+      onTerminalCommand?.(`file ${currentPath}/${entry.name}`)
+      return
+    }
+    const filePath = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`
+    try {
+      const content = await invoke<string>('ssh_read_file', { sessionId, path: filePath })
+      setEditor({ path: filePath, name: entry.name, content, originalContent: content, saving: false })
+      onTerminalCommand?.(`cat ${filePath}`)
+    } catch (e) {
+      console.error('read_file error:', e)
+      showToast(`Read failed: ${e}`, 'error')
+    }
+  }
+
+  const handleSaveFile = async () => {
+    if (!editor || !sessionId) return
+    setEditor({ ...editor, saving: true })
+    try {
+      await invoke('ssh_write_file', { sessionId, path: editor.path, content: editor.content })
+      setEditor({ ...editor, originalContent: editor.content, saving: false })
+      showToast(`Saved: ${editor.name}`, 'success')
+      onTerminalCommand?.(`# Saved ${editor.path}`)
+    } catch (e) {
+      showToast(`Save failed: ${e}`, 'error')
+      setEditor({ ...editor, saving: false })
+    }
+  }
+
+  const handleDelete = () => {
+    const entries = getSelectedEntries()
+    if (entries.length === 0) return
+    const msg = entries.length === 1
+      ? `Delete ${entries[0].isDir ? 'folder' : 'file'} "${entries[0].name}"? This cannot be undone.`
+      : `Delete ${entries.length} items? This cannot be undone.`
+    showConfirm(msg, async () => {
+      let ok = 0, fail = 0
+      const logs: string[] = []
+      for (const entry of entries) {
+        try {
+          const output = await invoke<string>('ssh_delete_file', { sessionId, path: resolvePath(entry), isDir: entry.isDir })
+          ok++
+          if (output) logs.push(output.trim())
+        } catch (e) {
+          fail++
+          showToast(`Delete failed: ${entry.name} — ${e}`, 'error')
+        }
+      }
+      if (logs.length > 0) {
+        setDeleteLog(logs.join('\n'))
+        setTimeout(() => setDeleteLog(null), 5000)
+      }
+      if (fail === 0) showToast(`Deleted ${ok} item${ok > 1 ? 's' : ''}`, 'success')
+      else showToast(`Deleted ${ok}, failed ${fail}`, 'error')
+      setSelectedFiles(new Set())
+      navigateTo(currentPath)
+    })
+  }
+
+  const handleNewFile = () => {
+    showPrompt('New File Name', async (name) => {
+      if (!name) return
+      const filePath = currentPath === '/' ? `/${name}` : `${currentPath}/${name}`
+      try {
+        await invoke('ssh_write_file', { sessionId, path: filePath, content: '' })
+        showToast(`Created file: ${name}`, 'success')
+        navigateTo(currentPath)
+      } catch (e) {
+        showToast(`Create failed: ${e}`, 'error')
+      }
+    })
+  }
+
+  const handleNewFolder = () => {
+    showPrompt('New Folder Name', async (name) => {
+      if (!name) return
+      const dirPath = currentPath === '/' ? `/${name}` : `${currentPath}/${name}`
+      try {
+        await invoke('ssh_create_dir', { sessionId, path: dirPath })
+        showToast(`Created folder: ${name}`, 'success')
+        navigateTo(currentPath)
+      } catch (e) {
+        showToast(`Create folder failed: ${e}`, 'error')
+      }
+    })
+  }
+
+  const handleCopy = (entries?: FileEntry[]) => {
+    const items = entries || getSelectedEntries()
+    if (items.length === 0) return
+    const paths = items.map(e => resolvePath(e))
+    const names = items.map(e => e.name)
+    const isDirs = items.map(e => e.isDir)
+    const hasDirs = items.some(e => e.isDir)
+    setClipboard({ paths, names, isDirs, hasDirs, mode: 'copy' })
+    showToast(`Copied ${items.length} item${items.length > 1 ? 's' : ''}`, 'info')
+  }
+
+  const handleCut = (entries?: FileEntry[]) => {
+    const items = entries || getSelectedEntries()
+    if (items.length === 0) return
+    const paths = items.map(e => resolvePath(e))
+    const names = items.map(e => e.name)
+    const isDirs = items.map(e => e.isDir)
+    const hasDirs = items.some(e => e.isDir)
+    setClipboard({ paths, names, isDirs, hasDirs, mode: 'cut' })
+    showToast(`Cut ${items.length} item${items.length > 1 ? 's' : ''}`, 'info')
+  }
+
+  const handlePaste = async () => {
+    if (!clipboard || !sessionId) return
+    const { ok, existingFiles } = await checkDirReady()
+    if (!ok) return
+
+    // Resolve paste conflicts
+    const pasteConflicts: string[] = []
+    for (let i = 0; i < clipboard.names.length; i++) {
+      if (existingFiles.has(clipboard.names[i])) {
+        pasteConflicts.push(clipboard.names[i])
+      }
+    }
+    const pasteResolutions = new Map<string, 'replace' | 'rename' | 'skip'>()
+    if (pasteConflicts.length > 0) {
+      let globalAction: 'replace' | 'rename' | 'skip' | null = null
+      for (let i = 0; i < pasteConflicts.length; i++) {
+        const name = pasteConflicts[i]
+        if (globalAction) {
+          pasteResolutions.set(name, globalAction)
+        } else {
+          const existing = files.find(f => f.name === name)
+          const remaining = pasteConflicts.length - i - 1
+          const result = await showConflict({ name, isDir: existing?.isDir ?? false }, remaining)
+          pasteResolutions.set(name, result.action)
+          if (result.applyToAll) {
+            globalAction = result.action
+          }
+        }
+      }
+    }
+
+    let success = 0, fail = 0
+    const isCopy = clipboard.mode === 'copy'
+    if (isCopy) {
+      setCopyProgress({ logs: [], done: false })
+    }
+    for (let i = 0; i < clipboard.paths.length; i++) {
+      const srcPath = clipboard.paths[i]
+      let name = clipboard.names[i]
+      const resolution = pasteResolutions.get(name)
+      if (resolution === 'skip') { fail++; continue }
+      if (resolution === 'rename') {
+        name = getUniqueName(name)
+      }
+      const dstPath = currentPath === '/' ? `/${name}` : `${currentPath}/${name}`
+      if (srcPath === dstPath && clipboard.mode === 'cut') { fail++; continue }
+      try {
+        if (clipboard.mode === 'copy') {
+          if (clipboard.isDirs[i]) {
+            await invoke('ssh_copy_dir', { sessionId, src: srcPath, dst: dstPath })
+          } else {
+            await invoke('ssh_copy_file', { sessionId, src: srcPath, dst: dstPath })
+          }
+        } else {
+          await invoke('ssh_rename_file', { sessionId, oldPath: srcPath, newPath: dstPath })
+        }
+        success++
+      } catch (e) {
+        if (isCopy) {
+          setCopyProgress(prev => prev ? {
+            ...prev,
+            logs: [...prev.logs, `Error: ${e}`],
+            done: true,
+          } : prev)
+        }
+        showToast(`Copy failed: ${clipboard.names[i]} — ${e}`, 'error')
+        fail++
+      }
+    }
+    if (isCopy) {
+      setCopyProgress(prev => prev ? { ...prev, done: true } : prev)
+    }
+    if (clipboard.mode === 'cut') setClipboard(null)
+    if (fail === 0) showToast(`Pasted ${success} item${success > 1 ? 's' : ''}`, 'success')
+    else showToast(`Pasted ${success}, failed ${fail}`, 'error')
+    navigateTo(currentPath)
+  }
+
+  const handleRename = (entry: FileEntry) => {
+    const oldPath = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`
+    showPrompt(`Rename "${entry.name}"`, async (newName) => {
+      if (!newName || newName === entry.name) return
+      const newPath = currentPath === '/' ? `/${newName}` : `${currentPath}/${newName}`
+      try {
+        await invoke('ssh_rename_file', { sessionId, oldPath, newPath })
+        showToast(`Renamed to: ${newName}`, 'success')
+        navigateTo(currentPath)
+      } catch (e) {
+        showToast(`Rename failed: ${e}`, 'error')
+      }
+    }, entry.name)
+  }
+
+  const handleShowInfo = (entry: FileEntry) => {
+    const path = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`
+    setFileInfo({ entry, path })
+  }
+
+  const handleDownload = async () => {
+    if (!downloadDialog?.url || !sessionId) return
+    const url = downloadDialog.url.trim()
+    if (!url) return
+
+    const { ok, existingFiles } = await checkDirReady()
+    if (!ok) return
+
+    // Extract filename from URL
+    let fileName = 'download'
+    try {
+      const urlPath = new URL(url).pathname
+      const last = urlPath.split('/').filter(Boolean).pop()
+      if (last) fileName = decodeURIComponent(last)
+    } catch { /* use default */ }
+
+    if (existingFiles.has(fileName)) {
+      const existing = files.find(f => f.name === fileName)
+      const result = await showConflict({ name: fileName, isDir: existing?.isDir ?? false }, 0)
+      if (result.action === 'skip') {
+        return
+      }
+      if (result.action === 'rename') {
+        fileName = getUniqueName(fileName)
+      }
+      // 'replace' uses the original fileName
+    }
+    const destPath = currentPath === '/' ? `/${fileName}` : `${currentPath}/${fileName}`
+
+    setDownloadProgress({ progress: 0, status: 'starting' })
+    showToast(`Starting download: ${fileName}`, 'info')
+
+    try {
+      await invoke('ssh_download_file', { sessionId, url, dest: destPath })
+    } catch (e) {
+      showToast(`Download error: ${e}`, 'error')
+      setDownloadProgress(null)
+    }
+  }
+
+  const handleOpenPermissions = (entry: FileEntry) => {
+    const path = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`
+    setPermissionDialog({ path, name: entry.name, currentPerms: entry.permissions || '—', mode: '' })
+  }
+
+  const handleApplyPermissions = async () => {
+    if (!permissionDialog || !permissionDialog.mode) return
+    try {
+      await invoke('ssh_set_permissions', { sessionId, path: permissionDialog.path, mode: permissionDialog.mode })
+      showToast(`Permissions changed: ${permissionDialog.name} → ${permissionDialog.mode}`, 'success')
+      setPermissionDialog(null)
+      navigateTo(currentPath)
+    } catch (e) {
+      showToast(`Permission change failed: ${e}`, 'error')
+    }
+  }
+
+  const handleSaveAs = async (entry: FileEntry) => {
+    if (!sessionId || entry.isDir) return
+    const filePath = resolvePath(entry)
+    showToast(`Preparing download: ${entry.name}...`, 'info')
+    try {
+      const localPath = await invoke<string>('ssh_save_as_local', {
+        sessionId,
+        remotePath: filePath,
+        fileName: entry.name,
+      })
+      showToast(`Saved: ${localPath}`, 'success')
+    } catch (e) {
+      if (String(e) !== 'Save cancelled') {
+        showToast(`Save failed: ${e}`, 'error')
+      }
+    }
+  }
+
+  const isArchive = (name: string) => /\.(tar\.gz|tgz|tar\.bz2|tbz2|tar\.xz|txz|tar|zip)$/i.test(name)
+
+  const handleCompress = async (names: string[], archiveName: string) => {
+    if (!sessionId || names.length === 0) return
+    setCompressDialog(null)
+    const ext = /\.(tar\.gz|tgz|tar\.bz2|tbz2|tar\.xz|txz|tar|zip)$/i.test(archiveName)
+      ? ''
+      : '.zip'
+    const outputName = archiveName + ext
+    const outputPath = currentPath === '/' ? `/${outputName}` : `${currentPath}/${outputName}`
+    const paths = names.map(n => currentPath === '/' ? `/${n}` : `${currentPath}/${n}`)
+    setArchiveProgress({ type: 'compress', logs: [`Compressing ${names.length} item${names.length > 1 ? 's' : ''}...`], done: false })
+    try {
+      await invoke('ssh_compress', { sessionId, paths, output: outputPath, format: 'zip' })
+      showToast(`Archive created: ${outputName}`, 'success')
+      navigateTo(currentPath)
+    } catch (e) {
+      setArchiveProgress(prev => prev ? { ...prev, logs: [...prev.logs, `Error: ${e}`], done: true } : null)
+      showToast(`Compress failed: ${e}`, 'error')
+    }
+  }
+
+  const handleExtract = (entry: FileEntry) => {
+    if (!sessionId) return
+    showPrompt('Extract to', async (destDir) => {
+      if (!destDir) return
+      // Derive suggested folder name from archive filename
+      let extractName = entry.name
+        .replace(/\.(tar\.gz|tgz|tar\.bz2|tbz2|tar\.xz|txz|tar|zip)$/i, '')
+      if (!extractName) extractName = 'extracted'
+
+      const targetPath = destDir === '/' ? `/${extractName}` : `${destDir}/${extractName}`
+
+      // Check if target already exists
+      let conflict = false
+      try {
+        await invoke<string>('ssh_list_dir', { sessionId, path: targetPath })
+        conflict = true
+      } catch {
+        // Directory doesn't exist — no conflict
+      }
+
+      let finalName = extractName
+      if (conflict) {
+        const result = await showConflict({ name: extractName, isDir: true }, 0)
+        if (result.action === 'skip') {
+          showToast(`Skipped: ${entry.name}`, 'info')
+          return
+        }
+        if (result.action === 'rename') {
+          const newName = await new Promise<string>((resolve) => {
+            showPrompt('Folder name', resolve, extractName + '_1')
+          })
+          if (!newName) return
+          finalName = newName
+        }
+        // 'replace' uses original extractName
+      }
+
+      const archivePath = resolvePath(entry)
+      const tempDir = `/tmp/ssh_extract_${Date.now()}`
+      setArchiveProgress({ type: 'extract', logs: [`Extracting ${entry.name}...`], done: false })
+
+      try {
+        // Step 1: Extract to temp directory
+        await invoke('ssh_extract', { sessionId, archivePath, destDir: tempDir })
+
+        // Step 2: Rename temp dir to final destination
+        const finalPath = destDir === '/' ? `/${finalName}` : `${destDir}/${finalName}`
+
+        if (conflict && finalName === extractName) {
+          // Replace: remove existing first
+          await invoke('ssh_delete_file', { sessionId, path: finalPath, isDir: true })
+        }
+
+        // Rename temp directory to final path (SFTP rename works for dirs)
+        await invoke('ssh_rename_file', { sessionId, oldPath: tempDir, newPath: finalPath })
+
+        showToast(`Extracted: ${entry.name} \u2192 ${finalName}/`, 'success')
+        navigateTo(currentPath)
+      } catch (e) {
+        // Cleanup temp dir on failure
+        try {
+          await invoke('ssh_delete_file', { sessionId, path: tempDir, isDir: true })
+        } catch { /* ignore cleanup errors */ }
+        setArchiveProgress(prev => prev ? { ...prev, logs: [...prev.logs, `Error: ${e}`], done: true } : null)
+        showToast(`Extract failed: ${e}`, 'error')
+      }
+    }, currentPath)
+  }
+
+  const handleItemContextMenu = (e: React.MouseEvent, entry: FileEntry) => {
+    e.preventDefault()
+    // If right-clicked item is not in selection, select only it
+    if (!selectedFiles.has(entry.name)) {
+      setSelectedFiles(new Set([entry.name]))
+      setLastClickedFile(entry.name)
+    }
+    setContextMenu({ x: e.clientX, y: e.clientY, entry })
+  }
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setContextMenu(null)
+      }
+      if (bgMenuRef.current && !bgMenuRef.current.contains(e.target as Node)) {
+        setBgContextMenu(null)
+      }
+    }
+    if (contextMenu || bgContextMenu) {
+      window.addEventListener('mousedown', handleClick)
+      return () => window.removeEventListener('mousedown', handleClick)
+    }
+  }, [contextMenu, bgContextMenu])
+
+  // Keyboard shortcuts: F5 refresh, Ctrl+A select all, Ctrl+C/X/V copy/cut/paste, Delete
+  // Only intercept when focus is within FileBrowser component
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check if the event target is within the FileBrowser component
+      const target = e.target as Node
+      if (!fileBrowserRef.current || !fileBrowserRef.current.contains(target)) {
+        return // Don't intercept if focus is outside FileBrowser
+      }
+      // Don't intercept shortcuts when focus is in an editable element
+      const el = e.target as HTMLElement
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable) return
+      
+      if (e.key === 'F5') {
+        e.preventDefault()
+        navigateTo(currentPath)
+      }
+      if (e.ctrlKey && e.key === 'a') {
+        e.preventDefault()
+        setSelectedFiles(new Set(files.map(f => f.name)))
+      }
+      if (e.ctrlKey && e.key === 'c' && selectedFiles.size > 0) {
+        e.preventDefault()
+        handleCopy()
+      }
+      if (e.ctrlKey && e.key === 'x' && selectedFiles.size > 0) {
+        e.preventDefault()
+        handleCut()
+      }
+      if (e.ctrlKey && e.key === 'v' && clipboard) {
+        e.preventDefault()
+        handlePaste()
+      }
+      if (e.key === 'Delete' && selectedFiles.size > 0) {
+        handleDelete()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [currentPath, selectedFiles, files, navigateTo]) // eslint-disable-line
+
+  const goUp = () => {
+    if (currentPath === '/') return
+    const parts = currentPath.split('/')
+    parts.pop()
+    navigateTo(parts.join('/') || '/')
+  }
+
+  // Rubber band selection on grid empty area
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      setRubberBand(prev => prev ? { ...prev, endX: e.clientX, endY: e.clientY } : null)
+      // Calculate intersection with file items
+      if (!gridRef.current) return
+      const rb = { startX: rubberBand?.startX || 0, startY: rubberBand?.startY || 0, endX: e.clientX, endY: e.clientY }
+      const left = Math.min(rb.startX, rb.endX)
+      const top = Math.min(rb.startY, rb.endY)
+      const right = Math.max(rb.startX, rb.endX)
+      const bottom = Math.max(rb.startY, rb.endY)
+      const selected = new Set<string>()
+      gridRef.current.querySelectorAll<HTMLElement>('[data-fb-name]').forEach(el => {
+        const r = el.getBoundingClientRect()
+        if (r.left < right && r.right > left && r.top < bottom && r.bottom > top) {
+          const name = el.dataset.fbName
+          if (name) selected.add(name)
+        }
+      })
+      if (selected.size > 0) setSelectedFiles(selected)
+    }
+    const onMouseUp = () => {
+      setRubberBand(null)
+    }
+    if (rubberBand) {
+      window.addEventListener('mousemove', onMouseMove)
+      window.addEventListener('mouseup', onMouseUp)
+      return () => {
+        window.removeEventListener('mousemove', onMouseMove)
+        window.removeEventListener('mouseup', onMouseUp)
+      }
+    }
+  }, [rubberBand])
+
+  const handleGridMouseDown = (e: React.MouseEvent) => {
+    // Only start rubber band on empty grid area (left button, not on file items)
+    if (e.button !== 0) return
+    const target = e.target as HTMLElement
+    if (target.closest('[data-fb-name]')) return // clicked on a file item
+    // Clear selection and start rubber band
+    if (!e.ctrlKey && !e.shiftKey) {
+      setSelectedFiles(new Set())
+      setLastClickedFile(null)
+    }
+    setRubberBand({ startX: e.clientX, startY: e.clientY, endX: e.clientX, endY: e.clientY })
+  }
+
+  // Reset drag counter on drop
+  const onDropWrapper = useCallback(async (e: React.DragEvent) => {
+    dragCounterRef.current = 0
+    await handleDropFiles(e)
+  }, [handleDropFiles])
+
+  // File Grid drop zone
+  const gridDragHandlers = {
+    onDragOver: handleDragOver,
+    onDragEnter: handleDragEnter,
+    onDragLeave: handleDragLeave,
+    onDrop: onDropWrapper,
+  }
+
+  return (
+    <div
+      ref={fileBrowserRef}
+      className={`file-browser ${dropActive ? 'fb-drop-active' : ''}`}
+      {...gridDragHandlers}
+    >
+      {/* Operation Log Floating Panel */}
+      {operationLog && (
+        <div className="fb-delete-log fb-archive-log">
+          <div className="fb-delete-log-header">
+            <span>📝 Operation Log</span>
+            <button className="fb-delete-log-close" onClick={() => setOperationLog(null)}>✕</button>
+          </div>
+          <pre ref={operationLogRef} className="fb-delete-log-content">{operationLog.lines.join('\n')}</pre>
+        </div>
+      )}
+
+      {/* Delete Log Floating Panel */}
+      {deleteLog && (
+        <div className="fb-delete-log">
+          <div className="fb-delete-log-header">
+            <span>🗑️ Delete Log</span>
+            <button className="fb-delete-log-close" onClick={() => setDeleteLog(null)}>✕</button>
+          </div>
+          <pre className="fb-delete-log-content">{deleteLog}</pre>
+        </div>
+      )}
+
+      {/* Archive Progress Floating Panel */}
+      {archiveProgress && (
+        <div className="fb-delete-log fb-archive-log">
+          <div className="fb-delete-log-header">
+            <span>{archiveProgress.type === 'compress' ? '🗜️ Compressing' : '📂 Extracting'}{archiveProgress.done ? ' — Done' : '...'}</span>
+            <button className="fb-delete-log-close" onClick={() => setArchiveProgress(null)}>✕</button>
+          </div>
+          <pre ref={archiveLogRef} className="fb-delete-log-content">{archiveProgress.logs.join('\n')}</pre>
+        </div>
+      )}
+
+      {/* Copy Progress Floating Panel */}
+      {copyProgress && (
+        <div className="fb-delete-log fb-archive-log">
+          <div className="fb-delete-log-header">
+            <span>📋 Copying{copyProgress.done ? ' — Done' : '...'}</span>
+            <button className="fb-delete-log-close" onClick={() => setCopyProgress(null)}>✕</button>
+          </div>
+          <pre ref={copyLogRef} className="fb-delete-log-content">{copyProgress.logs.join('\n')}</pre>
+        </div>
+      )}
+
+      {/* Toolbar */}
+      <div className="fb-toolbar">
+        <button className="fb-btn" onClick={goUp} disabled={currentPath === '/'} title="Go up">
+          <BackIcon />
+        </button>
+        <button className="fb-btn" onClick={() => navigateTo(currentPath, true)} title="Refresh">
+          <RefreshIcon />
+        </button>
+
+        <div className="fb-path-edit">
+          <input
+            ref={pathInputRef}
+            className="fb-path-input"
+            value={pathInputValue}
+            onChange={(e) => setPathInputValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleGoToPath()
+              } else if (e.key === 'Escape') {
+                setPathInputValue(currentPath)
+              }
+            }}
+            onFocus={() => setPathInputValue(currentPath)}
+          />
+          <button
+            className="fb-btn fb-btn-go"
+            onMouseDown={(e) => {
+              e.preventDefault() // prevent input blur
+              handleGoToPath()
+            }}
+            title="Go to path"
+          >
+            Go ➜
+          </button>
+          <div style={{ width: '1px', height: '20px', background: '#575b5cff', margin: '0 18px' }} />
+          <div style={{ position: 'relative' }} ref={favoritesDropdownRef}>
+            <button
+              className="fb-btn fb-btn-favorites"
+              onClick={() => setShowFavoritesDropdown(!showFavoritesDropdown)}
+              title="Favorites"
+            >
+                   ⭐Favorites 
+            </button>
+            {showFavoritesDropdown && (
+              <div className="fb-favorites-dropdown">
+                {favorites.length === 0 ? (
+                  <div className="fb-favorite-empty">
+                    No favorites yet. Right-click in the file browser to add a directory.
+                  </div>
+                ) : (
+                  favorites.map((path, idx) => (
+                    <div
+                      key={idx}
+                      className="fb-favorite-item"
+                      onClick={() => {
+                        navigateTo(path)
+                        setShowFavoritesDropdown(false)
+                      }}
+                    >
+                      <span className="fb-favorite-path">{path}</span>
+                      <button
+                        className="fb-favorite-remove"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          removeFavorite(path)
+                        }}
+                        title="Remove from favorites"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="fb-count">{files.length} items</div>
+      </div>
+
+      {/* File Grid */}
+      <div
+        ref={gridRef}
+        className={`fb-grid ${dropActive ? 'fb-grid-drop-active' : ''}`}
+        onDoubleClick={(e) => {
+          if (e.target === e.currentTarget) { navigateTo(currentPath) }
+        }}
+        onContextMenu={(e) => {
+          if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('fb-empty')) {
+            e.preventDefault()
+            setContextMenu(null)
+            setBgContextMenu({ x: e.clientX, y: e.clientY })
+          }
+        }}
+        onMouseDown={handleGridMouseDown}
+      >
+        {dropActive && <div className="fb-drop-overlay"> Drop files here to upload</div>}
+        {loading && <div className="fb-loading">Loading...</div>}
+        {!loading && !jumpToPath && files.length === 0 && !dropActive && <div className="fb-empty">Empty directory</div>}
+        {!loading && files.map((entry) => (
+          <div
+            key={entry.name}
+            className={`fb-item ${selectedFiles.has(entry.name) ? 'selected' : ''} ${draggingName === entry.name ? 'fb-item-dragging' : ''} ${clipboard?.paths.includes(currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`) && clipboard.mode === 'cut' ? 'fb-item-cut' : ''} ${dragOverTarget === entry.name ? (entry.isDir ? 'fb-item-dragover fb-item-dropinto' : 'fb-item-dragover') : ''}`}
+            onClick={(e) => handleItemClick(entry, e)}
+            onDoubleClick={() => handleItemDoubleClick(entry)}
+            onContextMenu={(e) => handleItemContextMenu(e, entry)}
+            onMouseDown={(e) => handleItemMouseDown(e, entry)}
+            data-fb-name={entry.name}
+            data-fb-isdir={entry.isDir ? 'true' : 'false'}
+          >
+            <div className="fb-icon">
+              {entry.isDir ? <FolderIcon /> : entry.isSymlink ? <SymlinkIcon /> : <FileIcon />}
+            </div>
+            <div className="fb-name" title={entry.name}>{entry.name}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Drag ghost */}
+      {dragGhost && (
+        <div className="fb-drag-ghost" style={{ left: dragGhost.x, top: dragGhost.y }}>
+          <span className="fb-drag-ghost-icon">{dragGhost.isDir ? '📁' : '📄'}</span>
+          <span className="fb-drag-ghost-name">{dragGhost.name}{selectedFiles.size > 1 ? ` (+${selectedFiles.size - 1})` : ''}</span>
+        </div>
+      )}
+
+      {/* Rubber band selection rect */}
+      {rubberBand && (
+        <div className="fb-rubber-band" style={{
+          left: Math.min(rubberBand.startX, rubberBand.endX),
+          top: Math.min(rubberBand.startY, rubberBand.endY),
+          width: Math.abs(rubberBand.endX - rubberBand.startX),
+          height: Math.abs(rubberBand.endY - rubberBand.startY),
+        }} />
+      )}
+
+      {/* Status bar */}
+      <div className="fb-status">
+        <span>{currentPath}</span>
+        {selectedFiles.size > 0 && <span className="fb-selected-info">
+          {(() => {
+            const sel = getSelectedEntries()
+            if (sel.length === 0) return ''
+            if (sel.length === 1) {
+              const f = sel[0]
+              return f.isDir ? `[dir] ${f.permissions}` : `${formatSize(f.size)}  ${f.permissions}  ${formatTime(f.mtime)}`
+            }
+            const totalSize = sel.reduce((s, f) => s + (f.isDir ? 0 : f.size), 0)
+            return `${sel.length} selected (${formatSize(totalSize)})`
+          })()}
+        </span>}
+      </div>
+
+      {/* Editor modal */}
+      {editor && (
+        <div className={`fb-editor-overlay ${editor.minimized ? 'minimized' : ''}`} onClick={() => {
+          if (editor.minimized) {
+            setEditor({ ...editor, minimized: false })
+            return
+          }
+          if (editor.content !== editor.originalContent) {
+            showConfirm('Unsaved changes. Discard?', () => setEditor(null))
+            return
+          }
+          setEditor(null)
+        }}>
+          <div className={`fb-editor ${editor.maximized ? 'maximized' : ''} ${editor.minimized ? 'minimized' : ''}`} onClick={(e) => e.stopPropagation()}>
+            <div className="fb-editor-header">
+              <span className="fb-editor-title">{editor.name} — {editor.path}</span>
+              <div className="fb-editor-actions">
+                <button
+                  className="fb-editor-btn save"
+                  onClick={handleSaveFile}
+                  disabled={editor.saving || editor.content === editor.originalContent}
+                >
+                  {editor.saving ? 'Saving...' : '💾 Save'}
+                </button>
+                <button className="fb-editor-btn minimize" onClick={() => setEditor({ ...editor, minimized: true })} title="Minimize">—</button>
+                <button className="fb-editor-btn maximize" onClick={() => setEditor({ ...editor, maximized: !editor.maximized })} title={editor.maximized ? 'Restore' : 'Maximize'}>
+                  {editor.maximized ? '❐' : '▢'}
+                </button>
+                <button className="fb-editor-btn close" onClick={() => {
+                  if (editor.content !== editor.originalContent) {
+                    showConfirm('Unsaved changes. Discard?', () => setEditor(null))
+                    return
+                  }
+                  setEditor(null)
+                }}>✕</button>
+              </div>
+            </div>
+            {!editor.minimized && (
+              <textarea
+                className="fb-editor-content"
+                value={editor.content}
+                onChange={(e) => setEditor({ ...editor, content: e.target.value })}
+                spellCheck={false}
+                onKeyDown={(e) => {
+                  if (e.ctrlKey && e.key === 's') {
+                    e.preventDefault()
+                    handleSaveFile()
+                  }
+                }}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          ref={menuRef}
+          className="fb-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          {contextMenu.entry.isDir ? (
+            <>
+            <div className="fb-context-item" onClick={() => {
+              const newPath = currentPath === '/' ? `/${contextMenu.entry.name}` : `${currentPath}/${contextMenu.entry.name}`
+              navigateTo(newPath)
+              setContextMenu(null)
+            }}>
+              📂 Open
+            </div>
+            </>
+          ) : (
+            <div className="fb-context-item" onClick={() => {
+              openEditor(contextMenu.entry)
+              setContextMenu(null)
+            }}>
+              ✏️ Edit
+            </div>
+          )}
+          <div className="fb-context-divider" />
+          <div className="fb-context-item" onClick={() => {
+            handleCopy()
+            setContextMenu(null)
+          }}>
+            📋 Copy{selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
+          </div>
+          <div className="fb-context-item" onClick={() => {
+            handleCut()
+            setContextMenu(null)
+          }}>
+            ✂️ Cut{selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
+          </div>
+          {clipboard && (
+            <div className="fb-context-item" onClick={() => {
+              handlePaste()
+              setContextMenu(null)
+            }}>
+              📎 Paste
+            </div>
+          )}
+          <div className="fb-context-divider" />
+          <div className="fb-context-item" onClick={() => {
+            handleRename(contextMenu.entry)
+            setContextMenu(null)
+          }}>
+            ✏️ Rename
+          </div>
+          {!contextMenu.entry.isDir && (
+            <div className="fb-context-item" onClick={() => {
+              handleSaveAs(contextMenu.entry)
+              setContextMenu(null)
+            }}>
+              💾 Save as...
+            </div>
+          )}
+          <div className="fb-context-item" onClick={() => {
+            setCompressDialog({ names: selectedFiles.has(contextMenu.entry.name) && selectedFiles.size > 1 ? Array.from(selectedFiles) : [contextMenu.entry.name] })
+            setContextMenu(null)
+          }}>
+            🗜️ Compress{selectedFiles.has(contextMenu.entry.name) && selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
+          </div>
+          {isArchive(contextMenu.entry.name) && (
+            <div className="fb-context-item" onClick={() => {
+              handleExtract(contextMenu.entry)
+              setContextMenu(null)
+            }}>
+              📂 Extract
+            </div>
+          )}
+          <div className="fb-context-item" onClick={() => {
+            handleShowInfo(contextMenu.entry)
+            setContextMenu(null)
+          }}>
+            ℹ️ File info
+          </div>
+          <div className="fb-context-item" onClick={() => {
+            handleOpenPermissions(contextMenu.entry)
+            setContextMenu(null)
+          }}>
+            🔒 Set permissions
+          </div>
+          <div className="fb-context-divider" />
+          <div className="fb-context-item danger" onClick={() => {
+            handleDelete()
+            setContextMenu(null)
+          }}>
+            🗑️ Delete{selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
+          </div>
+        </div>
+      )}
+
+      {/* Background Context Menu (right-click on empty area) */}
+      {bgContextMenu && (
+        <div
+          ref={bgMenuRef}
+          className="fb-context-menu"
+          style={{ left: bgContextMenu.x, top: bgContextMenu.y }}
+        >
+          <div className="fb-context-item" onClick={() => {
+            navigateTo(currentPath, true)
+            setBgContextMenu(null)
+          }}>
+            🔄 Refresh
+          </div>
+          <div className="fb-context-divider" />
+          <div className="fb-context-item" onClick={() => {
+            handleNewFile()
+            setBgContextMenu(null)
+          }}>
+            📄 New file
+          </div>
+          <div className="fb-context-item" onClick={() => {
+            handleNewFolder()
+            setBgContextMenu(null)
+          }}>
+            📁 New folder
+          </div>
+          <div className="fb-context-item" onClick={() => {
+            onCdHere?.(currentPath)
+            setBgContextMenu(null)
+          }}>
+             cd here
+          </div>
+          <div className="fb-context-divider" />
+          <div className="fb-context-item" onClick={() => {
+            addFavorite(currentPath)
+            setBgContextMenu(null)
+          }}>
+            ⭐ {isFavorite(currentPath) ? 'Remove from Favorites' : 'Add to Favorites'}
+          </div>
+          {clipboard && (
+            <>
+              <div className="fb-context-divider" />
+              <div className="fb-context-item" onClick={() => {
+                handlePaste()
+                setBgContextMenu(null)
+              }}>
+                📎 Paste
+              </div>
+            </>
+          )}
+          <div className="fb-context-divider" />
+          <div className="fb-context-item" onClick={() => {
+            setDownloadDialog({ url: '' })
+            setBgContextMenu(null)
+          }}>
+            ⬇️ Download
+          </div>
+          {selectedFiles.size > 0 && (
+            <div className="fb-context-item" onClick={() => {
+              setCompressDialog({ names: Array.from(selectedFiles) })
+              setBgContextMenu(null)
+            }}>
+              🗜️ Compress ({selectedFiles.size})
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* File Info Dialog */}
+      {fileInfo && (
+        <div className="fb-dialog-overlay">
+          <div className="fb-dialog fb-info-dialog" onClick={(e) => e.stopPropagation()}>
+            <button 
+              className="modal-close-btn"
+              onClick={() => setFileInfo(null)}
+              title="关闭"
+            >×</button>
+            <div className="fb-dialog-title">File Info</div>
+            <div className="fb-info-grid">
+              <div className="fb-info-label">Name</div>
+              <div className="fb-info-value">{fileInfo.entry.name}</div>
+              <div className="fb-info-label">Type</div>
+              <div className="fb-info-value">
+                {fileInfo.entry.isDir ? 'Folder' : fileInfo.entry.isSymlink ? 'Symbolic link' : `File (.${getFileExtension(fileInfo.entry.name) || 'unknown'})`}
+              </div>
+              <div className="fb-info-label">Size</div>
+              <div className="fb-info-value">{fileInfo.entry.isDir ? '—' : formatSize(fileInfo.entry.size)}</div>
+              <div className="fb-info-label">Permissions</div>
+              <div className="fb-info-value">{fileInfo.entry.permissions || '—'}</div>
+              <div className="fb-info-label">Owner</div>
+              <div className="fb-info-value">{fileInfo.entry.owner || '—'}</div>
+              <div className="fb-info-label">Modified</div>
+              <div className="fb-info-value">{formatTime(fileInfo.entry.mtime)}</div>
+              <div className="fb-info-label">Path</div>
+              <div className="fb-info-value fb-info-path">{fileInfo.path}</div>
+            </div>
+            <div className="fb-dialog-actions">
+              <button className="fb-dialog-btn primary" onClick={() => setFileInfo(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Dialog */}
+      {confirmDialog && (
+        <div className="fb-dialog-overlay">
+          <div className="fb-dialog fb-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <button 
+              className="modal-close-btn"
+              onClick={() => setConfirmDialog(null)}
+              title="关闭"
+            >×</button>
+            <div className="fb-dialog-title">Confirm</div>
+            <div className="fb-confirm-msg">{confirmDialog.message}</div>
+            <div className="fb-dialog-actions">
+              <button className="fb-dialog-btn" onClick={() => setConfirmDialog(null)}>Cancel</button>
+              <button className="fb-dialog-btn danger" onClick={() => {
+                confirmDialog.onConfirm()
+                setConfirmDialog(null)
+              }}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Conflict Dialog */}
+      {conflictDialog && (
+        <div className="fb-dialog-overlay">
+          <div className="fb-dialog fb-conflict-dialog" onClick={(e) => e.stopPropagation()}>
+            <button 
+              className="modal-close-btn"
+              onClick={() => {
+                conflictDialog.resolve({ action: 'skip', applyToAll: false })
+                setConflictDialog(null)
+              }}
+              title="关闭"
+            >×</button>
+            <div className="fb-dialog-title">File Conflict</div>
+            <div className="fb-conflict-msg">
+              <span className="fb-conflict-icon">{conflictDialog.item.isDir ? '📁' : '📄'}</span>
+              <strong>{conflictDialog.item.name}</strong> already exists as a {conflictDialog.item.isDir ? 'folder' : 'file'}.
+            </div>
+            <div className="fb-conflict-question">What would you like to do?</div>
+            {conflictDialog.remaining > 0 && (
+              <label className="fb-conflict-apply-all">
+                <input type="checkbox" id="conflict-apply-all" />
+                <span>Apply to all {conflictDialog.remaining + 1} conflicts</span>
+              </label>
+            )}
+            <div className="fb-conflict-actions">
+              <button
+                className="fb-dialog-btn fb-conflict-replace"
+                onClick={() => {
+                  const applyAll = (document.getElementById('conflict-apply-all') as HTMLInputElement)?.checked ?? false
+                  conflictDialog.resolve({ action: 'replace', applyToAll: applyAll })
+                  setConflictDialog(null)
+                }}
+              >
+                Replace
+              </button>
+              <button
+                className="fb-dialog-btn primary"
+                onClick={() => {
+                  const applyAll = (document.getElementById('conflict-apply-all') as HTMLInputElement)?.checked ?? false
+                  conflictDialog.resolve({ action: 'rename', applyToAll: applyAll })
+                  setConflictDialog(null)
+                }}
+              >
+                Rename
+              </button>
+              <button
+                className="fb-dialog-btn"
+                onClick={() => {
+                  const applyAll = (document.getElementById('conflict-apply-all') as HTMLInputElement)?.checked ?? false
+                  conflictDialog.resolve({ action: 'skip', applyToAll: applyAll })
+                  setConflictDialog(null)
+                }}
+              >
+                Skip
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Prompt Dialog */}
+      {promptDialog && (
+        <div className="fb-dialog-overlay">
+          <div className="fb-dialog fb-prompt-dialog" onClick={(e) => e.stopPropagation()}>
+            <button 
+              className="modal-close-btn"
+              onClick={() => setPromptDialog(null)}
+              title="关闭"
+            >×</button>
+            <div className="fb-dialog-title">{promptDialog.title}</div>
+            <input
+              ref={promptInputRef}
+              className="fb-prompt-input"
+              value={promptDialog.value}
+              onChange={(e) => setPromptDialog({ ...promptDialog, value: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  promptDialog.onSubmit(promptDialog.value)
+                  setPromptDialog(null)
+                }
+                if (e.key === 'Escape') setPromptDialog(null)
+              }}
+              autoFocus
+            />
+            <div className="fb-dialog-actions">
+              <button className="fb-dialog-btn" onClick={() => setPromptDialog(null)}>Cancel</button>
+              <button className="fb-dialog-btn primary" onClick={() => {
+                promptDialog.onSubmit(promptDialog.value)
+                setPromptDialog(null)
+              }}>OK</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Permission Dialog */}
+      {permissionDialog && (
+        <div className="fb-dialog-overlay">
+          <div className="fb-dialog fb-perm-dialog" onClick={(e) => e.stopPropagation()}>
+            <button 
+              className="modal-close-btn"
+              onClick={() => setPermissionDialog(null)}
+              title="关闭"
+            >×</button>
+            <div className="fb-dialog-title">Set Permissions</div>
+            <div className="fb-perm-info">
+              <span className="fb-perm-name">{permissionDialog.name}</span>
+              <span className="fb-perm-current">Current: {permissionDialog.currentPerms}</span>
+            </div>
+            <div className="fb-perm-quick">
+              {[['644','rw-r--r--'],['755','rwxr-xr-x'],['600','rw-------'],['700','rwx------'],['777','rwxrwxrwx'],['400','r--------']].map(([mode, label]) => (
+                <button
+                  key={mode}
+                  className={`fb-perm-chip ${permissionDialog.mode === mode ? 'active' : ''}`}
+                  onClick={() => setPermissionDialog({ ...permissionDialog, mode })}
+                >
+                  {mode}<span className="fb-perm-chip-label">{label}</span>
+                </button>
+              ))}
+            </div>
+            <input
+              className="fb-prompt-input"
+              placeholder="Enter mode (e.g. 755)"
+              value={permissionDialog.mode}
+              onChange={(e) => setPermissionDialog({ ...permissionDialog, mode: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleApplyPermissions()
+                if (e.key === 'Escape') setPermissionDialog(null)
+              }}
+            />
+            <div className="fb-dialog-actions">
+              <button className="fb-dialog-btn" onClick={() => setPermissionDialog(null)}>Cancel</button>
+              <button className="fb-dialog-btn primary" onClick={handleApplyPermissions} disabled={!permissionDialog.mode}>Apply</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Compress Dialog */}
+      {compressDialog && (
+        <div className="fb-dialog-overlay">
+          <div className="fb-dialog fb-compress-dialog" onClick={(e) => e.stopPropagation()}>
+            <button 
+              className="modal-close-btn"
+              onClick={() => setCompressDialog(null)}
+              title="关闭"
+            >×</button>
+            <div className="fb-dialog-title">🗜️ Compress {compressDialog.names.length} item{compressDialog.names.length > 1 ? 's' : ''}</div>
+            <div className="fb-compress-items">
+              {compressDialog.names.slice(0, 5).map(n => (
+                <span key={n} className="fb-compress-item">{n}</span>
+              ))}
+              {compressDialog.names.length > 5 && <span className="fb-compress-more">+{compressDialog.names.length - 5} more...</span>}
+            </div>
+            <input
+              className="fb-prompt-input"
+              placeholder="Archive name"
+              defaultValue={(compressDialog.names.length === 1 ? compressDialog.names[0] : 'archive') + '.zip'}
+              onKeyDown={(e) => {
+                const val = (e.target as HTMLInputElement).value
+                if (e.key === 'Enter' && val.trim()) handleCompress(compressDialog.names, val.trim())
+                if (e.key === 'Escape') setCompressDialog(null)
+              }}
+              autoFocus
+              id="compress-name-input"
+            />
+            <div className="fb-dialog-actions">
+              <button className="fb-dialog-btn" onClick={() => setCompressDialog(null)}>Cancel</button>
+              <button className="fb-dialog-btn primary" onClick={() => {
+                const input = document.getElementById('compress-name-input') as HTMLInputElement
+                if (input?.value.trim()) handleCompress(compressDialog.names, input.value.trim())
+              }}>Compress (.zip)</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Download Dialog */}
+      {downloadDialog && (
+        <div className="fb-dialog-overlay" onClick={() => {
+          if (downloadProgress && downloadProgress.status === 'downloading') return
+          setDownloadDialog(null)
+        }}>
+          <div className="fb-dialog fb-download-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="fb-dialog-title">⬇️ Download from URL</div>
+            <input
+              className="fb-prompt-input"
+              placeholder="https://example.com/file.zip"
+              value={downloadDialog.url}
+              onChange={(e) => setDownloadDialog({ ...downloadDialog, url: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleDownload()
+                if (e.key === 'Escape' && (!downloadProgress || downloadProgress.status !== 'downloading')) setDownloadDialog(null)
+              }}
+              disabled={!!downloadProgress}
+              autoFocus
+            />
+            <div className="fb-download-path">
+              Save to: {currentPath === '/' ? '/' : `${currentPath}/`}
+            </div>
+            <div className="fb-dialog-actions">
+              <button className="fb-dialog-btn" onClick={() => setDownloadDialog(null)} disabled={!!downloadProgress}>Cancel</button>
+              <button className="fb-dialog-btn primary" onClick={handleDownload} disabled={!downloadDialog.url || !!downloadProgress}>
+                {downloadProgress ? 'Downloading...' : 'Download'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Download Progress Bar (bottom of file browser) */}
+      {downloadProgress && (
+        <div className="fb-progress-bar">
+          <div className="fb-progress-track">
+            <div
+              className={`fb-progress-fill ${downloadProgress.status === 'error' ? 'error' : downloadProgress.status === 'done' ? 'done' : ''}`}
+              style={{ width: `${downloadProgress.progress}%` }}
+            />
+          </div>
+          <span className="fb-progress-text">
+            {downloadProgress.status === 'starting' ? 'Starting...' :
+             downloadProgress.status === 'done' ? 'Complete' :
+             downloadProgress.status === 'error' ? 'Failed' :
+             `${Math.round(downloadProgress.progress)}%`}
+          </span>
+        </div>
+      )}
+
+      {/* Status Bar */}
+      <div className="fb-status-bar">
+        <span className="fb-status-path">{currentPath}</span>
+        <span className="fb-status-cache">
+          {cacheTime ? `🕐 ${new Date(cacheTime).toLocaleString()}` : '—'}
+        </span>
+      </div>
+    </div>
+  )
+})
+

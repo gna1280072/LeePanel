@@ -1,0 +1,364 @@
+import { useState, useEffect, useRef } from 'react'
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
+
+interface LnmpStatus {
+  nginx_installed: boolean
+  mysql_installed: boolean
+  mariadb_installed: boolean
+  php_installed: boolean
+  nginx_version: string
+  mysql_version: string
+  php_version: string
+}
+
+interface OsInfo {
+  distro: string
+  version: string
+  family: string
+  hostname: string
+}
+
+interface InstallLnmpProps {
+  sessionId: string | null
+  onInstallationComplete?: () => void
+}
+
+type InstallState = 'checking' | 'ready' | 'installing' | 'done' | 'error'
+
+export default function InstallLnmp({ sessionId, onInstallationComplete }: InstallLnmpProps) {
+  const [state, setState] = useState<InstallState>('checking')
+  const [lnmpStatus, setLnmpStatus] = useState<LnmpStatus | null>(null)
+  const [osInfo, setOsInfo] = useState<OsInfo | null>(null)
+  const [error, setError] = useState('')
+  const [logs, setLogs] = useState<string[]>([])
+  const logEndRef = useRef<HTMLDivElement>(null)
+
+  // Component selections
+  const [installNginx, setInstallNginx] = useState(true)
+  const [installMysql, setInstallMysql] = useState(true)
+  const [mysqlVariant, setMysqlVariant] = useState<'mysql' | 'mariadb'>('mysql')
+  const [installPhp, setInstallPhp] = useState(true)
+  const [phpVersion, setPhpVersion] = useState('8.2')
+  const [reinstall, setReinstall] = useState(false)
+
+  // Auto-scroll log
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [logs])
+
+  // Check current status
+  const checkStatus = async () => {
+    if (!sessionId) return
+    setState('checking')
+    setError('')
+    try {
+      const [lnmp, sysInfo] = await Promise.all([
+        invoke<LnmpStatus>('server_check_lnmp', { sessionId }),
+        invoke<{ os: OsInfo }>('server_get_system_info', { sessionId }),
+      ])
+      setLnmpStatus(lnmp)
+      setOsInfo(sysInfo.os)
+
+      // Auto-select based on what's not installed
+      if (lnmp.nginx_installed) setInstallNginx(false)
+      if (lnmp.mysql_installed || lnmp.mariadb_installed) {
+        setInstallMysql(false)
+        if (lnmp.mariadb_installed) setMysqlVariant('mariadb')
+      }
+      if (lnmp.php_installed) {
+        setInstallPhp(false)
+        // Try to extract version
+        if (lnmp.php_version) {
+          const major = lnmp.php_version.split('.').slice(0, 2).join('.')
+          setPhpVersion(major)
+        }
+      }
+      setReinstall(false)
+
+      setState('ready')
+    } catch (e) {
+      setError(String(e))
+      setState('error')
+    }
+  }
+
+  useEffect(() => {
+    checkStatus()
+  }, [sessionId])
+
+  // Listen for install progress events
+  useEffect(() => {
+    if (!sessionId) return
+    const unlisten = listen<{ sessionId: string; line: string; status: string }>(
+      'lnmp-install-progress',
+      (event) => {
+        if (event.payload.sessionId !== sessionId) return
+        setLogs((prev) => [...prev, event.payload.line])
+        if (event.payload.status === 'done') {
+          setState('done')
+        } else if (event.payload.status === 'error') {
+          setState('error')
+        }
+      }
+    )
+    return () => {
+      unlisten.then((fn) => fn())
+    }
+  }, [sessionId])
+
+  const handleInstall = async () => {
+    if (!sessionId) return
+    if (!installNginx && !installMysql && !installPhp) {
+      setError('Please select at least one component to install')
+      return
+    }
+
+    setState('installing')
+    setLogs([`Starting LNMP installation on ${osInfo?.hostname || 'server'}...`])
+    setError('')
+
+    try {
+      await invoke('server_install_lnmp', {
+        sessionId,
+        config: {
+          install_nginx: installNginx,
+          install_mysql: installMysql,
+          mysql_variant: mysqlVariant,
+          install_php: installPhp,
+          php_version: phpVersion,
+        },
+      })
+      setState('done')
+      // Notify parent to reconnect after successful installation
+      onInstallationComplete?.()
+    } catch (e) {
+      const msg = String(e)
+      setError(msg.length > 200 ? msg.slice(0, 200) + '...' : msg)
+      setState('error')
+    }
+  }
+
+  if (!sessionId) {
+    return <div className="sp-empty">Connect to a server to install LNMP</div>
+  }
+
+  const allInstalled = lnmpStatus &&
+    lnmpStatus.nginx_installed &&
+    (lnmpStatus.mysql_installed || lnmpStatus.mariadb_installed) &&
+    lnmpStatus.php_installed
+
+  return (
+    <div className="install-lnmp">
+      <div className="install-header">
+        <h2>LNMP Installer</h2>
+        {osInfo && (
+          <span className="install-os-badge">
+            {osInfo.distro} {osInfo.version}
+          </span>
+        )}
+      </div>
+
+      {/* Current Status */}
+      {state === 'checking' && (
+        <div className="sp-loading">Checking current LNMP status...</div>
+      )}
+
+      {state === 'error' && lnmpStatus === null && (
+        <div className="sp-error">
+          <p>Failed to check status: {error}</p>
+          <button className="sp-retry-btn" onClick={checkStatus}>Retry</button>
+        </div>
+      )}
+
+      {/* Already all installed */}
+      {state === 'ready' && allInstalled && !reinstall && (
+        <div className="install-all-done">
+          <div className="install-done-icon">✓</div>
+          <h3>All LNMP components are installed</h3>
+          <div className="install-current-status">
+            {lnmpStatus && (
+              <>
+                <span className="install-component">Nginx {lnmpStatus.nginx_version}</span>
+                <span className="install-component">{lnmpStatus.mariadb_installed ? 'MariaDB' : 'MySQL'} {lnmpStatus.mysql_version}</span>
+                <span className="install-component">PHP {lnmpStatus.php_version}</span>
+              </>
+            )}
+          </div>
+          <button className="install-reinstall-btn" onClick={() => {
+            setReinstall(true)
+            setInstallNginx(true)
+            setInstallMysql(true)
+            setInstallPhp(true)
+          }}>
+            Reinstall / Upgrade
+          </button>
+        </div>
+      )}
+
+      {/* Selection UI */}
+      {(state === 'ready' && (!allInstalled || reinstall)) && (
+        <div className="install-form">
+          {/* Status summary */}
+          {lnmpStatus && (
+            <div className="install-status-summary">
+              <div className="install-status-title">Current Status</div>
+              <div className="install-status-grid">
+                <StatusBadge label="Nginx" installed={lnmpStatus.nginx_installed} version={lnmpStatus.nginx_version} />
+                <StatusBadge label="MySQL" installed={lnmpStatus.mysql_installed} version={lnmpStatus.mysql_version} />
+                <StatusBadge label="MariaDB" installed={lnmpStatus.mariadb_installed} version="" />
+                <StatusBadge label="PHP" installed={lnmpStatus.php_installed} version={lnmpStatus.php_version} />
+              </div>
+            </div>
+          )}
+
+          <div className="install-select-title">{reinstall ? 'Select Components to Reinstall / Upgrade' : 'Select Components to Install'}</div>
+
+          {/* Nginx */}
+          <label className="install-option">
+            <input
+              type="checkbox"
+              checked={installNginx}
+              onChange={(e) => setInstallNginx(e.target.checked)}
+            />
+            <div className="install-option-info">
+              <span className="install-option-name">Nginx</span>
+              <span className="install-option-desc">High-performance web server & reverse proxy</span>
+            </div>
+          </label>
+
+          {/* MySQL / MariaDB */}
+          <label className="install-option">
+            <input
+              type="checkbox"
+              checked={installMysql}
+              onChange={(e) => setInstallMysql(e.target.checked)}
+            />
+            <div className="install-option-info">
+              <span className="install-option-name">Database Server</span>
+              <span className="install-option-desc">Relational database for web applications</span>
+            </div>
+          </label>
+          {installMysql && (
+            <div className="install-sub-options">
+              <label className="install-radio">
+                <input
+                  type="radio"
+                  name="mysql-variant"
+                  value="mysql"
+                  checked={mysqlVariant === 'mysql'}
+                  onChange={() => setMysqlVariant('mysql')}
+                />
+                MySQL (Oracle)
+              </label>
+              <label className="install-radio">
+                <input
+                  type="radio"
+                  name="mysql-variant"
+                  value="mariadb"
+                  checked={mysqlVariant === 'mariadb'}
+                  onChange={() => setMysqlVariant('mariadb')}
+                />
+                MariaDB (Community fork)
+              </label>
+            </div>
+          )}
+
+          {/* PHP */}
+          <label className="install-option">
+            <input
+              type="checkbox"
+              checked={installPhp}
+              onChange={(e) => setInstallPhp(e.target.checked)}
+            />
+            <div className="install-option-info">
+              <span className="install-option-name">PHP-FPM</span>
+              <span className="install-option-desc">PHP FastCGI Process Manager with common extensions</span>
+            </div>
+          </label>
+          {installPhp && (
+            <div className="install-sub-options">
+              <span className="install-sub-label">PHP Version:</span>
+              {['8.1', '8.2', '8.3', '8.4'].map((v) => (
+                <label className="install-radio" key={v}>
+                  <input
+                    type="radio"
+                    name="php-version"
+                    value={v}
+                    checked={phpVersion === v}
+                    onChange={() => setPhpVersion(v)}
+                  />
+                  {v}
+                </label>
+              ))}
+            </div>
+          )}
+
+          {error && <div className="install-error">{error}</div>}
+
+          <button className="install-btn" onClick={handleInstall}>
+            {reinstall ? 'Reinstall / Upgrade Selected' : 'Install Selected Components'}
+          </button>
+        </div>
+      )}
+
+      {/* Installing Progress */}
+      {(state === 'installing' || state === 'done') && (
+        <div className="install-progress">
+          <div className={`install-progress-header ${state}`}>
+            {state === 'installing' ? (
+              <>
+                <div className="install-spinner" />
+                <span>Installing...</span>
+              </>
+            ) : (
+              <>
+                <span className="install-done-icon-small">✓</span>
+                <span>Installation Complete</span>
+              </>
+            )}
+          </div>
+          <div className="install-log">
+            {logs.map((line, i) => (
+              <div className="install-log-line" key={i}>{line}</div>
+            ))}
+            <div ref={logEndRef} />
+          </div>
+          {state === 'done' && (
+            <button className="install-done-btn" onClick={checkStatus}>
+              Refresh Status
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Error during install */}
+      {state === 'error' && lnmpStatus !== null && (
+        <div className="install-progress">
+          <div className="install-progress-header error">
+            <span>Installation Failed</span>
+          </div>
+          <div className="install-log">
+            {logs.map((line, i) => (
+              <div className="install-log-line" key={i}>{line}</div>
+            ))}
+            {error && <div className="install-log-line error">{error}</div>}
+          </div>
+          <button className="install-retry-btn" onClick={handleInstall}>
+            Retry
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function StatusBadge({ label, installed, version }: { label: string; installed: boolean; version: string }) {
+  return (
+    <div className={`install-badge ${installed ? 'installed' : 'not-installed'}`}>
+      <span className="install-badge-dot" />
+      <span>{label}</span>
+      {installed && version && <span className="install-badge-ver">v{version}</span>}
+    </div>
+  )
+}

@@ -1,0 +1,1526 @@
+import { useState, useEffect, useCallback } from 'react'
+import { invoke } from '@tauri-apps/api/core'
+
+interface DbInfo {
+  name: string
+  size_mb: number
+  password?: string // Optional: loaded from localStorage
+  access_type?: 'local' | 'any' | 'ip' // Access permission type
+  allowed_ip?: string // Allowed IP when access_type is 'ip'
+}
+
+interface BackupInfo {
+  filename: string
+  size_bytes: number
+  created_at: string
+}
+
+interface DbCredential {
+  db_name: string
+  password: string
+  access_type: string
+  allowed_ip: string
+}
+
+interface DatabasePanelProps {
+  sessionId: string | null
+  onNavigateToSoftware?: () => void
+}
+
+export default function DatabasePanel({ sessionId, onNavigateToSoftware }: DatabasePanelProps) {
+  const [databases, setDatabases] = useState<DbInfo[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [msg, setMsg] = useState('')
+  
+  // Search
+  const [searchQuery, setSearchQuery] = useState('')
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  
+  // Create dialog
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [newDbName, setNewDbName] = useState('')
+  const [newDbUser, setNewDbUser] = useState('')
+  const [newDbPass, setNewDbPass] = useState('')
+  const [savePasswordLocally, setSavePasswordLocally] = useState(true) // Default: save password
+  const [dbCharset, setDbCharset] = useState('utf8mb4') // Default charset
+  const [accessType, setAccessType] = useState<'local' | 'any' | 'ip'>('local') // Default: local server
+  const [allowedIp, setAllowedIp] = useState('') // For custom IP access
+  const [creating, setCreating] = useState(false)
+  
+  // Delete dialog
+  const [deleteTarget, setDeleteTarget] = useState<DbInfo | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteConfirmName, setDeleteConfirmName] = useState('')
+  
+  // Password visibility
+  const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set())
+  
+  // Selected databases for batch operations
+  const [selectedDbs, setSelectedDbs] = useState<Set<string>>(new Set())
+  
+  // Database remarks (key: dbName, value: remark)
+  const [dbRemarks, setDbRemarks] = useState<Record<string, string>>({})
+  const [editingRemark, setEditingRemark] = useState<string | null>(null)
+  const [remarkInput, setRemarkInput] = useState('')
+  
+  // Change root password dialog
+  const [showChangePwDialog, setShowChangePwDialog] = useState(false)
+  const [newRootPassword, setNewRootPassword] = useState('')
+  const [changingPw, setChangingPw] = useState(false)
+  
+  // Change access permission dialog
+  const [showAccessDialog, setShowAccessDialog] = useState(false)
+  const [accessTarget, setAccessTarget] = useState<{ name: string; user: string } | null>(null)
+  const [newAccessType, setNewAccessType] = useState<'local' | 'any' | 'ip'>('local')
+  const [newAllowedIp, setNewAllowedIp] = useState('')
+  const [changingAccess, setChangingAccess] = useState(false)
+  
+  // Change db user password dialog
+  const [showChangePwDbDialog, setShowChangePwDbDialog] = useState(false)
+  const [changePwTarget, setChangePwTarget] = useState<{ name: string; user: string } | null>(null)
+  const [newDbPassword, setNewDbPassword] = useState('')
+  const [changingDbPw, setChangingDbPw] = useState(false)
+  const [updateLocalPassword, setUpdateLocalPassword] = useState(true)
+  
+  // Backup dialog
+  const [showBackupDialog, setShowBackupDialog] = useState(false)
+  const [backupTarget, setBackupTarget] = useState<string | null>(null)
+  const [backups, setBackups] = useState<BackupInfo[]>([])
+  const [backingUp, setBackingUp] = useState(false)
+  const [loadingBackups, setLoadingBackups] = useState(false)
+  
+  // Import dialog
+  const [showImportDialog, setShowImportDialog] = useState(false)
+  const [importTarget, setImportTarget] = useState<string | null>(null)
+  const [importMode, setImportMode] = useState<'upload' | 'backup'>('upload')
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [selectedBackup, setSelectedBackup] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [importBackups, setImportBackups] = useState<BackupInfo[]>([])
+  const [loadingImportBackups, setLoadingImportBackups] = useState(false)
+  
+  // Database credentials from SQLite (key: dbName)
+  const [dbCredentials, setDbCredentials] = useState<Record<string, DbCredential>>({})
+  
+  const fetchDatabases = useCallback(async () => {
+    if (!sessionId) return
+    setLoading(true)
+    try {
+      const list = await invoke<DbInfo[]>('server_list_databases', { sessionId })
+      
+      // Load credentials from SQLite
+      try {
+        const credsList = await invoke<DbCredential[]>('server_get_db_credentials', { sessionId })
+        const credsMap: Record<string, DbCredential> = {}
+        for (const cred of credsList) {
+          credsMap[cred.db_name] = cred
+        }
+        setDbCredentials(credsMap)
+        
+        // Merge credentials into database list
+        const withCredentials = list.map(db => {
+          const cred = credsMap[db.name]
+          return cred ? {
+            ...db,
+            password: cred.password || undefined,
+            access_type: (cred.access_type as 'local' | 'any' | 'ip') || 'local',
+            allowed_ip: cred.allowed_ip || undefined,
+          } : db
+        })
+        setDatabases(withCredentials)
+      } catch (e) {
+        console.error('Failed to load db credentials:', e)
+        setDatabases(list)
+      }
+      
+      // Load remarks from SQLite
+      try {
+        const remarksList = await invoke<[string, string][]>('server_get_db_remarks', { sessionId })
+        const remarksMap: Record<string, string> = {}
+        for (const [dbName, remark] of remarksList) {
+          remarksMap[dbName] = remark
+        }
+        setDbRemarks(remarksMap)
+      } catch (e) {
+        console.error('Failed to load db remarks:', e)
+      }
+      
+      setError('') // Clear error on success
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }, [sessionId])
+  
+  useEffect(() => { fetchDatabases() }, [fetchDatabases])
+  
+  // ponytail: passwords now loaded inline in fetchDatabases, no separate effect needed
+
+  // Filter databases based on search query
+  const filteredDatabases = databases.filter(db => 
+    db.name.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+  
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredDatabases.length / pageSize)
+  const startIndex = (currentPage - 1) * pageSize
+  const paginatedDatabases = filteredDatabases.slice(startIndex, startIndex + pageSize)
+  
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery])
+  
+  const handleCreateDatabase = async () => {
+    if (!newDbName.trim() || !newDbUser.trim() || !newDbPass.trim()) {
+      setMsg('Please fill in all fields')
+      return
+    }
+    
+    // Validate IP if access type is 'ip'
+    if (accessType === 'ip') {
+      const ips = allowedIp.split('\n').map(line => line.trim()).filter(line => line.length > 0)
+      if (ips.length === 0) {
+        setMsg('Please enter allowed IP addresses')
+        return
+      }
+      // Basic validation: check for empty lines or invalid characters
+      const invalidLines = ips.filter(ip => !/^([0-9]{1,3}\.){3}[0-9]{1,3}(\/[0-9]{1,2})?$/.test(ip) && ip !== '%')
+      if (invalidLines.length > 0) {
+        setMsg(`Invalid IP format: ${invalidLines.join(', ')}`)
+        return
+      }
+    }
+    
+    setCreating(true)
+    setMsg('')
+    try {
+      const result = await invoke<string>('server_mysql_create_database', {
+        sessionId,
+        dbName: newDbName.trim(),
+        dbUser: newDbUser.trim(),
+        dbPass: newDbPass.trim(),
+        charset: dbCharset,
+        accessType: accessType,
+        allowedIp: accessType === 'ip' ? allowedIp.trim() : ''
+      })
+      setMsg(result)
+      
+      // Save credentials to SQLite
+      try {
+        await invoke<string>('server_save_db_credentials', {
+          sessionId,
+          dbName: newDbName.trim(),
+          password: savePasswordLocally ? newDbPass : '',
+          accessType,
+          allowedIp: accessType === 'ip' ? allowedIp.trim() : ''
+        })
+        if (savePasswordLocally) {
+          setMsg(result + ' (Password saved)')
+        }
+      } catch (e) {
+        console.error('Failed to save credentials:', e)
+      }
+      
+      setShowCreateDialog(false)
+      setNewDbName('')
+      setNewDbUser('')
+      setNewDbPass('')
+      setSavePasswordLocally(true) // Reset to default
+      setDbCharset('utf8mb4') // Reset to default
+      setAccessType('local') // Reset to default
+      setAllowedIp('')
+      await fetchDatabases()
+    } catch (e) {
+      setMsg(`Creation failed: ${String(e)}`)
+    } finally {
+      setCreating(false)
+    }
+  }
+  
+  const handleDeleteDatabase = async () => {
+    if (!deleteTarget) return
+    
+    setDeleting(true)
+    setMsg('')
+    try {
+      const result = await invoke<string>('server_mysql_delete_database', {
+        sessionId,
+        dbName: deleteTarget.name,
+        dbUser: deleteTarget.name // Default: user has same name as database
+      })
+      setMsg(result)
+      setDeleteTarget(null)
+      await fetchDatabases()
+    } catch (e) {
+      setMsg(`Deletion failed: ${String(e)}`)
+    } finally {
+      setDeleting(false)
+    }
+  }
+  
+  const handleChangeAccess = async () => {
+    if (!accessTarget) return
+    
+    // Validate IP if access type is 'ip'
+    if (newAccessType === 'ip') {
+      const ips = newAllowedIp.split('\n').map(line => line.trim()).filter(line => line.length > 0)
+      if (ips.length === 0) {
+        setMsg('Please enter allowed IP addresses')
+        return
+      }
+      // Basic validation: check for empty lines or invalid characters
+      const invalidLines = ips.filter(ip => !/^([0-9]{1,3}\.){3}[0-9]{1,3}(\/[0-9]{1,2})?$/.test(ip) && ip !== '%')
+      if (invalidLines.length > 0) {
+        setMsg(`Invalid IP format: ${invalidLines.join(', ')}`)
+        return
+      }
+    }
+    
+    setChangingAccess(true)
+    setMsg('')
+    try {
+      const result = await invoke<string>('server_mysql_change_db_access', {
+        sessionId,
+        dbName: accessTarget.name,
+        dbUser: accessTarget.user,
+        accessType: newAccessType,
+        allowedIp: newAccessType === 'ip' ? newAllowedIp.trim() : ''
+      })
+      setMsg(result)
+      
+      // Save access permission to SQLite
+      try {
+        const existingCred = dbCredentials[accessTarget.name]
+        await invoke<string>('server_save_db_credentials', {
+          sessionId,
+          dbName: accessTarget.name,
+          password: existingCred?.password || '',
+          accessType: newAccessType,
+          allowedIp: newAccessType === 'ip' ? newAllowedIp.trim() : ''
+        })
+      } catch (e) {
+        console.error('Failed to save access credentials:', e)
+      }
+      
+      setShowAccessDialog(false)
+      setAccessTarget(null)
+      setNewAccessType('local')
+      setNewAllowedIp('')
+      await fetchDatabases()
+    } catch (e) {
+      setMsg(`Failed to change access: ${String(e)}`)
+    } finally {
+      setChangingAccess(false)
+    }
+  }
+  
+  const togglePasswordVisibility = (dbName: string) => {
+    const newSet = new Set(visiblePasswords)
+    if (newSet.has(dbName)) {
+      newSet.delete(dbName)
+    } else {
+      newSet.add(dbName)
+    }
+    setVisiblePasswords(newSet)
+  }
+  
+  const openAccessDialog = (db: DbInfo) => {
+    setAccessTarget({ name: db.name, user: db.name })
+    // Get current access type from SQLite credentials
+    const cred = dbCredentials[db.name]
+    setNewAccessType((cred?.access_type as any) || 'local')
+    setNewAllowedIp(cred?.allowed_ip || '')
+    setShowAccessDialog(true)
+  }
+  
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+    setMsg('Copied to clipboard')
+    setTimeout(() => setMsg(''), 2000)
+  }
+  
+  const toggleSelectAll = () => {
+    if (selectedDbs.size === paginatedDatabases.length) {
+      setSelectedDbs(new Set())
+    } else {
+      setSelectedDbs(new Set(paginatedDatabases.map(db => db.name)))
+    }
+  }
+  
+  const toggleSelectDb = (dbName: string) => {
+    const newSet = new Set(selectedDbs)
+    if (newSet.has(dbName)) {
+      newSet.delete(dbName)
+    } else {
+      newSet.add(dbName)
+    }
+    setSelectedDbs(newSet)
+  }
+  
+  const handleBatchOperation = () => {
+    if (selectedDbs.size === 0) {
+      setMsg('Please select databases first')
+      return
+    }
+    setMsg(`Batch operation: ${selectedDbs.size} databases selected`)
+  }
+  
+  const handleChangeRootPassword = async () => {
+    if (!newRootPassword.trim()) {
+      setMsg('Please enter a new password')
+      return
+    }
+    if (newRootPassword.length < 6) {
+      setMsg('Password must be at least 6 characters')
+      return
+    }
+    
+    setChangingPw(true)
+    try {
+      const result = await invoke<string>('server_change_mysql_root_password', { 
+        sessionId, 
+        newPassword: newRootPassword 
+      })
+      setMsg(result)
+      setShowChangePwDialog(false)
+      setNewRootPassword('')
+    } catch (e) {
+      setMsg('Change failed: ' + String(e))
+    } finally {
+      setChangingPw(false)
+    }
+  }
+  
+  const handleDoubleClickRemark = (dbName: string) => {
+    setEditingRemark(dbName)
+    setRemarkInput(dbRemarks[dbName] || '')
+  }
+  
+  const handleSaveRemark = async (dbName: string) => {
+    if (!sessionId) return
+    
+    const trimmed = remarkInput.trim()
+    setDbRemarks(prev => ({
+      ...prev,
+      [dbName]: trimmed
+    }))
+    setEditingRemark(null)
+    setRemarkInput('')
+    
+    // Save to SQLite via backend
+    try {
+      await invoke<string>('server_save_db_remark', {
+        sessionId,
+        dbName,
+        remark: trimmed
+      })
+      if (trimmed) {
+        setMsg(`Updated remark for database "${dbName}"`)
+        setTimeout(() => setMsg(''), 2000)
+      }
+    } catch (e) {
+      console.error('Failed to save remark:', e)
+      setMsg('Failed to save remark')
+      setTimeout(() => setMsg(''), 2000)
+    }
+  }
+  
+ const handleCancelEditRemark = () => {
+    setEditingRemark(null)
+    setRemarkInput('')
+  }
+  
+  // ===== Backup and Import handlers =====
+  
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  }
+  
+  const openBackupDialog = async (dbName: string) => {
+    setBackupTarget(dbName)
+    setShowBackupDialog(true)
+    setLoadingBackups(true)
+    setBackups([])
+    try {
+      const list = await invoke<BackupInfo[]>('server_list_db_backups', { sessionId, dbName })
+      setBackups(list)
+    } catch (e) {
+      console.error('Failed to load backups:', e)
+    } finally {
+      setLoadingBackups(false)
+    }
+  }
+  
+  const handleBackup = async () => {
+    if (!backupTarget || !sessionId) return
+    const dbPassword = dbCredentials[backupTarget]?.password || ''
+    if (!dbPassword) {
+      setMsg('Database password not saved. Please save it first when creating or changing password')
+      setTimeout(() => setMsg(''), 3000)
+      return
+    }
+    setBackingUp(true)
+    try {
+      const result = await invoke<string>('server_backup_database', { 
+        sessionId, dbName: backupTarget, dbUser: backupTarget, dbPassword 
+      })
+      setMsg(result)
+      setTimeout(() => setMsg(''), 3000)
+      // Refresh backup list
+      const list = await invoke<BackupInfo[]>('server_list_db_backups', { sessionId, dbName: backupTarget })
+      setBackups(list)
+    } catch (e) {
+      setMsg('Backup failed: ' + String(e))
+      setTimeout(() => setMsg(''), 3000)
+    } finally {
+      setBackingUp(false)
+    }
+  }
+  
+  const handleDeleteBackup = async (filename: string) => {
+    if (!backupTarget || !sessionId) return
+    try {
+      await invoke<string>('server_delete_db_backup', { sessionId, backupFilename: filename })
+      setMsg(`Backup deleted: ${filename}`)
+      setTimeout(() => setMsg(''), 2000)
+      // Refresh backup list
+      const list = await invoke<BackupInfo[]>('server_list_db_backups', { sessionId, dbName: backupTarget })
+      setBackups(list)
+    } catch (e) {
+      setMsg('Failed to delete backup: ' + String(e))
+      setTimeout(() => setMsg(''), 3000)
+    }
+  }
+  
+  const handleDownloadBackup = async (filename: string) => {
+    if (!sessionId) return
+    try {
+      // Call backend to save backup file locally with dialog
+      const localPath = await invoke<string>('server_save_db_backup_to_local', { 
+        sessionId, 
+        backupFilename: filename 
+      })
+      
+      setMsg(`Backup downloaded to: ${localPath}`)
+      setTimeout(() => setMsg(''), 3000)
+    } catch (e) {
+      if (String(e) !== 'Save cancelled') {
+        setMsg('Failed to download backup: ' + String(e))
+        setTimeout(() => setMsg(''), 3000)
+      }
+    }
+  }
+  
+  const openImportDialog = async (dbName: string) => {
+    setImportTarget(dbName)
+    setImportMode('upload')
+    setSelectedFile(null)
+    setSelectedBackup(null)
+    setShowImportDialog(true)
+    // Load backups for the backup mode
+    setLoadingImportBackups(true)
+    try {
+      const list = await invoke<BackupInfo[]>('server_list_db_backups', { sessionId, dbName })
+      setImportBackups(list)
+    } catch (e) {
+      console.error('Failed to load backups for import:', e)
+    } finally {
+      setLoadingImportBackups(false)
+    }
+  }
+  
+  const handleImport = async () => {
+    if (!importTarget || !sessionId) return
+    const dbPassword = dbCredentials[importTarget]?.password || ''
+    if (!dbPassword) {
+      setMsg('Database password not saved. Please save it first when creating or changing password')
+      setTimeout(() => setMsg(''), 3000)
+      return
+    }
+    
+    setImporting(true)
+    try {
+      if (importMode === 'upload' && selectedFile) {
+        // Read file content as text
+        const sqlContent = await selectedFile.text()
+        const result = await invoke<string>('server_import_database_from_file', {
+          sessionId,
+          dbName: importTarget,
+          dbUser: importTarget,
+          dbPassword,
+          sqlContent
+        })
+        setMsg(result)
+      } else if (importMode === 'backup' && selectedBackup) {
+        const result = await invoke<string>('server_import_database_from_backup', {
+          sessionId,
+          dbName: importTarget,
+          dbUser: importTarget,
+          dbPassword,
+          backupFilename: selectedBackup
+        })
+        setMsg(result)
+      } else {
+        setMsg('Please select a file to import')
+        setImporting(false)
+        return
+      }
+      setTimeout(() => setMsg(''), 3000)
+      setShowImportDialog(false)
+    } catch (e) {
+      setMsg('Import failed: ' + String(e))
+      setTimeout(() => setMsg(''), 3000)
+    } finally {
+      setImporting(false)
+    }
+  }
+  
+  const handleImportFromBackup = async (filename: string) => {
+    if (!backupTarget || !sessionId) return
+    const dbPassword = dbCredentials[backupTarget]?.password || ''
+    if (!dbPassword) {
+      setMsg('Database password not saved. Please save it first when creating or changing password')
+      setTimeout(() => setMsg(''), 3000)
+      return
+    }
+    // Close backup dialog and import directly
+    setShowBackupDialog(false)
+    setImporting(true)
+    try {
+      const result = await invoke<string>('server_import_database_from_backup', {
+        sessionId,
+        dbName: backupTarget,
+        dbUser: backupTarget,
+        dbPassword,
+        backupFilename: filename
+      })
+      setMsg(result)
+      setTimeout(() => setMsg(''), 3000)
+    } catch (e) {
+      setMsg('Import failed: ' + String(e))
+      setTimeout(() => setMsg(''), 3000)
+    } finally {
+      setImporting(false)
+    }
+  }
+  
+  return (
+    <div className="panel-container">
+      <div className="panel-header">
+        <h2>Database Management</h2>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button 
+            className="btn-secondary"
+            onClick={fetchDatabases}
+            disabled={loading}
+            title="Refresh database list"
+          >
+            {loading ? 'Loading...' : ' Refresh'}
+          </button>
+          <button className="btn-secondary" onClick={() => setShowChangePwDialog(true)}>
+            Change Root Password
+          </button>
+          <button className="btn-primary" onClick={() => setShowCreateDialog(true)}>
+            Add Database
+          </button>
+        </div>
+      </div>
+      
+      {msg && (
+        <div className={`alert ${msg.includes('failed') || msg.includes('Failed') ? 'alert-error' : 'alert-success'}`}>
+          {msg}
+        </div>
+      )}
+      
+      {error && (
+        <div className="alert alert-error">
+          {error.includes('command not found') || error.toLowerCase().includes('mysql') ? (
+            <>
+              <div style={{ marginBottom: '12px', fontSize: '14px' }}>
+                MySQL is not installed. Please go to Software to install it.
+              </div>
+              {onNavigateToSoftware && (
+                <button 
+                  className="btn-primary"
+                  onClick={onNavigateToSoftware}
+                >
+                  Go to Software
+                </button>
+              )}
+            </>
+          ) : (
+            error
+          )}
+        </div>
+      )}
+      
+      {/* Search and filters */}
+      <div className="toolbar">
+        <input
+          type="text"
+          placeholder="Search databases..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="search-input"
+        />
+      </div>
+      
+      {/* Database table */}
+      <div className="table-wrapper">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th style={{ width: '40px' }}>
+                <input
+                  type="checkbox"
+                  checked={paginatedDatabases.length > 0 && selectedDbs.size === paginatedDatabases.length}
+                  onChange={toggleSelectAll}
+                />
+              </th>
+              <th>Database</th>
+              <th>User</th>
+              <th>Password</th>
+              <th>Backup</th>
+              <th>Location</th>
+              <th>Remark</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={9} style={{ textAlign: 'center', padding: '2rem' }}>
+                  Loading...
+                </td>
+              </tr>
+            ) : paginatedDatabases.length === 0 ? (
+              <tr>
+                <td colSpan={9} style={{ textAlign: 'center', padding: '2rem' }}>
+                  {filteredDatabases.length === 0 ? 'No matching databases found' : 'No databases yet'}
+                </td>
+              </tr>
+            ) : (
+              paginatedDatabases.map((db) => (
+                <tr key={db.name}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={selectedDbs.has(db.name)}
+                      onChange={() => toggleSelectDb(db.name)}
+                    />
+                  </td>
+                  <td>{db.name}</td>
+                  <td>{db.name}</td>
+                  <td>
+                    <span style={{ fontFamily: 'monospace' }}>
+                      {visiblePasswords.has(db.name) ? (
+                        db.password || '(Not saved)'
+                      ) : (
+                        '••••••••'
+                      )}
+                    </span>
+                    <button
+                      className="icon-btn"
+                      onClick={() => togglePasswordVisibility(db.name)}
+                      title={db.password ? (visiblePasswords.has(db.name) ? "Hide password" : "Show password") : "Password not saved for this database"}
+                      disabled={!db.password}
+                      style={{ opacity: db.password ? 1 : 0.3, cursor: db.password ? 'pointer' : 'not-allowed', fontSize: '14px', lineHeight: 1, padding: '2px 4px' }}
+                    >
+                      <span style={visiblePasswords.has(db.name) ? {} : { textDecoration: 'line-through', textDecorationColor: '#f85149', textDecorationThickness: '2px' }}>👁️</span>
+                    </button>
+                    <button
+                      className="icon-btn"
+                      onClick={() => {
+                        if (db.password) {
+                          copyToClipboard(db.password)
+                        } else {
+                          setMsg('Password not saved locally for this database')
+                          setTimeout(() => setMsg(''), 2000)
+                        }
+                      }}
+                      title={db.password ? "Copy password" : "Password not saved for this database"}
+                      disabled={!db.password}
+                      style={{ opacity: db.password ? 1 : 0.3, cursor: db.password ? 'pointer' : 'not-allowed' }}
+                    >
+                      📋
+                    </button>
+                  </td>
+                 <td>
+                    <span 
+                      className="link-text" 
+                      onClick={() => openBackupDialog(db.name)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      Click to backup
+                    </span>
+                    {' | '}
+                    <span 
+                      className="link-text" 
+                      onClick={() => openImportDialog(db.name)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      Import
+                    </span>
+                  </td>
+                  <td>Local database</td>
+                  <td 
+                    onDoubleClick={() => handleDoubleClickRemark(db.name)}
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    title="Double-click to edit remark"
+                  >
+                    {editingRemark === db.name ? (
+                      <input
+                        type="text"
+                        value={remarkInput}
+                        onChange={(e) => setRemarkInput(e.target.value)}
+                        onBlur={() => handleSaveRemark(db.name)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleSaveRemark(db.name)
+                          } else if (e.key === 'Escape') {
+                            handleCancelEditRemark()
+                          }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="form-input"
+                        autoFocus
+                        style={{ width: '100%', padding: '4px 8px', fontSize: '12px' }}
+                      />
+                    ) : (
+                      <span>{dbRemarks[db.name] || '---'}</span>
+                    )}
+                  </td>
+                  <td className="actions">
+                    <button className="action-link">Manage</button>
+                    <span className="separator">|</span>
+                    <button 
+                      className="action-link"
+                      onClick={() => openAccessDialog(db)}
+                      title="Change database access permission"
+                    >
+                      Permission
+                    </button>
+                    <span className="separator">|</span>
+                    <button className="action-link" onClick={() => { setChangePwTarget({ name: db.name, user: db.name }); setNewDbPassword(''); setShowChangePwDbDialog(true); }}>Change PW</button>
+                    <span className="separator">|</span>
+                    <button 
+                      className="action-link danger"
+                      onClick={() => setDeleteTarget(db)}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      
+      {/* Bottom toolbar with batch operations and pagination */}
+      <div className="bottom-toolbar">
+        <div className="batch-ops">
+          <select className="select-box">
+            <option>Select batch operation</option>
+            <option>Export selected databases</option>
+            <option>Delete selected databases</option>
+          </select>
+          <button className="btn-secondary" onClick={handleBatchOperation}>
+            Batch Operation
+          </button>
+        </div>
+        
+        <div className="pagination">
+          <button 
+            className="page-btn"
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage(prev => prev - 1)}
+          >
+            &lt;
+          </button>
+          <span className="page-info">{currentPage}</span>
+          <button 
+            className="page-btn"
+            disabled={currentPage >= totalPages}
+            onClick={() => setCurrentPage(prev => prev + 1)}
+          >
+            &gt;
+          </button>
+          
+          <select 
+            className="page-size-select"
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+          >
+            <option value={10}>10/page</option>
+            <option value={20}>20/page</option>
+            <option value={50}>50/page</option>
+          </select>
+          
+          <span className="total-info">
+            Total: {filteredDatabases.length}
+          </span>
+          
+          <span className="goto-page">
+            Go to
+            <input 
+              type="number" 
+              min={1} 
+              max={totalPages}
+              value={currentPage}
+              onChange={(e) => {
+                const page = Number(e.target.value)
+                if (page >= 1 && page <= totalPages) {
+                  setCurrentPage(page)
+                }
+              }}
+              className="page-input"
+            />
+          </span>
+        </div>
+      </div>
+      
+      {/* Create Database Dialog */}
+      {showCreateDialog && (
+        <div className="modal-overlay">
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0 }}>Create Database</h3>
+              <button 
+                onClick={() => setShowCreateDialog(false)}
+                style={{ background: 'none', border: 'none', color: '#8b949e', fontSize: '24px', cursor: 'pointer', padding: '0', lineHeight: 1 }}
+                title="Close"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div className="form-group">
+                <label><span style={{ color: '#ff4d4f' }}>*</span> Database Name:</label>
+                <input
+                  type="text"
+                  value={newDbName}
+                  onChange={(e) => {
+                    const dbName = e.target.value
+                    setNewDbName(dbName)
+                    // Auto-sync username with database name (always sync)
+                    setNewDbUser(dbName)
+                  }}
+                  placeholder="e.g.: mydb"
+                  className="form-input"
+                  style={{ width: '160px' }}
+                />
+              </div>
+              
+              <div className="form-group">
+                <label><span style={{ color: '#ff4d4f' }}>*</span> Username:</label>
+                <input
+                  type="text"
+                  value={newDbUser}
+                  onChange={(e) => setNewDbUser(e.target.value)}
+                  placeholder="e.g.: myuser"
+                  className="form-input"
+                  style={{ width: '160px' }}
+                />
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
+              <div className="form-group" style={{ flex: 3 }}>
+                <label><span style={{ color: '#ff4d4f' }}>*</span> Password:</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    value={newDbPass}
+                    onChange={(e) => setNewDbPass(e.target.value)}
+                    placeholder="Enter password"
+                    className="form-input"
+                    style={{ flex: 1 }}
+                  />
+                  <button 
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => {
+                      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*'
+                      let pass = ''
+                      for (let i = 0; i < 16; i++) {
+                        pass += chars.charAt(Math.floor(Math.random() * chars.length))
+                      }
+                      setNewDbPass(pass)
+                    }}
+                    title="Generate random password"
+                    style={{ padding: '6px 8px', fontSize: '14px', lineHeight: 1, minWidth: 'auto' }}
+                  >
+                    🔄
+                  </button>
+                </div>
+              </div>
+              
+              <div className="form-group" style={{ flex: 1, maxWidth: '140px' }}>
+                <label>Charset:</label>
+                <select
+                  value={dbCharset}
+                  onChange={(e) => setDbCharset(e.target.value)}
+                  className="form-input"
+                >
+                  <option value="utf8mb4">utf8mb4</option>
+                  <option value="utf8">utf8</option>
+                  <option value="gbk">gbk</option>
+                  <option value="big5">big5</option>
+                  <option value="latin1">latin1</option>
+                </select>
+              </div>
+            </div>
+            
+            <div className="form-group">
+              <label>Access:</label>
+              <select
+                value={accessType}
+                onChange={(e) => setAccessType(e.target.value as any)}
+                className="form-input"
+              >
+                <option value="local">Local server (localhost)</option>
+                <option value="any">Anyone (any host %)</option>
+                <option value="ip">Specific IP</option>
+              </select>
+            </div>
+            
+            {accessType === 'ip' && (
+              <div className="form-group">
+                <label>Allowed IPs:</label>
+                <textarea
+                  value={allowedIp}
+                  onChange={(e) => {
+                    // Auto-convert spaces/commas to newlines
+                    const val = e.target.value.replace(/[,，\s]+/g, '\n')
+                    setAllowedIp(val)
+                  }}
+                  placeholder={`One IP address or range per line, e.g.:
+192.168.1.100
+192.168.1.%
+10.0.0.0/8`}
+                  className="form-input"
+                  style={{ minHeight: '100px', resize: 'vertical' as const, fontFamily: 'monospace', fontSize: '13px' }}
+                />
+                <small style={{ color: '#8b949e', fontSize: '12px' }}>
+                  One IP (192.168.1.100) or IP range (192.168.1.% or 10.0.0.0/8) per line
+                </small>
+              </div>
+            )}
+            
+            <div style={{ marginBottom: '16px' }} title="Note: MySQL passwords are encrypted and cannot be read from config. We save them to the sqlite database in the software directory.">
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={savePasswordLocally}
+                  onChange={(e) => setSavePasswordLocally(e.target.checked)}
+                  style={{ width: 'auto', margin: 0 }}
+                />
+                <span>Save password locally (for easy viewing)</span>
+              </label>
+            </div>
+            
+            <div className="modal-actions">
+              <button 
+                className="btn-secondary"
+                onClick={() => setShowCreateDialog(false)}
+                disabled={creating}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn-primary"
+                onClick={handleCreateDatabase}
+                disabled={creating}
+              >
+                {creating ? 'Creating...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Delete Confirmation Dialog */}
+      {deleteTarget && (
+        <div className="modal-overlay">
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button 
+              className="modal-close-btn"
+              onClick={() => { setDeleteTarget(null); setDeleteConfirmName(''); }}
+              title="Close"
+            >×</button>
+            <h3>Confirm Delete</h3>
+            <p style={{ color: '#f85149', fontSize: '13px', margin: '8px 0' }}>This will delete database "<strong>{deleteTarget.name}</strong>" and its associated users. This cannot be undone!</p>
+            
+            <div className="form-group">
+              <label style={{ fontSize: '13px' }}>Please enter database name <code style={{ background: '#21262d', padding: '2px 6px', borderRadius: '4px', color: '#f85149' }}>{deleteTarget.name}</code> to confirm:</label>
+              <input
+                type="text"
+                value={deleteConfirmName}
+                onChange={(e) => setDeleteConfirmName(e.target.value)}
+                placeholder={deleteTarget.name}
+                className="form-input"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && deleteConfirmName.trim().toLowerCase() === deleteTarget.name.toLowerCase()) {
+                    handleDeleteDatabase()
+                  } else if (e.key === 'Escape') {
+                    setDeleteTarget(null)
+                    setDeleteConfirmName('')
+                  }
+                }}
+              />
+            </div>
+            
+            <div className="modal-actions">
+              <button 
+                className="btn-secondary"
+                onClick={() => { setDeleteTarget(null); setDeleteConfirmName(''); }}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn-danger"
+                onClick={handleDeleteDatabase}
+                disabled={deleting || deleteConfirmName.trim().toLowerCase() !== deleteTarget.name.toLowerCase()}
+              >
+                {deleting ? 'Deleting...' : 'Confirm Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Change Root Password Dialog */}
+      {showChangePwDialog && (
+        <div className="modal-overlay">
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button 
+              className="modal-close-btn"
+              onClick={() => setShowChangePwDialog(false)}
+              title="Close"
+            >×</button>
+            <h3>Change MySQL root Password</h3>
+                  
+            <div className="form-group">
+              <label>New Password:</label>
+              <input
+                type="password"
+                value={newRootPassword}
+                onChange={(e) => setNewRootPassword(e.target.value)}
+                placeholder="Enter new password (min 6 chars)"
+                className="form-input"
+              />
+            </div>
+                  
+            <div style={{ marginBottom: '12px', fontSize: '12px', color: '#888' }}>
+              ⚠️ Note: Please update all application configurations using this password after changing it.
+            </div>
+                  
+            <div className="modal-actions">
+              <button 
+                className="btn-secondary"
+                onClick={() => setShowChangePwDialog(false)}
+                disabled={changingPw}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn-primary"
+                onClick={handleChangeRootPassword}
+                disabled={changingPw}
+              >
+                {changingPw ? 'Changing...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+            
+      {/* Change Access Permission Dialog */}
+      {showAccessDialog && accessTarget && (
+        <div className="modal-overlay">
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0 }}>Change Access - {accessTarget.name}</h3>
+              <button 
+                onClick={() => setShowAccessDialog(false)}
+                style={{ background: 'none', border: 'none', color: '#8b949e', fontSize: '24px', cursor: 'pointer', padding: '0', lineHeight: 1 }}
+                title="Close"
+              >
+                ×
+              </button>
+            </div>
+                  
+            <div className="form-group">
+              <label>Access:</label>
+              <select
+                value={newAccessType}
+                onChange={(e) => setNewAccessType(e.target.value as any)}
+                className="form-input"
+              >
+                <option value="local">Local server (localhost)</option>
+                <option value="any">Anyone (any host %)</option>
+                <option value="ip">Specific IP</option>
+              </select>
+            </div>
+                  
+            {newAccessType === 'ip' && (
+              <div className="form-group">
+                <label>Allowed IPs:</label>
+                <textarea
+                  value={newAllowedIp}
+                  onChange={(e) => {
+                    // Auto-convert spaces/commas to newlines
+                    const val = e.target.value.replace(/[,，\s]+/g, '\n')
+                    setNewAllowedIp(val)
+                  }}
+                  placeholder={`One IP address or range per line, e.g.:
+192.168.1.100
+192.168.1.%
+10.0.0.0/8`}
+                  className="form-input"
+                  style={{ minHeight: '100px', resize: 'vertical' as const, fontFamily: 'monospace', fontSize: '13px' }}
+                />
+                <small style={{ color: '#8b949e', fontSize: '12px' }}>
+                  One IP (192.168.1.100) or IP range (192.168.1.% or 10.0.0.0/8) per line
+                </small>
+              </div>
+            )}
+                  
+            <div style={{ marginBottom: '12px', fontSize: '12px', color: '#888' }}>
+               Tip: Changing access permissions requires re-authorizing the database user.
+            </div>
+                  
+            <div className="modal-actions">
+              <button 
+                className="btn-secondary"
+                onClick={() => setShowAccessDialog(false)}
+                disabled={changingAccess}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn-primary"
+                onClick={handleChangeAccess}
+                disabled={changingAccess}
+              >
+                {changingAccess ? 'Changing...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Change DB User Password Dialog */}
+      {showChangePwDbDialog && changePwTarget && (
+        <div className="modal-overlay">
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button 
+              className="modal-close-btn"
+              onClick={() => setShowChangePwDbDialog(false)}
+              title="Close"
+            >×</button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0 }}>Change Password - {changePwTarget.name}</h3>
+            </div>
+            
+            <div className="form-group">
+              <label>New Password:</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  value={newDbPassword}
+                  onChange={(e) => setNewDbPassword(e.target.value)}
+                  placeholder="Enter new password (min 6 chars)"
+                  className="form-input"
+                  style={{ flex: 1 }}
+                  autoFocus
+                />
+                <button 
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*'
+                    let pass = ''
+                    for (let i = 0; i < 16; i++) {
+                      pass += chars.charAt(Math.floor(Math.random() * chars.length))
+                    }
+                    setNewDbPassword(pass)
+                  }}
+                  title="Generate random password"
+                  style={{ padding: '6px 8px', fontSize: '14px', lineHeight: 1, minWidth: 'auto' }}
+                >
+                  🔄
+                </button>
+              </div>
+            </div>
+            
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={updateLocalPassword}
+                  onChange={(e) => setUpdateLocalPassword(e.target.checked)}
+                  style={{ width: 'auto', margin: 0 }}
+                />
+                <span>Sync update locally saved password</span>
+              </label>
+            </div>
+            
+            <div className="modal-actions">
+              <button 
+                className="btn-secondary"
+                onClick={() => setShowChangePwDbDialog(false)}
+                disabled={changingDbPw}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn-primary"
+                onClick={async () => {
+                  if (!newDbPassword.trim()) { setMsg('Please enter a new password'); return }
+                  if (newDbPassword.length < 6) { setMsg('Password must be at least 6 characters'); return }
+                  setChangingDbPw(true)
+                  try {
+                    const cred = dbCredentials[changePwTarget.name]
+                    const savedAccessType = cred?.access_type || 'local'
+                    const savedAllowedIp = cred?.allowed_ip || ''
+                    const result = await invoke<string>('server_change_db_user_password', {
+                      sessionId,
+                      dbUser: changePwTarget.user,
+                      newPassword: newDbPassword,
+                      accessType: savedAccessType,
+                      allowedIp: savedAllowedIp
+                    })
+                    setMsg(result)
+                    // Update password in SQLite
+                    try {
+                      await invoke<string>('server_update_db_credential_password', {
+                        sessionId,
+                        dbName: changePwTarget.name,
+                        password: updateLocalPassword ? newDbPassword : ''
+                      })
+                    } catch (e) {
+                      console.error('Failed to update credential password:', e)
+                    }
+                    await fetchDatabases()
+                    setShowChangePwDbDialog(false)
+                    setNewDbPassword('')
+                  } catch (e) {
+                    setMsg('Change failed: ' + String(e))
+                  } finally {
+                    setChangingDbPw(false)
+                  }
+                }}
+                disabled={changingDbPw}
+              >
+                {changingDbPw ? 'Changing...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Backup Dialog */}
+      {showBackupDialog && backupTarget && (
+        <div className="modal-overlay">
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px' }}>
+            <button 
+              className="modal-close-btn"
+              onClick={() => setShowBackupDialog(false)}
+              title="Close"
+            >×</button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0 }}>Backup Database - {backupTarget}</h3>
+            </div>
+            
+            <div style={{ marginBottom: '16px', fontSize: '13px', color: '#8b949e' }}>
+              Backup files are saved in /tmp/db_backups/ on the server (.zip format)
+            </div>
+            
+            {/* Backup list */}
+            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '16px', border: '1px solid #30363d', borderRadius: '6px' }}>
+              {loadingBackups ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: '#8b949e' }}>Loading...</div>
+              ) : backups.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: '#8b949e' }}>No backup files</div>
+              ) : (
+                <table className="data-table" style={{ margin: 0 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ fontSize: '12px' }}>Filename</th>
+                      <th style={{ fontSize: '12px', width: '80px' }}>Size</th>
+                      <th style={{ fontSize: '12px', width: '160px' }}>Created</th>
+                      <th style={{ fontSize: '12px', width: '180px' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {backups.map((backup) => (
+                      <tr key={backup.filename}>
+                        <td style={{ fontSize: '12px', fontFamily: 'monospace' }}>{backup.filename}</td>
+                        <td style={{ fontSize: '12px' }}>{formatBytes(backup.size_bytes)}</td>
+                        <td style={{ fontSize: '12px' }}>{backup.created_at}</td>
+                        <td>
+                          <button 
+                            className="action-link"
+                            onClick={() => handleDownloadBackup(backup.filename)}
+                            style={{ fontSize: '12px' }}
+                          >
+                            Download
+                          </button>
+                          <span className="separator">|</span>
+                          <button 
+                            className="action-link"
+                            onClick={() => handleImportFromBackup(backup.filename)}
+                            disabled={importing}
+                            style={{ fontSize: '12px' }}
+                          >
+                            Import
+                          </button>
+                          <span className="separator">|</span>
+                          <button 
+                            className="action-link danger"
+                            onClick={() => handleDeleteBackup(backup.filename)}
+                            style={{ fontSize: '12px' }}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            
+            <div className="modal-actions">
+              <button 
+                className="btn-secondary"
+                onClick={() => setShowBackupDialog(false)}
+                disabled={backingUp}
+              >
+                Close
+              </button>
+              <button 
+                className="btn-primary"
+                onClick={handleBackup}
+                disabled={backingUp}
+              >
+                {backingUp ? 'Backing up...' : 'Backup Now'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Import Dialog */}
+      {showImportDialog && importTarget && (
+        <div className="modal-overlay">
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <button 
+              className="modal-close-btn"
+              onClick={() => setShowImportDialog(false)}
+              title="Close"
+            >×</button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0 }}>Import Database - {importTarget}</h3>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+              <button 
+                className={importMode === 'upload' ? 'btn-primary' : 'btn-secondary'}
+                onClick={() => setImportMode('upload')}
+                style={{ flex: 1 }}
+              >
+                Upload File
+              </button>
+              <button 
+                className={importMode === 'backup' ? 'btn-primary' : 'btn-secondary'}
+                onClick={() => setImportMode('backup')}
+                style={{ flex: 1 }}
+              >
+                Import from Backup
+              </button>
+            </div>
+            
+            {importMode === 'upload' ? (
+              <div className="form-group">
+                <label>Select SQL File:</label>
+                <input
+                  type="file"
+                  accept=".sql"
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                  className="form-input"
+                  style={{ padding: '8px' }}
+                />
+                {selectedFile && (
+                  <div style={{ marginTop: '8px', fontSize: '12px', color: '#8b949e' }}>
+                    Selected: {selectedFile.name} ({formatBytes(selectedFile.size)})
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="form-group">
+                <label>Select Backup File:</label>
+                {loadingImportBackups ? (
+                  <div style={{ padding: '12px', textAlign: 'center', color: '#8b949e' }}>Loading...</div>
+                ) : importBackups.length === 0 ? (
+                  <div style={{ padding: '12px', textAlign: 'center', color: '#8b949e', border: '1px solid #30363d', borderRadius: '6px' }}>
+                    No backup files. Please create a backup first.
+                  </div>
+                ) : (
+                  <select
+                    value={selectedBackup || ''}
+                    onChange={(e) => setSelectedBackup(e.target.value)}
+                    className="form-input"
+                  >
+                    <option value="">-- Select backup file --</option>
+                    {importBackups.map((backup) => (
+                      <option key={backup.filename} value={backup.filename}>
+                        {backup.filename} ({formatBytes(backup.size_bytes)}) - {backup.created_at}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+            
+            <div style={{ marginBottom: '16px', padding: '10px', background: '#f8514922', borderRadius: '6px', fontSize: '12px', color: '#f85149' }}>
+              ⚠️ Warning: Importing will overwrite existing data. Please make sure you have backed up current data!
+            </div>
+            
+            <div className="modal-actions">
+              <button 
+                className="btn-secondary"
+                onClick={() => setShowImportDialog(false)}
+                disabled={importing}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn-primary"
+                onClick={handleImport}
+                disabled={importing || (importMode === 'upload' ? !selectedFile : !selectedBackup)}
+              >
+                {importing ? 'Importing...' : 'Start Import'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

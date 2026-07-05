@@ -1,0 +1,54 @@
+schema_version: 1
+module_path: ""
+title: Tauri SSH 桌面应用
+scope:
+    - README.md
+    - .gitignore
+    - package.json
+    - package-lock.json
+    - tsconfig.json
+    - vite.config.ts
+    - index.html
+    - public\favicon.svg
+    - public\icons.svg
+    - src-tauri\.gitignore
+    - src-tauri\Cargo.lock
+    - src-tauri\Cargo.toml
+    - src-tauri\build.rs
+    - src-tauri\capabilities\default.json
+    - src-tauri\gen\schemas\acl-manifests.json
+    - src-tauri\gen\schemas\capabilities.json
+    - src-tauri\gen\schemas\desktop-schema.json
+    - src-tauri\gen\schemas\windows-schema.json
+    - src-tauri\icons\128x128.png
+    - src-tauri\icons\128x128@2x.png
+    - src-tauri\icons\32x32.png
+    - src-tauri\icons\Square107x107Logo.png
+    - src-tauri\icons\Square142x142Logo.png
+    - src-tauri\icons\Square150x150Logo.png
+    - src-tauri\icons\Square284x284Logo.png
+    - src-tauri\icons\Square30x30Logo.png
+    - src-tauri\icons\Square310x310Logo.png
+    - src-tauri\icons\Square44x44Logo.png
+    - src-tauri\icons\Square71x71Logo.png
+    - src-tauri\icons\Square89x89Logo.png
+    - src-tauri\icons\StoreLogo.png
+    - src-tauri\icons\icon.icns
+    - src-tauri\icons\icon.ico
+    - src-tauri\icons\icon.png
+    - src-tauri\src\config.rs
+    - src-tauri\src\lib.rs
+    - src-tauri\src\main.rs
+    - src-tauri\src\ssh.rs
+    - src-tauri\tauri.conf.json
+    - src\App.css
+    - src\App.tsx
+    - src\assets\hero.png
+    - src\components\ConnectForm.tsx
+    - src\components\FileBrowser.tsx
+    - src\components\Sidebar.tsx
+    - src\components\Terminal.tsx
+    - src\main.tsx
+source_files: []
+depends_on: []
+related_to: []

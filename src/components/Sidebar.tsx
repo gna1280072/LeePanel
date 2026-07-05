@@ -49,6 +49,7 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
   const [showEditPassword, setShowEditPassword] = useState(false)
   const [creating, setCreating] = useState<NewConnectionData | null>(null)
   const [showCreatePassword, setShowCreatePassword] = useState(false)
+  const [hasCheckedEmpty, setHasCheckedEmpty] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -78,6 +79,20 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
   const loadConnections = async () => {
     const list = await invoke<Connection[]>('config_list')
     setConnections(list)
+    
+    // Check if empty on first load only
+    if (!hasCheckedEmpty && list.length === 0) {
+      setCreating({
+        name: '',
+        host: '',
+        port: 22,
+        username: 'root',
+        auth_type: 'password',
+        password: '',
+        remember_me: false
+      })
+      setHasCheckedEmpty(true)
+    }
   }
 
   const handleDelete = async (id: string) => {
@@ -254,7 +269,7 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
       )}
       {/* Edit Modal */}
       {editing && (
-        <div className="sidebar-confirm-overlay" onClick={() => setEditing(null)}>
+        <div className="sidebar-confirm-overlay">
           <div className="sidebar-edit-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="sidebar-edit-header">
               <div className="sidebar-confirm-title">Edit Connection</div>
@@ -349,7 +364,7 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
       )}
       {/* Create New Connection Modal */}
       {creating && (
-        <div className="sidebar-confirm-overlay" onClick={() => setCreating(null)}>
+        <div className="sidebar-confirm-overlay">
           <div className="sidebar-edit-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="sidebar-edit-header">
               <div className="sidebar-confirm-title">New Connection</div>

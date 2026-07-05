@@ -482,8 +482,8 @@ function App() {
     // ponytail: no-op, kept for interface compatibility
   }
 
-  const showAuthDialog = (host: string, port: number, username: string, onRetry: (params: { username: string; password?: string; keyPath?: string }) => void) => {
-    setPasswordPrompt({ show: true, host, username, port, retryFn: (params) => { setPasswordPrompt(p => ({ ...p, show: false })); onRetry(params) } })
+  const showAuthDialog = (host: string, port: number, username: string, configId: string | undefined, onRetry: (params: { username: string; password?: string; keyPath?: string }) => void) => {
+    setPasswordPrompt({ show: true, host, username, port, configId, retryFn: (params) => { setPasswordPrompt(p => ({ ...p, show: false })); onRetry(params) } })
   }
 
   const handleDirectConnect = async (conn: SidebarConnection) => {
@@ -525,7 +525,7 @@ function App() {
       }).catch(e => {
         const msg = String(e)
         if (isAuthError(msg)) {
-          showAuthDialog(conn.host, conn.port, username, (params) => doConnect(params.username, params.password, params.keyPath))
+          showAuthDialog(conn.host, conn.port, username, conn.id, (params) => doConnect(params.username, params.password, params.keyPath))
         } else {
           setError(msg)
         }
@@ -539,14 +539,14 @@ function App() {
     if (conn.remember_me) {
       if (conn.auth_type === 'password' && !conn.password) {
         // No stored password - show prompt dialog
-        showAuthDialog(conn.host, conn.port, conn.username, (params) => doConnect(params.username, params.password, params.keyPath))
+        showAuthDialog(conn.host, conn.port, conn.username, conn.id, (params) => doConnect(params.username, params.password, params.keyPath))
         return
       }
       if (conn.auth_type === 'password') password = conn.password
       if (conn.auth_type === 'key') keyPath = conn.key_path
     } else {
       // If remember_me is false, always show auth dialog
-      showAuthDialog(conn.host, conn.port, conn.username, (params) => doConnect(params.username, params.password, params.keyPath))
+      showAuthDialog(conn.host, conn.port, conn.username, conn.id, (params) => doConnect(params.username, params.password, params.keyPath))
       return
     }
 
@@ -679,6 +679,7 @@ function PasswordPromptDialog({ host, username, configId, onSubmit, onCancel }: 
             password: rememberMe && authType === 'password' ? pw : undefined,
           },
         })
+        console.log('Credentials saved:', { configId, rememberMe, authType })
       } catch (err) {
         console.error('Failed to save credentials:', err)
       }
@@ -694,9 +695,12 @@ function PasswordPromptDialog({ host, username, configId, onSubmit, onCancel }: 
   const canSubmit = authType === 'password' ? !!pw : !!keyPath
 
   return (
-    <div className="fb-dialog-overlay" onClick={onCancel}>
+    <div className="fb-dialog-overlay">
       <div className="fb-dialog password-prompt-dialog" onClick={(e) => e.stopPropagation()}>
-        <div className="fb-dialog-title">Incorrect password, please re-enter</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div className="fb-dialog-title">Incorrect password, please re-enter</div>
+          <button type="button" onClick={onCancel} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: 20, padding: '4px 8px' }}>×</button>
+        </div>
         <form onSubmit={handleSubmit}>
           <div className="edit-field">
             <label>Server: <span className="edit-hint">{host}</span></label>

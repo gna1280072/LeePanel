@@ -912,6 +912,17 @@ body {
   box-shadow: inset 0 0 0 2px #58a6ff;
 }
 
+.fb-not-connected {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fb-not-connected-msg {
+  color: #484f58;
+  font-size: 16px;
+}
+
 .fb-rubber-band {
   position: fixed;
   border: 1px solid #58a6ff;

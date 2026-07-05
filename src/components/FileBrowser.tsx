@@ -1304,6 +1304,14 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     onDrop: onDropWrapper,
   }
 
+  if (!sessionId) {
+    return (
+      <div className="file-browser fb-not-connected">
+        <div className="fb-not-connected-msg">Not connected</div>
+      </div>
+    )
+  }
+
   return (
     <div
       ref={fileBrowserRef}

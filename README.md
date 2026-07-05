@@ -55,8 +55,8 @@
 ```bash
 # 环境要求：Node.js 20+、Rust stable、Git
 
-git clone https://github.com/gna1280072/ssh-tool.git
-cd ssh-tool
+git clone https://github.com/gna1280072/LeePanel.git
+cd LeePanel
 npm install
 
 # 开发模式（Vite dev server + Rust 窗口）

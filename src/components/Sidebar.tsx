@@ -263,24 +263,30 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
             <div className="sidebar-edit-fields">
               <label>Name</label>
               <input className="sidebar-edit-input" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
-              <label>Host</label>
-              <input className="sidebar-edit-input" value={editing.host} onChange={(e) => setEditing({ ...editing, host: e.target.value })} />
-              <label>Port</label>
-              <input 
-                className="sidebar-edit-input" 
-                type="number" 
-                value={editing.port || ''} 
-                onChange={(e) => {
-                  const val = e.target.value
-                  setEditing({ ...editing, port: val === '' ? 0 : Number(val) })
-                }}
-                onBlur={(e) => {
-                  const val = e.target.value
-                  if (val === '' || val.trim() === '') {
-                    setEditing({ ...editing, port: 0 })
-                  }
-                }}
-              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <label>Host</label>
+                  <input className="sidebar-edit-input" value={editing.host} onChange={(e) => setEditing({ ...editing, host: e.target.value })} />
+                </div>
+                <div style={{ width: 80 }}>
+                  <label>Port</label>
+                  <input 
+                    className="sidebar-edit-input" 
+                    type="number" 
+                    value={editing.port || ''} 
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setEditing({ ...editing, port: val === '' ? 0 : Number(val) })
+                    }}
+                    onBlur={(e) => {
+                      const val = e.target.value
+                      if (val === '' || val.trim() === '') {
+                        setEditing({ ...editing, port: 0 })
+                      }
+                    }}
+                  />
+                </div>
+              </div>
               <label>Username</label>
               <input className="sidebar-edit-input" value={editing.username} onChange={(e) => setEditing({ ...editing, username: e.target.value })} />
               <label>Auth Type</label>
@@ -344,24 +350,30 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
             <div className="sidebar-edit-fields">
               <label>Name</label>
               <input className="sidebar-edit-input" value={creating.name} onChange={(e) => setCreating({ ...creating, name: e.target.value })} placeholder="Server name" />
-              <label>Host</label>
-              <input className="sidebar-edit-input" value={creating.host} onChange={(e) => setCreating({ ...creating, host: e.target.value })} placeholder="192.168.1.1" />
-              <label>Port</label>
-              <input 
-                className="sidebar-edit-input" 
-                type="number" 
-                value={creating.port || ''} 
-                onChange={(e) => {
-                  const val = e.target.value
-                  setCreating({ ...creating, port: val === '' ? 0 : Number(val) })
-                }}
-                onBlur={(e) => {
-                  const val = e.target.value
-                  if (val === '' || val.trim() === '') {
-                    setCreating({ ...creating, port: 0 })
-                  }
-                }}
-              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <label>Host</label>
+                  <input className="sidebar-edit-input" value={creating.host} onChange={(e) => setCreating({ ...creating, host: e.target.value })} placeholder="192.168.1.1" />
+                </div>
+                <div style={{ width: 80 }}>
+                  <label>Port</label>
+                  <input 
+                    className="sidebar-edit-input" 
+                    type="number" 
+                    value={creating.port || ''} 
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setCreating({ ...creating, port: val === '' ? 0 : Number(val) })
+                    }}
+                    onBlur={(e) => {
+                      const val = e.target.value
+                      if (val === '' || val.trim() === '') {
+                        setCreating({ ...creating, port: 0 })
+                      }
+                    }}
+                  />
+                </div>
+              </div>
               <label>Username</label>
               <input className="sidebar-edit-input" value={creating.username} onChange={(e) => setCreating({ ...creating, username: e.target.value })} placeholder="root" />
               <label>Auth Type</label>

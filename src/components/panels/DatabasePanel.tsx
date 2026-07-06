@@ -676,6 +676,13 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
         />
       </div>
       
+      {/* ponytail: search results hint */}
+      {searchQuery && (
+        <div style={{ color: '#ef4444', marginBottom: '12px', fontSize: '14px' }}>
+          {t('database.searchResultsHint')}
+        </div>
+      )}
+      
       {/* Database table */}
       <div className="table-wrapper">
         <table className="data-table">

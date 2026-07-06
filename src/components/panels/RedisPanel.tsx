@@ -518,6 +518,13 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
         </button>
       </div>
       
+      {/* ponytail: search results hint */}
+      {searchQuery && (
+        <div style={{ color: '#ef4444', marginBottom: '12px', fontSize: '14px' }}>
+          {t('redis.searchResultsHint')}
+        </div>
+      )}
+      
       {/* Keys Table */}
       <div className="table-wrapper">
         <table className="data-table">

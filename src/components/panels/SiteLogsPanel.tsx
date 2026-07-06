@@ -227,6 +227,13 @@ export default function SiteLogsPanel({ sessionId }: SiteLogsPanelProps) {
         <div className="site-logs-status">{t('logs.noLogFiles', { domain: selectedSite })}</div>
       )}
 
+      {/* ponytail: search results hint */}
+      {searchTerm && (
+        <div style={{ color: '#ef4444', marginBottom: '8px', fontSize: '14px' }}>
+          {t('logs.searchResultsHint')}
+        </div>
+      )}
+
       <pre ref={logRef} className="site-logs-content">
         {logLoading ? t('logs.loadingContent') : filteredContent || t('logs.selectToView')}
       </pre>

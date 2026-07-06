@@ -1,105 +1,136 @@
 # LeePanel
 
-基于 Tauri 2 的Linux服务器面板SSH管理工具，集成终端、文件管理、LNMP 环境管理、站点管理等功能。可视化操作Linux服务器。让服务器管理变得简单。
+A cross-platform desktop application for SSH server management, built with Tauri 2 and React. LeePanel provides an all-in-one remote management experience for DevOps engineers and developers.
 
-## 功能
+[中文文档](README.zh-CN.md)
 
-**连接与终端**
-- SSH 连接管理（密码 / 密钥认证）
-- 集成 xterm.js 终端，支持剪贴板、Web 链接
-- 断线自动重连（可配置间隔和次数）
+## Features
 
-**文件管理**
-- 远程文件浏览（目录导航、排序、搜索）
-- 文件上传 / 下载（支持拖拽、断点续传）
-- 压缩 / 解压、权限设置
-- 收藏夹（按服务器独立存储）
+### Connection & Terminal
+- SSH password / key authentication
+- Full-featured xterm.js terminal with clipboard and web links support
+- Auto-reconnect on connection loss
 
-**LNMP 环境**
-- 一键安装 LNMP（Nginx + MySQL + PHP）
-- 服务管理（启动 / 停止 / 重启 / 状态查看）
-- MySQL 进程查看与 SQL 查询
+### File Management
+- Remote file browser with drag-and-drop upload/download
+- Compress / extract archives (zip, tar.gz)
+- File permission management
+- Favorites for quick access
 
-**站点管理**
-- 创建 / 编辑 / 删除 Nginx 虚拟主机
-- SSL 证书自动申请（Let's Encrypt / certbot）
-- 反向代理配置
-- 防盗链设置
-- PHP 多版本支持、运行目录、open_basedir
-- 站点日志查看
+### LNMP Stack Management
+- One-click Nginx, MySQL/MariaDB, PHP-FPM installation
+- Service start / stop / restart / reload controls
+- Real-time status monitoring
 
-**系统与网络**
-- 系统信息仪表盘（CPU、内存、磁盘、负载）
-- 防火墙规则管理
-- BBR 网络加速开关
-- Docker 容器与镜像管理
-- 软件仓库
+### Site Management
+- Nginx virtual host creation and configuration
+- Let's Encrypt SSL certificate management
+- Reverse proxy setup with WebSocket support
+- Hotlink protection
+- PHP version switching per site
+- Rewrite rules management
 
-**数据存储**
-- 全部配置持久化到 SQLite（连接信息、站点设置、收藏夹、UI 状态）
-- 按服务器 IP 区分站点数据
+### Database Management
+- MySQL/MariaDB database CRUD operations
+- User permission management (localhost / any host / specific IP)
+- Database backup and restore (zip format)
+- SQL file import
+- Root password management
 
-## 技术栈
+### Redis Management
+- Key browsing with SCAN-based pagination
+- Key CRUD operations with TTL support
+- Multi-database (DB0–DB15) switching
+- Database flush with confirmation
+- Backup and restore
 
-| 层级 | 技术 |
-|------|------|
-| 前端 | React 19 + TypeScript + Vite |
-| 桌面框架 | Tauri 2.x |
-| 后端 | Rust（russh SSH 客户端 + tokio 异步运行时） |
-| 终端 | xterm.js 6.x |
-| 存储 | SQLite（rusqlite） |
-| 构建 | GitHub Actions（Windows MSI/NSIS） |
+### System & Network
+- Real-time CPU, memory, disk, and network monitoring
+- Process list with resource usage
+- Firewall rule management (ufw / firewalld / iptables)
+- BBR TCP congestion control
+- System information dashboard
 
-## 开发
+### Server Settings
+- Auto-reconnect configuration
+- File cache management
+- Software update checker
+- Server reboot (normal / force)
+- SSH authentication mode (password / key) management
+- SSH key generation and deployment
+
+### Internationalization
+- English and Simplified Chinese support
+- Language preference persisted locally
+- In-app language switcher
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Desktop Framework | Tauri 2.x |
+| Frontend | React 19 + TypeScript |
+| Build Tool | Vite 8 |
+| Terminal | xterm.js 6 |
+| SSH Client | russh (Rust) |
+| Storage | SQLite (rusqlite) |
+| i18n | react-i18next |
+
+## Development
+
+### Prerequisites
+- [Node.js](https://nodejs.org/) (v18+)
+- [Rust](https://www.rust-lang.org/tools/install)
+- System dependencies required by [Tauri](https://v2.tauri.app/start/prerequisites/)
+
+### Setup
 
 ```bash
-# 环境要求：Node.js 20+、Rust stable、Git
-
-git clone https://github.com/gna1280072/LeePanel.git
-cd LeePanel
+# Install dependencies
 npm install
 
-# 开发模式（Vite dev server + Rust 窗口）
-npx tauri dev
+# Start development server
+npm run tauri dev
 
-# 生产构建（输出到 src-tauri/target/release/bundle/）
-npx tauri build
+# Build for production
+npm run tauri build
 ```
 
-## 发布
-
-通过 GitHub Actions 自动构建，推送 tag 触发：
-
-```bash
-# 更新 src-tauri/tauri.conf.json 中的版本号，然后：
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-也可在 Actions 页面手动触发构建。
-
-## 项目结构
+## Project Structure
 
 ```
-src/                        # React 前端
+src/
+├── App.tsx                  # Root component
+├── main.tsx                 # Entry point
+├── i18n/
+│   ├── index.ts             # i18next initialization
+│   ├── en.json              # English translations
+│   └── zh-CN.json           # Chinese translations
 ├── components/
-│   ├── panels/             # 功能面板（Dashboard、Sites、Docker、Firewall...）
-│   ├── Sidebar.tsx         # 连接管理侧边栏
-│   ├── Terminal.tsx        # 终端组件
-│   ├── FileBrowser.tsx     # 文件浏览器
-│   └── ServerPanel.tsx     # 服务器面板主入口
-├── App.tsx                 # 应用主组件
-└── App.css                 # 全局样式
-
-src-tauri/src/              # Rust 后端
-├── lib.rs                  # Tauri 命令注册
-├── ssh.rs                  # SSH 会话管理（russh）
-├── server.rs               # 服务器操作（Nginx、MySQL、PHP、Docker...）
-├── db.rs                   # SQLite 数据库初始化与数据管理
-├── config.rs               # 连接、收藏、设置的数据模型与 CRUD
-└── main.rs                 # 入口
+│   ├── Sidebar.tsx          # Server list + language switcher
+│   ├── ServerPanel.tsx      # Navigation bar
+│   ├── FileBrowser.tsx      # Remote file manager
+│   ├── Terminal.tsx         # xterm.js terminal
+│   └── panels/
+│       ├── Dashboard.tsx    # System overview
+│       ├── DatabasePanel.tsx
+│       ├── RedisPanel.tsx
+│       ├── SitesPanel.tsx
+│       ├── EditSite.tsx
+│       ├── NginxPanel.tsx
+│       ├── MonitorPanel.tsx
+│       ├── FirewallPanel.tsx
+│       ├── SslPanel.tsx
+│       ├── BbrPanel.tsx
+│       ├── InstallLnmp.tsx
+│       ├── SoftwareRepo.tsx
+│       ├── SiteLogsPanel.tsx
+│       └── ServerSettingsPanel.tsx
+src-tauri/
+├── src/                     # Rust backend (SSH, SQLite, system commands)
+└── tauri.conf.json          # Tauri configuration
 ```
 
 ## License
 
-MIT
+Private — All rights reserved.

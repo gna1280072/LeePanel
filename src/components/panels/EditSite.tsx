@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { useTranslation } from 'react-i18next'
 
 interface SiteInfo {
   domain: string
@@ -91,6 +92,7 @@ export default function EditSite({
   onError: (msg: string) => void
 }) {
   // Convert space-separated domains to newline-separated for textarea display
+  const { t } = useTranslation()
   const [domains, setDomains] = useState(site.domains.split(' ').filter(Boolean).join('\n'))
   const [root, setRoot] = useState(site.root)
   const [phpVersion, setPhpVersion] = useState(site.php_version || '')
@@ -226,35 +228,35 @@ export default function EditSite({
     <div className="sites-panel edit-site-page">
       {/* Header */}
       <div className="edit-site-header">
-        <button className="back-btn" onClick={onBack}>← Back</button>
-        <h2>Edit Site: {site.domain}</h2>
+        <button className="back-btn" onClick={onBack}>← {t('common.back')}</button>
+        <h2>{t('sites.editSite', { domain: site.domain })}</h2>
       </div>
 
       {/* Content - Single Page with Cards */}
       <div className="edit-content">
         {/* Card 1: Basic Settings */}
         <div className="sp-card">
-          <div className="sp-card-title">Basic Settings</div>
+          <div className="sp-card-title">{t('sites.basicSettings')}</div>
           
           <div className="edit-field">
-            <label>Domains <span className="edit-hint">(one per line)</span></label>
+            <label>{t('sites.domains')} <span className="edit-hint">({t('sites.domainsHint')})</span></label>
             <textarea className="edit-textarea" rows={3} value={domains} onChange={(e) => setDomains(e.target.value)} />
           </div>
 
           <div className="edit-field">
-            <label>Web Root</label>
+            <label>{t('sites.webRoot')}</label>
             <input type="text" className="create-input" value={root} onChange={(e) => setRoot(e.target.value)} />
           </div>
 
           <div className="edit-field">
-            <label>Default Homepage <span className="edit-hint">(one per line, in priority order)</span></label>
+            <label>{t('sites.defaultHomepage')} <span className="edit-hint">({t('sites.homepageHint')})</span></label>
             <textarea className="edit-textarea" rows={3} value={indexFiles} onChange={(e) => setIndexFiles(e.target.value)} />
           </div>
 
           <div className="edit-field">
-            <label>PHP Version</label>
+            <label>{t('sites.phpVersion')}</label>
             <select className="create-select" value={phpVersion} onChange={(e) => setPhpVersion(e.target.value)}>
-              <option value="">None (Static site)</option>
+              <option value="">{t('sites.noneStatic')}</option>
               {phpVersions.map(v => (
                 <option key={v} value={v}>PHP {v}</option>
               ))}
@@ -262,7 +264,7 @@ export default function EditSite({
           </div>
 
           <div className="edit-field">
-            <label>Config Path</label>
+            <label>{t('sites.configPath')}</label>
             <div style={{ display: 'flex', gap: 6 }}>
               <input type="text" className="create-input mono" value={site.config_path} disabled style={{ flex: 1 }} />
               <button
@@ -285,7 +287,7 @@ export default function EditSite({
                   }
                 }}
               >
-                EDIT
+                {t('sites.editConfig')}
               </button>
             </div>
           </div>
@@ -293,23 +295,23 @@ export default function EditSite({
 
         {/* Card 2: Directory Settings */}
         <div className="sp-card">
-          <div className="sp-card-title">Directory Settings</div>
+          <div className="sp-card-title">{t('sites.directorySettings')}</div>
           
           <div className="edit-field">
-            <label>Running Directory</label>
+            <label>{t('sites.runningDirectory')}</label>
             <select className="create-select" value={runningDir} onChange={(e) => setRunningDir(e.target.value)}>
               <option value="/">/</option>
               {subdirs.map(d => (
                 <option key={d} value={`/${d}`}>/{d}</option>
               ))}
             </select>
-            <div className="edit-hint" style={{ marginTop: 4 }}>Some frameworks need a subdirectory as the running directory, e.g. ThinkPHP5, Laravel use /public</div>
+            <div className="edit-hint" style={{ marginTop: 4 }}>{t('sites.runningDirHint')}</div>
           </div>
 
           <div className="edit-field" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
-              <label style={{ marginBottom: 0 }}>Anti-Cross-Site Attack</label>
-              <div className="edit-hint" style={{ marginTop: 2 }}>open_basedir restriction, prevents hackers from attacking via other site directories</div>
+              <label style={{ marginBottom: 0 }}>{t('sites.antiCrossSite')}</label>
+              <div className="edit-hint" style={{ marginTop: 2 }}>{t('sites.antiCrossSiteHint')}</div>
             </div>
             <button
               className={`firewall-toggle ${openBasedir ? 'on' : 'off'}`}
@@ -317,17 +319,17 @@ export default function EditSite({
               type="button"
             >
               <div className="toggle-track"><div className="toggle-thumb" /></div>
-              <span className="toggle-label">{openBasedir ? 'ON' : 'OFF'}</span>
+              <span className="toggle-label">{openBasedir ? t('common.on') : t('common.off')}</span>
             </button>
           </div>
         </div>
 
         {/* Card 3: Rewrite Rules */}
         <div className="sp-card">
-          <div className="sp-card-title">Rewrite Rules</div>
+          <div className="sp-card-title">{t('sites.rewriteRules')}</div>
           
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <label style={{ marginBottom: 0 }}>Nginx Location Blocks <span className="edit-hint">(or rewrite directives)</span></label>
+            <label style={{ marginBottom: 0 }}>{t('sites.nginxLocationBlocks')} <span className="edit-hint">({t('sites.orRewriteDirectives')})</span></label>
             <select
               className="create-select"
               style={{ width: 'auto', minWidth: 140 }}
@@ -337,7 +339,7 @@ export default function EditSite({
                 if (tpl) setRewriteRules(tpl)
               }}
             >
-              <option value="">-- Select Template --</option>
+              <option value="">{t('sites.selectTemplate')}</option>
               {Object.keys(REWRITE_TEMPLATES).map(k => (
                 <option key={k} value={k}>{k}</option>
               ))}
@@ -354,10 +356,10 @@ export default function EditSite({
 
         {/* Card 4: Hotlink Protection */}
         <div className="sp-card">
-          <div className="sp-card-title">Hotlink Protection</div>
+          <div className="sp-card-title">{t('sites.hotlinkProtection')}</div>
           
           <div className="edit-field">
-            <label>URL Suffixes <span className="edit-hint">(comma-separated)</span></label>
+            <label>{t('sites.urlSuffixes')} <span className="edit-hint">({t('sites.urlSuffixesHint')})</span></label>
             <input
               type="text"
               className="create-input"
@@ -368,7 +370,7 @@ export default function EditSite({
           </div>
 
           <div className="edit-field">
-            <label>Allowed Domains <span className="edit-hint">(one per line)</span></label>
+            <label>{t('sites.allowedDomains')} <span className="edit-hint">({t('sites.allowedDomainsHint')})</span></label>
             <textarea
               className="edit-textarea"
               rows={3}
@@ -379,7 +381,7 @@ export default function EditSite({
           </div>
 
           <div className="edit-field">
-            <label>Response Resource <span className="edit-hint">(403, 404, or /404.png)</span></label>
+            <label>{t('sites.responseResource')} <span className="edit-hint">({t('sites.responseHint')})</span></label>
             <input
               type="text"
               className="create-input"
@@ -391,23 +393,23 @@ export default function EditSite({
 
           <label className="create-checkbox">
             <input type="checkbox" checked={hotlinkEnabled} onChange={(e) => setHotlinkEnabled(e.target.checked)} />
-            <span>Enable Hotlink Protection</span>
+            <span>{t('sites.enableHotlink')}</span>
           </label>
 
           <label className="create-checkbox">
             <input type="checkbox" checked={hotlinkAllowEmpty} onChange={(e) => setHotlinkAllowEmpty(e.target.checked)} />
-            <span>Allow Empty HTTP_REFERER Requests</span>
+            <span>{t('sites.allowEmptyReferer')}</span>
           </label>
         </div>
 
         {/* Card 5: Reverse Proxy */}
         <div className="sp-card">
-          <div className="sp-card-title">Reverse Proxy</div>
+          <div className="sp-card-title">{t('sites.reverseProxy')}</div>
           
           <div className="edit-field" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
-              <label style={{ marginBottom: 0 }}>Enable Reverse Proxy</label>
-              <div className="edit-hint" style={{ marginTop: 2 }}>Forward requests to an upstream server</div>
+              <label style={{ marginBottom: 0 }}>{t('sites.enableReverseProxy')}</label>
+              <div className="edit-hint" style={{ marginTop: 2 }}>{t('sites.enableReverseProxyHint')}</div>
             </div>
             <button
               className={`firewall-toggle ${proxyEnabled ? 'on' : 'off'}`}
@@ -415,28 +417,28 @@ export default function EditSite({
               type="button"
             >
               <div className="toggle-track"><div className="toggle-thumb" /></div>
-              <span className="toggle-label">{proxyEnabled ? 'ON' : 'OFF'}</span>
+              <span className="toggle-label">{proxyEnabled ? t('common.on') : t('common.off')}</span>
             </button>
           </div>
 
           <div className="edit-field">
-            <label>Proxy Path <span className="edit-hint">(e.g. / or /api)</span></label>
+            <label>{t('sites.proxyPath')} <span className="edit-hint">({t('sites.proxyPathHint')})</span></label>
             <input type="text" className="create-input" value={proxyPath} onChange={(e) => setProxyPath(e.target.value)} placeholder="/" />
           </div>
 
           <div className="edit-field">
-            <label>Target URL <span className="edit-hint">(upstream server address)</span></label>
+            <label>{t('sites.targetUrl')} <span className="edit-hint">({t('sites.targetUrlHint')})</span></label>
             <input type="text" className="create-input" value={proxyTarget} onChange={(e) => setProxyTarget(e.target.value)} placeholder="http://127.0.0.1:3000" />
           </div>
 
           <label className="create-checkbox">
             <input type="checkbox" checked={proxyWebsocket} onChange={(e) => setProxyWebsocket(e.target.checked)} />
-            <span>Enable WebSocket Support</span>
+            <span>{t('sites.websocketSupport')}</span>
           </label>
 
           <label className="create-checkbox">
             <input type="checkbox" checked={proxyPreserveHost} onChange={(e) => setProxyPreserveHost(e.target.checked)} />
-            <span>Preserve Original Host Header</span>
+            <span>{t('sites.preserveHost')}</span>
           </label>
         </div>
       </div>
@@ -444,10 +446,10 @@ export default function EditSite({
       {/* Footer actions */}
       <div className="edit-footer">
         <button className="fb-dialog-btn" onClick={onBack} disabled={saving}>
-          Cancel
+          {t('common.cancel')}
         </button>
         <button className="fb-dialog-btn primary" onClick={handleSaveAll} disabled={saving}>
-          {saving ? 'Saving...' : 'Save'}
+          {saving ? t('common.saving') : t('common.save')}
         </button>
       </div>
 
@@ -459,12 +461,12 @@ export default function EditSite({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="config-editor-header">
-              <span className="config-editor-title">Nginx Config — {site.config_path}</span>
+              <span className="config-editor-title">{t('sites.nginxConfig')} — {site.config_path}</span>
               <div className="config-editor-header-btns">
                 <button
                   className="config-editor-maximize"
                   onClick={() => setConfigEditorMaximized(!configEditorMaximized)}
-                  title={configEditorMaximized ? 'Restore' : 'Maximize'}
+                  title={configEditorMaximized ? t('files.restore') : t('files.maximize')}
                 >
                   {configEditorMaximized ? '' : '▢'}
                 </button>
@@ -472,7 +474,7 @@ export default function EditSite({
               </div>
             </div>
             {configEditorLoading ? (
-              <div className="config-editor-loading">Loading...</div>
+              <div className="config-editor-loading">{t('common.loading')}</div>
             ) : (
               <textarea
                 className="config-editor-textarea"
@@ -482,7 +484,7 @@ export default function EditSite({
               />
             )}
             <div className="config-editor-footer">
-              <button className="fb-dialog-btn" onClick={() => setConfigEditorOpen(false)}>Cancel</button>
+              <button className="fb-dialog-btn" onClick={() => setConfigEditorOpen(false)}>{t('common.cancel')}</button>
               <button
                 className="fb-dialog-btn primary"
                 disabled={configEditorLoading || configEditorSaving}
@@ -503,7 +505,7 @@ export default function EditSite({
                   }
                 }}
               >
-                {configEditorSaving ? 'Saving...' : 'Save'}
+                {configEditorSaving ? t('common.saving') : t('common.save')}
               </button>
             </div>
           </div>

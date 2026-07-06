@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, emit } from '@tauri-apps/api/event'
+import { useTranslation } from 'react-i18next'
 
 interface SiteInfo {
   domain: string
@@ -23,6 +24,7 @@ interface SslLog {
 }
 
 export default function SslPanel({ sessionId }: SslPanelProps) {
+  const { t } = useTranslation()
   const [sites, setSites] = useState<SiteInfo[]>([])
   const [loading, setLoading] = useState(false)
   const [logs, setLogs] = useState<Record<string, SslLog>>({})
@@ -90,7 +92,7 @@ export default function SslPanel({ sessionId }: SslPanelProps) {
     if (!sessionId) return
     setLogs(prev => ({
       ...prev,
-      [domain]: { domain, lines: [`Starting SSL setup for ${domain}...`], status: 'installing' }
+      [domain]: { domain, lines: [t('ssl.startingSetup', { domain })], status: 'installing' }
     }))
     try {
       await invoke<string>('server_setup_ssl', { sessionId, domain })
@@ -112,7 +114,7 @@ export default function SslPanel({ sessionId }: SslPanelProps) {
   }
 
   if (!sessionId) {
-    return <div className="sp-empty">Connect to a server to manage SSL certificates</div>
+    return <div className="sp-empty">{t('ssl.connectToManage')}</div>
   }
 
   // Find domain with active log
@@ -122,14 +124,14 @@ export default function SslPanel({ sessionId }: SslPanelProps) {
   return (
     <div className="ssl-panel">
       <div className="sp-section-header">
-        <h3>SSL Certificates</h3>
+        <h3>{t('ssl.title')}</h3>
         <button className="svc-cfg-btn" onClick={fetchSites} disabled={loading}>
-          {loading ? 'Loading...' : 'Refresh'}
+          {loading ? t('common.loading') : t('common.refresh')}
         </button>
       </div>
 
       {sites.length === 0 && !loading && (
-        <div className="sp-empty">No sites found</div>
+        <div className="sp-empty">{t('ssl.noSites')}</div>
       )}
 
       <div className="sites-grid">
@@ -141,7 +143,7 @@ export default function SslPanel({ sessionId }: SslPanelProps) {
                 {site.ssl ? (
                   <span className="site-ssl-badge">SSL</span>
                 ) : (
-                  <span className="site-ssl-badge" style={{ background: 'rgba(248, 139, 56, 0.1)', color: '#f0883e', border: '1px solid rgba(248, 139, 56, 0.3)' }}>No SSL</span>
+                  <span className="site-ssl-badge" style={{ background: 'rgba(248, 139, 56, 0.1)', color: '#f0883e', border: '1px solid rgba(248, 139, 56, 0.3)' }}>{t('ssl.noSsl')}</span>
                 )}
               </div>
             </div>
@@ -158,7 +160,7 @@ export default function SslPanel({ sessionId }: SslPanelProps) {
                   onClick={() => handleInstall(site.domain)}
                   disabled={logs[site.domain]?.status === 'installing'}
                 >
-                  {logs[site.domain]?.status === 'installing' ? 'Installing...' : 'FREE Install SSL'}
+                  {logs[site.domain]?.status === 'installing' ? t('ssl.installing') : t('ssl.freeInstall')}
                 </button>
               </div>
             )}

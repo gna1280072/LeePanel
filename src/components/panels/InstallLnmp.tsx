@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { useTranslation } from 'react-i18next'
 
 interface LnmpStatus {
   nginx_installed: boolean
@@ -27,6 +28,7 @@ interface InstallLnmpProps {
 type InstallState = 'checking' | 'ready' | 'installing' | 'done' | 'error'
 
 export default function InstallLnmp({ sessionId, onInstallationComplete }: InstallLnmpProps) {
+  const { t } = useTranslation()
   const [state, setState] = useState<InstallState>('checking')
   const [lnmpStatus, setLnmpStatus] = useState<LnmpStatus | null>(null)
   const [osInfo, setOsInfo] = useState<OsInfo | null>(null)
@@ -140,7 +142,7 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
   }
 
   if (!sessionId) {
-    return <div className="sp-empty">Connect to a server to install LNMP</div>
+    return <div className="sp-empty">{t('install.connectToInstall')}</div>
   }
 
   const allInstalled = lnmpStatus &&
@@ -151,7 +153,7 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
   return (
     <div className="install-lnmp">
       <div className="install-header">
-        <h2>LNMP Installer</h2>
+        <h2>{t('install.title')}</h2>
         {osInfo && (
           <span className="install-os-badge">
             {osInfo.distro} {osInfo.version}
@@ -161,12 +163,12 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
 
       {/* Current Status */}
       {state === 'checking' && (
-        <div className="sp-loading">Checking current LNMP status...</div>
+        <div className="sp-loading">{t('install.checkingStatus')}</div>
       )}
 
       {state === 'error' && lnmpStatus === null && (
         <div className="sp-error">
-          <p>Failed to check status: {error}</p>
+          <p>{t('install.failedToCheck', { error })}</p>
           <button className="sp-retry-btn" onClick={checkStatus}>Retry</button>
         </div>
       )}
@@ -175,7 +177,7 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
       {state === 'ready' && allInstalled && !reinstall && (
         <div className="install-all-done">
           <div className="install-done-icon">✓</div>
-          <h3>All LNMP components are installed</h3>
+          <h3>{t('install.allInstalled')}</h3>
           <div className="install-current-status">
             {lnmpStatus && (
               <>
@@ -191,7 +193,7 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
             setInstallMysql(true)
             setInstallPhp(true)
           }}>
-            Reinstall / Upgrade
+            {t('install.reinstallUpgrade')}
           </button>
         </div>
       )}
@@ -202,7 +204,7 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
           {/* Status summary */}
           {lnmpStatus && (
             <div className="install-status-summary">
-              <div className="install-status-title">Current Status</div>
+              <div className="install-status-title">{t('install.currentStatus')}</div>
               <div className="install-status-grid">
                 <StatusBadge label="Nginx" installed={lnmpStatus.nginx_installed} version={lnmpStatus.nginx_version} />
                 <StatusBadge label="MySQL" installed={lnmpStatus.mysql_installed} version={lnmpStatus.mysql_version} />
@@ -212,7 +214,7 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
             </div>
           )}
 
-          <div className="install-select-title">{reinstall ? 'Select Components to Reinstall / Upgrade' : 'Select Components to Install'}</div>
+          <div className="install-select-title">{reinstall ? t('install.selectReinstall') : t('install.selectComponents')}</div>
 
           {/* Nginx */}
           <label className="install-option">
@@ -222,8 +224,8 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
               onChange={(e) => setInstallNginx(e.target.checked)}
             />
             <div className="install-option-info">
-              <span className="install-option-name">Nginx</span>
-              <span className="install-option-desc">High-performance web server & reverse proxy</span>
+              <span className="install-option-name">{t('install.nginx')}</span>
+              <span className="install-option-desc">{t('install.nginxDesc')}</span>
             </div>
           </label>
 
@@ -235,8 +237,8 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
               onChange={(e) => setInstallMysql(e.target.checked)}
             />
             <div className="install-option-info">
-              <span className="install-option-name">Database Server</span>
-              <span className="install-option-desc">Relational database for web applications</span>
+              <span className="install-option-name">{t('install.dbServer')}</span>
+              <span className="install-option-desc">{t('install.dbDesc')}</span>
             </div>
           </label>
           {installMysql && (
@@ -249,7 +251,7 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
                   checked={mysqlVariant === 'mysql'}
                   onChange={() => setMysqlVariant('mysql')}
                 />
-                MySQL (Oracle)
+                {t('install.mysql')}
               </label>
               <label className="install-radio">
                 <input
@@ -259,7 +261,7 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
                   checked={mysqlVariant === 'mariadb'}
                   onChange={() => setMysqlVariant('mariadb')}
                 />
-                MariaDB (Community fork)
+                {t('install.mariadb')}
               </label>
             </div>
           )}
@@ -272,13 +274,13 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
               onChange={(e) => setInstallPhp(e.target.checked)}
             />
             <div className="install-option-info">
-              <span className="install-option-name">PHP-FPM</span>
-              <span className="install-option-desc">PHP FastCGI Process Manager with common extensions</span>
+              <span className="install-option-name">{t('install.phpFpm')}</span>
+              <span className="install-option-desc">{t('install.phpDesc')}</span>
             </div>
           </label>
           {installPhp && (
             <div className="install-sub-options">
-              <span className="install-sub-label">PHP Version:</span>
+              <span className="install-sub-label">{t('install.phpVersion')}</span>
               {['8.1', '8.2', '8.3', '8.4'].map((v) => (
                 <label className="install-radio" key={v}>
                   <input
@@ -297,7 +299,7 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
           {error && <div className="install-error">{error}</div>}
 
           <button className="install-btn" onClick={handleInstall}>
-            {reinstall ? 'Reinstall / Upgrade Selected' : 'Install Selected Components'}
+            {reinstall ? t('install.reinstallSelected') : t('install.installSelected')}
           </button>
         </div>
       )}
@@ -309,12 +311,12 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
             {state === 'installing' ? (
               <>
                 <div className="install-spinner" />
-                <span>Installing...</span>
+                <span>{t('install.installing')}</span>
               </>
             ) : (
               <>
                 <span className="install-done-icon-small">✓</span>
-                <span>Installation Complete</span>
+                <span>{t('install.installationComplete')}</span>
               </>
             )}
           </div>
@@ -326,7 +328,7 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
           </div>
           {state === 'done' && (
             <button className="install-done-btn" onClick={checkStatus}>
-              Refresh Status
+              {t('install.refreshStatus')}
             </button>
           )}
         </div>
@@ -336,7 +338,7 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
       {state === 'error' && lnmpStatus !== null && (
         <div className="install-progress">
           <div className="install-progress-header error">
-            <span>Installation Failed</span>
+            <span>{t('install.installationFailed')}</span>
           </div>
           <div className="install-log">
             {logs.map((line, i) => (

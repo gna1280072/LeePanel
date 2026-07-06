@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { useTranslation } from 'react-i18next'
 
 interface SoftwareInfo {
   name: string
@@ -26,6 +27,7 @@ interface ConfirmAction {
 }
 
 export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoProps) {
+  const { t } = useTranslation()
   const [state, setState] = useState<PanelState>('loading')
   const [software, setSoftware] = useState<SoftwareInfo[]>([])
   const [error, setError] = useState('')
@@ -195,22 +197,22 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
   }
 
   if (!sessionId) {
-    return <div className="sp-empty">Connect to a server to manage software</div>
+    return <div className="sp-empty">{t('software.connectToManage')}</div>
   }
 
   const categories = [
-    { key: 'web', label: 'Web Server' },
-    { key: 'database', label: 'Database' },
-    { key: 'runtime', label: 'Runtime' },
-    { key: 'container', label: 'Container' },
+    { key: 'web', label: t('software.webServer') },
+    { key: 'database', label: t('software.database') },
+    { key: 'runtime', label: t('software.runtime') },
+    { key: 'container', label: t('software.container') },
   ]
 
   return (
     <div className="sw-panel">
       <div className="sw-header">
-        <h2>Software Repository</h2>
+        <h2>{t('software.title')}</h2>
         <button className="sp-refresh-btn" onClick={loadSoftware} disabled={state === 'loading' || state === 'running'}>
-          {state === 'loading' ? 'Loading...' : 'Refresh'}
+          {state === 'loading' ? t('common.loading') : t('common.refresh')}
         </button>
       </div>
 
@@ -219,7 +221,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
       )}
 
       {state === 'loading' && software.length === 0 && (
-        <div className="sp-loading">Checking software status...</div>
+        <div className="sp-loading">{t('software.checkingStatus')}</div>
       )}
 
       {state === 'error' && software.length === 0 && (
@@ -250,12 +252,12 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
           </div>
           {logStatus === 'done' && (
             <button className="sw-action-btn primary" onClick={() => { setState('ready'); loadSoftware() }}>
-              Done - Refresh List
+              {t('software.doneRefresh')}
             </button>
           )}
           {logStatus === 'error' && (
             <button className="sw-action-btn" onClick={() => { setState('ready'); loadSoftware() }}>
-              Close
+              {t('common.close')}
             </button>
           )}
         </div>
@@ -281,13 +283,13 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
                       <div className="sw-card-info">
                         {sw.installed ? (
                           <>
-                            <span className="sw-version">{sw.version || 'installed'}</span>
+                            <span className="sw-version">{sw.version || t('software.installed')}</span>
                             <span className={`sw-state-label ${sw.running ? 'running' : 'stopped'}`}>
-                              {sw.running ? 'Running' : sw.service_name ? 'Stopped' : 'Installed'}
+                              {sw.running ? t('software.runningLabel') : sw.service_name ? t('software.stoppedLabel') : t('software.installedLabel')}
                             </span>
                           </>
                         ) : (
-                          <span className="sw-not-installed">Not installed</span>
+                          <span className="sw-not-installed">{t('software.notInstalledLabel')}</span>
                         )}
                       </div>
 
@@ -300,35 +302,35 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
                                   className="sw-action-btn small"
                                   onClick={() => handleServiceAction(sw, 'start')}
                                   disabled={sw.running}
-                                >Start</button>
+                                >{t('common.start')}</button>
                                 <button
                                   className="sw-action-btn small"
                                   onClick={() => handleServiceAction(sw, 'stop')}
                                   disabled={!sw.running}
-                                >Stop</button>
+                                >{t('common.stop')}</button>
                                 <button
                                   className="sw-action-btn small"
                                   onClick={() => handleServiceAction(sw, 'restart')}
                                   disabled={!sw.running}
-                                >Restart</button>
+                                >{t('common.restart')}</button>
                               </>
                             )}
                             {getConfigPath(sw) && (
                               <button
                                 className="sw-action-btn small"
                                 onClick={() => handleEditConfig(sw)}
-                              >Config</button>
+                              >{t('software.configLabel')}</button>
                             )}
                             <button
                               className="sw-action-btn small danger"
                               onClick={() => setConfirmAction({ software: sw, action: 'uninstall' })}
-                            >Uninstall</button>
+                            >{t('common.uninstall')}</button>
                           </>
                         ) : (
                           <button
                             className="sw-action-btn small primary"
                             onClick={() => setConfirmAction({ software: sw, action: 'install' })}
-                          >Install</button>
+                          >{t('common.install')}</button>
                         )}
                       </div>
                     </div>
@@ -337,10 +339,10 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
                   {cat.key === 'web' && (
                     <div className="sw-card">
                       <div className="sw-card-header">
-                        <span className="sw-card-name">Install PHP Version</span>
+                        <span className="sw-card-name">{t('software.installPhpVersion')}</span>
                       </div>
                       <div className="sw-card-info">
-                        <span className="sw-not-installed">Add a new PHP version</span>
+                        <span className="sw-not-installed">{t('software.addNewPhpVersion')}</span>
                       </div>
                       <div className="sw-card-actions">
                         <button
@@ -349,7 +351,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
                             software: { name: 'php', display_name: 'PHP', category: 'web', installed: false, version: '', service_name: '', running: false },
                             action: 'install'
                           })}
-                        >Install PHP</button>
+                        >{t('software.installPhp')}</button>
                       </div>
                     </div>
                   )}
@@ -365,12 +367,12 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
         <div className="sw-confirm-overlay" onClick={() => setConfirmAction(null)}>
           <div className="sw-confirm-dialog" onClick={e => e.stopPropagation()}>
             <div className="sw-confirm-title">
-              {confirmAction.action === 'install' ? 'Install' : 'Uninstall'} {confirmAction.software.display_name}
+              {confirmAction.action === 'install' ? t('software.installTitle', { name: confirmAction.software.display_name }) : t('software.uninstallTitle', { name: confirmAction.software.display_name })}
             </div>
 
             {confirmAction.action === 'install' && confirmAction.software.name === 'php' && (
               <div className="sw-confirm-options">
-                <label>PHP Version:</label>
+                <label>{t('software.phpVersionLabel')}</label>
                 <div className="sw-radio-group">
                   {['5.6', '7.0', '7.1', '7.2', '7.3', '7.4', '8.0', '8.1', '8.2', '8.3', '8.4'].map(v => {
                     const isInstalled = software.some(s => s.name === `php${v}` && s.installed)
@@ -387,7 +389,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
 
             {confirmAction.action === 'install' && confirmAction.software.name === 'apache' && (
               <div className="sw-confirm-options">
-                <label>Apache Version:</label>
+                <label>{t('software.apacheVersionLabel')}</label>
                 <div className="sw-radio-group">
                   {['2.2', '2.4'].map(v => {
                     const isInstalled = software.some(s => s.name === `apache${v}` && s.installed)
@@ -404,7 +406,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
 
             {confirmAction.action === 'install' && confirmAction.software.name === 'mysql' && (
               <div className="sw-confirm-options">
-                <label>Database Variant:</label>
+                <label>{t('software.dbVariantLabel')}</label>
                 <div className="sw-radio-group">
                   <label className="sw-radio">
                     <input type="radio" name="mysql-var" value="mysql" checked={mysqlVariant === 'mysql'} onChange={() => { setMysqlVariant('mysql'); setMysqlVersion('8.0') }} />
@@ -415,7 +417,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
                     MariaDB
                   </label>
                 </div>
-                <label style={{ marginTop: 8 }}>{mysqlVariant === 'mysql' ? 'MySQL' : 'MariaDB'} Version:</label>
+                <label style={{ marginTop: 8 }}>{mysqlVariant === 'mysql' ? t('software.mysqlVersionLabel') : t('software.mariadbVersionLabel')}</label>
                 <div className="sw-radio-group">
                   {mysqlVariant === 'mysql'
                     ? ['5.7', '8.0', '8.4', '9.x'].map(v => (
@@ -437,7 +439,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
 
             {confirmAction.action === 'install' && confirmAction.software.name === 'nodejs' && (
               <div className="sw-confirm-options">
-                <label>Node.js Version:</label>
+                <label>{t('software.nodeVersionLabel')}</label>
                 <div className="sw-radio-group">
                   {['18', '20', '22'].map(v => (
                     <label key={v} className="sw-radio">
@@ -451,7 +453,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
 
             {confirmAction.action === 'install' && confirmAction.software.name === 'redis' && (
               <div className="sw-confirm-options">
-                <label>Redis Version:</label>
+                <label>{t('software.redisVersionLabel')}</label>
                 <div className="sw-radio-group">
                   {['7', '6'].map(v => (
                     <label key={v} className="sw-radio">
@@ -470,7 +472,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
             )}
 
             <div className="sw-confirm-actions">
-              <button className="sw-action-btn" onClick={() => setConfirmAction(null)}>Cancel</button>
+              <button className="sw-action-btn" onClick={() => setConfirmAction(null)}>{t('common.cancel')}</button>
               <button
                 className={`sw-action-btn ${confirmAction.action === 'uninstall' ? 'danger' : 'primary'}`}
                 onClick={() => {
@@ -478,7 +480,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
                   setConfirmAction(null)
                 }}
               >
-                {confirmAction.action === 'install' ? 'Install' : 'Uninstall'}
+                {confirmAction.action === 'install' ? t('common.install') : t('common.uninstall')}
               </button>
             </div>
           </div>
@@ -498,7 +500,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
                 <button
                   className="config-editor-maximize"
                   onClick={() => setConfigEditorMaximized(!configEditorMaximized)}
-                  title={configEditorMaximized ? 'Restore' : 'Maximize'}
+                  title={configEditorMaximized ? t('files.restore') : t('files.maximize')}
                 >
                   {configEditorMaximized ? '❐' : '▢'}
                 </button>
@@ -516,13 +518,13 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
               />
             )}
             <div className="config-editor-footer">
-              <button className="fb-dialog-btn" onClick={() => setConfigEditorOpen(false)} disabled={configEditorSaving}>Cancel</button>
+              <button className="fb-dialog-btn" onClick={() => setConfigEditorOpen(false)} disabled={configEditorSaving}>{t('common.cancel')}</button>
               <button
                 className="fb-dialog-btn primary"
                 disabled={configEditorLoading || configEditorSaving}
                 onClick={handleSaveConfig}
               >
-                {configEditorSaving ? 'Saving...' : 'Save'}
+                {configEditorSaving ? t('common.saving') : t('common.save')}
               </button>
             </div>
           </div>

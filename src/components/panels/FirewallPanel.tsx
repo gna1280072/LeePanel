@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { useTranslation } from 'react-i18next'
 
 interface FirewallRule {
   id: string
@@ -21,6 +22,7 @@ interface FirewallPanelProps {
 }
 
 export default function FirewallPanel({ sessionId }: FirewallPanelProps) {
+  const { t } = useTranslation()
   const [info, setInfo] = useState<FirewallInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -108,20 +110,20 @@ export default function FirewallPanel({ sessionId }: FirewallPanelProps) {
     }
   }
 
-  if (!sessionId) return <div className="sp-empty">Connect to a server first</div>
+  if (!sessionId) return <div className="sp-empty">{t('common.connectFirst')}</div>
 
   return (
     <div className="firewall-panel">
       <div className="firewall-header">
-        <h2>Firewall</h2>
+        <h2>{t('firewall.title')}</h2>
         <button className="firewall-refresh" onClick={fetchRules} disabled={loading}>
-          {loading ? '...' : '↻ Refresh'}
+          {loading ? '...' : `↻ ${t('common.refresh')}`}
         </button>
       </div>
 
       {error && <div className="firewall-error">{error}</div>}
 
-      {loading && !info && <div className="sp-loading">Detecting firewall...</div>}
+      {loading && !info && <div className="sp-loading">{t('firewall.detecting')}</div>}
 
       {info && (
         <>
@@ -129,21 +131,21 @@ export default function FirewallPanel({ sessionId }: FirewallPanelProps) {
           <div className="firewall-status">
             <span className={`firewall-badge ${info.firewall_type === 'none' ? 'none' : info.enabled ? 'active' : 'inactive'}`}>
               {info.firewall_type === 'none'
-                ? 'No Firewall Detected'
-                : `${info.firewall_type.toUpperCase()} — ${info.enabled ? 'Active' : 'Inactive'}`}
+                ? t('firewall.noFirewall')
+                : `${info.firewall_type.toUpperCase()} — ${info.enabled ? t('firewall.active') : t('firewall.inactive')}`}
             </span>
-            <span className="firewall-rule-count">{info.rules.length} rules</span>
+            <span className="firewall-rule-count">{info.rules.length} {t('firewall.rules')}</span>
             {info.firewall_type !== 'none' && (
               <button
                 className={`firewall-toggle ${info.enabled ? 'on' : 'off'} ${toggling ? 'loading' : ''}`}
                 onClick={handleToggle}
                 disabled={toggling}
-                title={info.enabled ? 'Disable Firewall' : 'Enable Firewall'}
+                title={info.enabled ? t('firewall.disableFirewall') : t('firewall.enableFirewall')}
               >
                 <span className="toggle-track">
                   <span className="toggle-thumb" />
                 </span>
-                <span className="toggle-label">{info.enabled ? 'ON' : 'OFF'}</span>
+                <span className="toggle-label">{info.enabled ? t('common.on') : t('common.off')}</span>
               </button>
             )}
           </div>
@@ -156,7 +158,7 @@ export default function FirewallPanel({ sessionId }: FirewallPanelProps) {
                 onClick={() => setShowAdd(!showAdd)}
                 disabled={!info.enabled}
               >
-                {showAdd ? '✕ Cancel' : '+ Add Rule'}
+                {showAdd ? `✕ ${t('common.cancel')}` : t('firewall.addRule')}
               </button>
             </div>
           )}
@@ -166,7 +168,7 @@ export default function FirewallPanel({ sessionId }: FirewallPanelProps) {
             <div className="firewall-add-form">
               <div className="firewall-form-row">
                 <div className="firewall-form-group">
-                  <label>Port</label>
+                  <label>{t('firewall.port')}</label>
                   <input
                     value={newPort}
                     onChange={(e) => setNewPort(e.target.value)}
@@ -175,7 +177,7 @@ export default function FirewallPanel({ sessionId }: FirewallPanelProps) {
                   />
                 </div>
                 <div className="firewall-form-group" style={{ width: 90 }}>
-                  <label>Protocol</label>
+                  <label>{t('firewall.protocol')}</label>
                   <select value={newProtocol} onChange={(e) => setNewProtocol(e.target.value)}>
                     <option value="tcp">TCP</option>
                     <option value="udp">UDP</option>
@@ -183,7 +185,7 @@ export default function FirewallPanel({ sessionId }: FirewallPanelProps) {
                   </select>
                 </div>
                 <div className="firewall-form-group" style={{ width: 90 }}>
-                  <label>Action</label>
+                  <label>{t('firewall.action')}</label>
                   <select value={newAction} onChange={(e) => setNewAction(e.target.value)}>
                     <option value="allow">Allow</option>
                     <option value="deny">Deny</option>
@@ -196,7 +198,7 @@ export default function FirewallPanel({ sessionId }: FirewallPanelProps) {
                     onClick={handleAdd}
                     disabled={actionLoading === 'add' || !newPort.trim()}
                   >
-                    {actionLoading === 'add' ? '...' : 'Add'}
+                    {actionLoading === 'add' ? '...' : t('common.create')}
                   </button>
                 </div>
               </div>
@@ -207,10 +209,10 @@ export default function FirewallPanel({ sessionId }: FirewallPanelProps) {
           {info.rules.length > 0 ? (
             <div className={`firewall-rules-table ${!info.enabled ? 'disabled' : ''}`}>
               <div className="firewall-table-header">
-                <span className="fw-col-port">Port</span>
-                <span className="fw-col-proto">Protocol</span>
-                <span className="fw-col-action">Action</span>
-                <span className="fw-col-source">Source</span>
+                <span className="fw-col-port">{t('firewall.port')}</span>
+                <span className="fw-col-proto">{t('firewall.protocol')}</span>
+                <span className="fw-col-action">{t('firewall.action')}</span>
+                <span className="fw-col-source">{t('firewall.source')}</span>
                 <span className="fw-col-ops"></span>
               </div>
               {info.rules.map((rule) => (
@@ -224,7 +226,7 @@ export default function FirewallPanel({ sessionId }: FirewallPanelProps) {
                       className="fw-delete-btn"
                       onClick={() => setConfirmDelete(rule)}
                       disabled={!!actionLoading || !info.enabled}
-                      title="Remove rule"
+                      title={t('firewall.removeRule')}
                     >
                       ✕
                     </button>
@@ -235,10 +237,10 @@ export default function FirewallPanel({ sessionId }: FirewallPanelProps) {
           ) : (
             <div className={`firewall-empty ${!info.enabled ? 'disabled' : ''}`}>
               {info.firewall_type === 'none'
-                ? 'No supported firewall (ufw, firewalld, iptables) found on this server.'
+                ? t('firewall.noFirewallFound')
                 : info.enabled
-                  ? 'No firewall rules configured.'
-                  : 'Firewall is disabled. Turn it on to manage rules.'}
+                  ? t('firewall.noRules')
+                  : t('firewall.disabledHint')}
             </div>
           )}
         </>
@@ -248,18 +250,18 @@ export default function FirewallPanel({ sessionId }: FirewallPanelProps) {
       {confirmDelete && (
         <div className="firewall-confirm-overlay" onClick={() => setConfirmDelete(null)}>
           <div className="firewall-confirm-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="firewall-confirm-title">Remove Rule</div>
+            <div className="firewall-confirm-title">{t('firewall.removeRule')}</div>
             <div className="firewall-confirm-msg">
-              Remove rule: <strong>{confirmDelete.port}/{confirmDelete.protocol}</strong> ({confirmDelete.action})?
+              {t('firewall.removeRuleMsg', { port: confirmDelete.port, protocol: confirmDelete.protocol, action: confirmDelete.action })}
             </div>
             <div className="firewall-confirm-actions">
-              <button className="firewall-confirm-btn cancel" onClick={() => setConfirmDelete(null)}>Cancel</button>
+              <button className="firewall-confirm-btn cancel" onClick={() => setConfirmDelete(null)}>{t('common.cancel')}</button>
               <button
                 className="firewall-confirm-btn danger"
                 onClick={() => handleRemove(confirmDelete)}
                 disabled={!!actionLoading}
               >
-                {actionLoading === confirmDelete.id ? '...' : 'Remove'}
+                {actionLoading === confirmDelete.id ? '...' : t('firewall.remove')}
               </button>
             </div>
           </div>

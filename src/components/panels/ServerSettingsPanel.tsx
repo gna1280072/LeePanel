@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { check } from '@tauri-apps/plugin-updater'
+import { useTranslation } from 'react-i18next'
 
 interface SshKeyPair {
   private_key_pem: string
@@ -30,6 +31,7 @@ interface ServerSettingsPanelProps {
 }
 
 export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings, onToggleAutoReconnect, onUpdateSettings }: ServerSettingsPanelProps) {
+  const { t } = useTranslation()
   // Reboot state
   const [rebootLoading, setRebootLoading] = useState(false)
   const [rebootConfirm, setRebootConfirm] = useState<{ show: boolean; force: boolean }>({ show: false, force: false })
@@ -319,31 +321,31 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
     }
   }
 
-  if (!sessionId) return <div className="sp-empty">Connect to a server first</div>
+  if (!sessionId) return <div className="sp-empty">{t('common.connectFirst')}</div>
 
   return (
     <div className="settings-panel">
-      <h2 className="settings-panel-title">Server Settings</h2>
+      <h2 className="settings-panel-title">{t('settings.title')}</h2>
 
       {/* Grid layout for settings cards */}
       <div className="settings-grid">
         {/* App Settings - Auto Reconnect */}
         {appSettings && (
           <div className="settings-card">
-            <div className="settings-card-header">App Settings</div>
+            <div className="settings-card-header">{t('settings.appSettings')}</div>
             <div className="settings-card-body">
               <div className="settings-row">
-                <span className="settings-label">Auto Reconnect</span>
+                <span className="settings-label">{t('settings.autoReconnect')}</span>
                 <button
                   className={`firewall-toggle ${appSettings.auto_reconnect ? 'on' : 'off'}`}
                   onClick={onToggleAutoReconnect}
                 >
                   <span className="toggle-track"><span className="toggle-thumb" /></span>
-                  <span className="toggle-label">{appSettings.auto_reconnect ? 'ON' : 'OFF'}</span>
+                  <span className="toggle-label">{appSettings.auto_reconnect ? t('common.on') : t('common.off')}</span>
                 </button>
               </div>
               <div className="edit-field">
-                <label>Reconnect Interval (seconds)</label>
+                <label>{t('settings.reconnectInterval')}</label>
                 <input
                   type="number"
                   min="1"
@@ -354,7 +356,7 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
                 />
               </div>
               <div className="edit-field">
-                <label>Max Attempts</label>
+                <label>{t('settings.maxAttempts')}</label>
                 <input
                   type="number"
                   min="1"
@@ -371,7 +373,7 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
                   disabled={settingsSaving}
                   style={{ marginTop: 8 }}
                 >
-                  {settingsSaving ? 'Saving...' : 'Save Settings'}
+                  {settingsSaving ? t('common.saving') : t('settings.saveSettings')}
                 </button>
               )}
             </div>
@@ -382,19 +384,19 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
         {appSettings && (
           <div className="settings-card">
             <div className="settings-card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>File Cache <span style={{ color: '#8b949e', fontWeight: 400, fontSize: 12 }}>({cacheCount} directories)</span></span>
+              <span>{t('settings.fileCache')} <span style={{ color: '#8b949e', fontWeight: 400, fontSize: 12 }}>({cacheCount} {t('settings.directories')})</span></span>
               <button
                 className={`firewall-toggle ${appSettings.cache_enabled ? 'on' : 'off'}`}
                 onClick={() => onUpdateSettings?.({ cache_enabled: !appSettings.cache_enabled })}
                 disabled={!onUpdateSettings}
               >
                 <span className="toggle-track"><span className="toggle-thumb" /></span>
-                <span className="toggle-label">{appSettings.cache_enabled ? 'ON' : 'OFF'}</span>
+                <span className="toggle-label">{appSettings.cache_enabled ? t('common.on') : t('common.off')}</span>
               </button>
             </div>
             <div className="settings-card-body">
               <div className="edit-field">
-                <label>Cache TTL (hours) <span style={{ color: '#8b949e', fontWeight: 400 }}>— expired cache will be refreshed from server</span></label>
+                <label>{t('settings.cacheTtl')} <span style={{ color: '#8b949e', fontWeight: 400 }}>— {t('settings.cacheTtlHint')}</span></label>
                 <input
                   type="number"
                   min="1"
@@ -405,7 +407,7 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
                 />
               </div>
               <div className="edit-field">
-                <label>Max Files per Directory <span style={{ color: '#8b949e', fontWeight: 400 }}>— skip caching if exceeded</span></label>
+                <label>{t('settings.maxFilesPerDir')} <span style={{ color: '#8b949e', fontWeight: 400 }}>— {t('settings.maxFilesHint')}</span></label>
                 <input
                   type="number"
                   min="1"
@@ -422,7 +424,7 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
                     onClick={handleSaveSettings}
                     disabled={settingsSaving || !appSettings.cache_enabled}
                   >
-                    {settingsSaving ? 'Saving...' : 'Save Settings'}
+                    {settingsSaving ? t('common.saving') : t('settings.saveSettings')}
                   </button>
                 )}
                 <button
@@ -431,7 +433,7 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
                   disabled={cacheClearing || cacheCount === 0}
                   style={{ background: '#da3633', color: '#fff', borderColor: '#da3633' }}
                 >
-                  {cacheClearing ? 'Clearing...' : 'Clear All Cache'}
+                  {cacheClearing ? t('settings.clearing') : t('settings.clearAllCache')}
                 </button>
               </div>
             </div>
@@ -440,10 +442,10 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
 
         {/* Software Update */}
         <div className="settings-card">
-          <div className="settings-card-header">Software Update</div>
+          <div className="settings-card-header">{t('settings.softwareUpdate')}</div>
           <div className="settings-card-body">
             <div className="settings-row">
-              <span className="settings-label">Current Version</span>
+              <span className="settings-label">{t('settings.currentVersion')}</span>
               <span className="settings-value" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: '#8b949e' }}>1.0.0</span>
             </div>
             <button
@@ -452,7 +454,7 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
               onClick={handleCheckUpdate}
               disabled={updateChecking}
             >
-              {updateChecking ? 'Checking...' : 'Check for Updates'}
+              {updateChecking ? t('settings.checking') : t('settings.checkUpdates')}
             </button>
             {updateMessage && (
               <div style={{ padding: '8px 12px', background: updateMessage.includes('latest') ? '#1f6feb22' : '#2ea04322', borderRadius: 6, fontSize: 13, color: updateMessage.includes('latest') ? '#58a6ff' : '#3fb950' }}>
@@ -464,22 +466,22 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
 
         {/* System Info */}
         <div className="settings-card">
-          <div className="settings-card-header">System Info</div>
+          <div className="settings-card-header">{t('settings.systemInfo')}</div>
           <div className="settings-card-body">
             <div className="settings-row">
-              <span className="settings-label">Last Boot Time</span>
-              <span className="settings-value">{bootTime || 'Loading...'}</span>
+              <span className="settings-label">{t('settings.lastBoot')}</span>
+              <span className="settings-value">{bootTime || t('common.loading')}</span>
             </div>
             <div className="settings-row">
-              <span className="settings-label">Uptime</span>
-              <span className="settings-value">{uptimeDuration || 'Loading...'}</span>
+              <span className="settings-label">{t('settings.uptime')}</span>
+              <span className="settings-value">{uptimeDuration || t('common.loading')}</span>
             </div>
           </div>
         </div>
 
         {/* Server Reboot */}
         <div className="settings-card">
-          <div className="settings-card-header">Server Reboot</div>
+          <div className="settings-card-header">{t('settings.serverReboot')}</div>
           <div className="settings-card-body">
             <div className="settings-btn-row">
               <button
@@ -487,28 +489,28 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
                 onClick={() => handleReboot(false)}
                 disabled={rebootLoading}
               >
-                {rebootLoading ? '...' : 'Reboot'}
+                {rebootLoading ? '...' : t('settings.reboot')}
               </button>
               <button
                 className="svc-cfg-btn danger"
                 onClick={() => handleReboot(true)}
                 disabled={rebootLoading}
               >
-                {rebootLoading ? '...' : 'Force Reboot'}
+                {rebootLoading ? '...' : t('settings.forceReboot')}
               </button>
             </div>
             <div className="settings-hint">
-              Normal reboot gracefully stops services first. Force reboot restarts immediately.
+              {t('settings.rebootHint')}
             </div>
           </div>
         </div>
 
         {/* Firewall */}
         <div className="settings-card">
-          <div className="settings-card-header">Firewall</div>
+          <div className="settings-card-header">{t('settings.firewall')}</div>
           <div className="settings-card-body">
             <div className="settings-row">
-              <span className="settings-label">Firewall Status</span>
+              <span className="settings-label">{t('settings.firewallStatus')}</span>
               {firewallEnabled !== null && (
                 <button
                   className={`firewall-toggle ${firewallEnabled ? 'on' : 'off'} ${firewallLoading ? 'loading' : ''}`}
@@ -518,10 +520,10 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
                   <span className="toggle-track">
                     <span className="toggle-thumb" />
                   </span>
-                  <span className="toggle-label">{firewallEnabled ? 'ON' : 'OFF'}</span>
+                  <span className="toggle-label">{firewallEnabled ? t('common.on') : t('common.off')}</span>
                 </button>
               )}
-              {firewallEnabled === null && <span className="settings-muted">No firewall detected</span>}
+              {firewallEnabled === null && <span className="settings-muted">{t('settings.noFirewall')}</span>}
             </div>
             {onNavigate && (
               <button
@@ -529,7 +531,7 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
                 onClick={() => onNavigate('firewall')}
                 style={{ marginTop: 8 }}
               >
-                Go to Firewall Settings
+                {t('settings.goToFirewall')}
               </button>
             )}
           </div>
@@ -537,12 +539,12 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
 
         {/* SSH Authentication */}
         <div className="settings-card" style={{ gridColumn: 'span 2' }}>
-          <div className="settings-card-header">SSH Authentication</div>
+          <div className="settings-card-header">{t('settings.sshAuth')}</div>
           <div className="settings-card-body">
             {/* Auth mode toggles */}
             <div className="settings-auth-toggles">
               <div className="settings-row">
-                <span className="settings-label">Password Login</span>
+                <span className="settings-label">{t('settings.passwordLogin')}</span>
                 <button
                   className={`firewall-toggle ${authMode?.password ? 'on' : 'off'} ${authModeSaving ? 'loading' : ''}`}
                   onClick={() => handleToggleAuthMode('password', !authMode?.password)}
@@ -550,11 +552,11 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
                   title={authMode?.password && !authMode?.pubkey ? 'Cannot disable the last auth method' : ''}
                 >
                   <span className="toggle-track"><span className="toggle-thumb" /></span>
-                  <span className="toggle-label">{authMode?.password ? 'ON' : 'OFF'}</span>
+                  <span className="toggle-label">{authMode?.password ? t('common.on') : t('common.off')}</span>
                 </button>
               </div>
               <div className="settings-row">
-                <span className="settings-label">Key Login</span>
+                <span className="settings-label">{t('settings.keyLogin')}</span>
                 <button
                   className={`firewall-toggle ${authMode?.pubkey ? 'on' : 'off'} ${authModeSaving ? 'loading' : ''}`}
                   onClick={() => handleToggleAuthMode('pubkey', !authMode?.pubkey)}
@@ -562,15 +564,15 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
                   title={!authMode?.password && authMode?.pubkey ? 'Cannot disable the last auth method' : ''}
                 >
                   <span className="toggle-track"><span className="toggle-thumb" /></span>
-                  <span className="toggle-label">{authMode?.pubkey ? 'ON' : 'OFF'}</span>
+                  <span className="toggle-label">{authMode?.pubkey ? t('common.on') : t('common.off')}</span>
                 </button>
               </div>
             </div>
-            {authModeLoading && <div className="settings-muted">Loading auth mode...</div>}
+            {authModeLoading && <div className="settings-muted">{t('settings.loadingAuth')}</div>}
 
             {/* Key generation */}
             <div className="settings-key-section">
-              <div className="settings-section-sub-header">SSH Key Management</div>
+              <div className="settings-section-sub-header">{t('settings.sshKeyManagement')}</div>
               <div className="settings-form-row">
                 <select
                   className="settings-select"
@@ -585,7 +587,7 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
                   onClick={handleGenerateKey}
                   disabled={keyGenLoading}
                 >
-                  {keyGenLoading ? 'Generating...' : 'Generate Key'}
+                  {keyGenLoading ? t('settings.generating') : t('settings.generateKey')}
                 </button>
               </div>
 
@@ -595,7 +597,7 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
               {keyPair && (
                 <>
                   <div className="settings-pubkey">
-                    <label>Public Key (OpenSSH format)</label>
+                    <label>{t('settings.publicKey')}</label>
                     <textarea
                       className="settings-pubkey-textarea"
                       readOnly
@@ -605,18 +607,18 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
                   </div>
                   <div className="settings-btn-row">
                     <button className="svc-cfg-btn" onClick={handleDownloadKey}>
-                      Download Private Key
+                      {t('settings.downloadPrivateKey')}
                     </button>
                     <button
                       className="svc-cfg-btn primary"
                       onClick={handleDeployKey}
                       disabled={keyDeployLoading}
                     >
-                      {keyDeployLoading ? '...' : 'Deploy to Server'}
+                      {keyDeployLoading ? '...' : t('settings.deployToServer')}
                     </button>
                   </div>
                   <div className="settings-hint settings-hint-warning">
-                    Server key has been generated. Please test key-based login. If you can successfully log in with the key, it is recommended to disable password login for enhanced security.
+                    {t('settings.keyGenHint')}
                   </div>
                 </>
               )}
@@ -635,17 +637,17 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
               title="关闭"
             >×</button>
             <div className="fb-dialog-title">
-              {rebootConfirm.force ? 'Force Reboot Server' : 'Reboot Server'}
+              {rebootConfirm.force ? t('settings.forceRebootServer') : t('settings.rebootServer')}
             </div>
             <div className="reboot-confirm-msg">
               {rebootConfirm.force
-                ? 'Are you sure you want to FORCE REBOOT the server? This will immediately restart without gracefully stopping services. All active connections will be lost.'
-                : 'Are you sure you want to reboot the server? All active connections will be disconnected and services will be gracefully stopped.'}
+                ? t('settings.forceRebootConfirmMsg')
+                : t('settings.rebootConfirmMsg')}
             </div>
             {rebootConfirm.force && (
               <div className="reboot-confirm-warning">
                 <span className="reboot-warning-icon">!</span>
-                Force reboot may cause data loss if services have unsaved changes.
+                {t('settings.forceRebootWarning')}
               </div>
             )}
             <div className="fb-dialog-actions">
@@ -653,13 +655,13 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
                 className="fb-dialog-btn"
                 onClick={() => setRebootConfirm({ show: false, force: false })}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 className={`fb-dialog-btn ${rebootConfirm.force ? 'danger' : 'primary'}`}
                 onClick={execReboot}
               >
-                {rebootConfirm.force ? 'Force Reboot' : 'Reboot'}
+                {rebootConfirm.force ? t('settings.forceReboot') : t('settings.reboot')}
               </button>
             </div>
           </div>
@@ -674,11 +676,11 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
               {rebootExecPanel.status === 'running' && (
                 <>
                   <span className="reboot-exec-spinner" />
-                  Executing...
+                  {t('settings.executing')}
                 </>
               )}
               {rebootExecPanel.status === 'done' && (
-                <span style={{ color: '#3fb950' }}>&#10003; Completed</span>
+                <span style={{ color: '#3fb950' }}>&#10003; {t('settings.completed')}</span>
               )}
               {rebootExecPanel.status === 'error' && (
                 <span style={{ color: '#f85149' }}>&#10007; Failed</span>

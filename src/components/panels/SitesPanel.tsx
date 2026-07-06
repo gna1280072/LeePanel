@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { useTranslation } from 'react-i18next'
 import EditSite from './EditSite'
 
 interface SiteInfo {
@@ -34,6 +35,7 @@ interface SitesPanelProps {
 type View = 'list' | 'create' | 'edit' | 'progress'
 
 export default function SitesPanel({ sessionId, onOpenFolder, onNavigateToInstall }: SitesPanelProps) {
+  const { t } = useTranslation()
   const [view, setView] = useState<View>('list')
   const [sites, setSites] = useState<SiteInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -164,17 +166,17 @@ export default function SitesPanel({ sessionId, onOpenFolder, onNavigateToInstal
     }
   }
 
-  if (!sessionId) return <div className="sp-empty">Connect to a server first</div>
+  if (!sessionId) return <div className="sp-empty">{t('common.connectFirst')}</div>
 
   return (
     <div className="sites-panel">
       <div className="sites-header">
-        <h2>Sites</h2>
+        <h2>{t('sites.title')}</h2>
         <div className="sites-header-actions">
           <input
             type="text"
             className="sites-search"
-            placeholder="Search domain..."
+            placeholder={t('sites.searchDomain')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -184,13 +186,13 @@ export default function SitesPanel({ sessionId, onOpenFolder, onNavigateToInstal
             onClick={fetchSites}
             disabled={loading}
           >
-            {loading ? 'Loading...' : 'Refresh'}
+            {loading ? t('common.loading') : t('common.refresh')}
           </button>
           <button
             className="svc-cfg-btn primary"
             onClick={() => setView(view === 'create' ? 'list' : 'create')}
           >
-            {view === 'create' ? 'Cancel' : '+ New Site'}
+            {view === 'create' ? t('common.cancel') : t('sites.newSite')}
           </button>
         </div>
       </div>
@@ -224,13 +226,13 @@ export default function SitesPanel({ sessionId, onOpenFolder, onNavigateToInstal
       ) : (
         <>
           {loading && sites.length === 0 ? (
-            <div className="svc-loading">Loading sites...</div>
+            <div className="svc-loading">{t('sites.loadingSites')}</div>
           ) : sites.length === 0 ? (
             <div className="sites-empty">
               <div className="sites-empty-icon">🌐</div>
-              <p>No sites configured</p>
+              <p>{t('sites.noSites')}</p>
               <button className="svc-cfg-btn primary" onClick={() => setView('create')}>
-                Create Your First Site
+                {t('sites.createFirst')}
               </button>
             </div>
           ) : (
@@ -272,10 +274,10 @@ export default function SitesPanel({ sessionId, onOpenFolder, onNavigateToInstal
                       style={!site.enabled ? { background: '#16a34a', color: '#fff', border: '1px solid #15803d' } : {}}
                       onClick={() => handleToggle(site, !site.enabled)}
                     >
-                      {site.enabled ? 'Stop' : 'Start'}
+                      {site.enabled ? t('common.stop') : t('common.start')}
                     </button>
                     <button className="svc-cfg-btn" onClick={() => openEdit(site)}>
-                      Edit
+                      {t('common.edit')}
                     </button>
                   </div>
                   {/* Delete button - positioned at bottom right */}
@@ -310,20 +312,20 @@ export default function SitesPanel({ sessionId, onOpenFolder, onNavigateToInstal
             <div className="delete-warning-header">
               <span className="warning-icon">️</span>
               <div className="warning-title">
-                <h3>Delete Site: {deleteTarget.domain}?</h3>
-                <p>This action cannot be undone.</p>
+                <h3>{t('sites.deleteSiteTitle', { domain: deleteTarget.domain })}</h3>
+                <p>{t('sites.deleteWarning')}</p>
               </div>
             </div>
             
             {/* Info box */}
             <div className="delete-info-box">
-              This will remove the Nginx virtual host configuration for <strong>{deleteTarget.domain}</strong>.
+              {t('sites.deleteInfo', { domain: deleteTarget.domain })}
             </div>
             
             {/* Domain confirmation input */}
             <div className="confirm-input-section">
               <label className="confirm-label">
-                Please type the domain name to confirm deletion:
+                {t('sites.typeDomainConfirm')}
               </label>
               <input
                 type="text"
@@ -335,7 +337,7 @@ export default function SitesPanel({ sessionId, onOpenFolder, onNavigateToInstal
               />
               {confirmDomain.trim() && confirmDomain.trim().toLowerCase() !== deleteTarget.domain.toLowerCase() && (
                 <div className="input-error-msg">
-                  ⚠️ Domain name does not match. Please check your input.
+                  ⚠️ {t('sites.domainMismatch')}
                 </div>
               )}
             </div>
@@ -348,7 +350,7 @@ export default function SitesPanel({ sessionId, onOpenFolder, onNavigateToInstal
                 onChange={(e) => setRemoveFiles(e.target.checked)}
               />
               <div className="checkbox-content">
-                <span className="checkbox-text">Also delete web files at</span>
+                <span className="checkbox-text">{t('sites.alsoDeleteFiles')}</span>
                 <code className="path-code">{deleteTarget.root}</code>
               </div>
             </label>
@@ -363,14 +365,14 @@ export default function SitesPanel({ sessionId, onOpenFolder, onNavigateToInstal
                 }} 
                 disabled={deleting}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button 
                 className="fb-dialog-btn danger delete-btn"
                 onClick={handleDelete} 
                 disabled={deleting || !confirmDomain.trim() || confirmDomain.trim().toLowerCase() !== deleteTarget.domain.toLowerCase()}
               >
-                {deleting ? 'Deleting...' : 'Delete'}
+                {deleting ? t('common.deleting') : t('common.delete')}
               </button>
             </div>
           </div>
@@ -401,6 +403,7 @@ function CreateSiteForm({
   onNavigateToInstall,
   onViewProgress,
 }: CreateSiteFormProps) {
+  const { t } = useTranslation()
   const [domain, setDomain] = useState('')
   const [root, setRoot] = useState('')
   const [phpVersion, setPhpVersion] = useState('')
@@ -489,10 +492,10 @@ function CreateSiteForm({
 
   return (
     <div className="create-site-form">
-      <div className="create-site-title">Create New Site</div>
+      <div className="create-site-title">{t('sites.createNewSite')}</div>
 
       <div className="create-field">
-        <label>Domain Name</label>
+        <label>{t('sites.domainName')}</label>
         <input
           type="text"
           className="create-input"
@@ -511,7 +514,7 @@ function CreateSiteForm({
       </div>
 
       <div className="create-field">
-        <label>Web Root</label>
+        <label>{t('sites.webRoot')}</label>
         <input
           type="text"
           className="create-input"
@@ -522,13 +525,13 @@ function CreateSiteForm({
       </div>
 
       <div className="create-field">
-        <label>PHP Version</label>
+        <label>{t('sites.phpVersion')}</label>
         <select
           className="create-select"
           value={phpVersion}
           onChange={(e) => setPhpVersion(e.target.value)}
         >
-          <option value="">None (Static site)</option>
+          <option value="">{t('sites.noneStatic')}</option>
           {phpVersions.map(v => (
             <option key={v} value={v}>PHP {v}</option>
           ))}
@@ -541,7 +544,7 @@ function CreateSiteForm({
           checked={useSsl}
           onChange={(e) => setUseSsl(e.target.checked)}
         />
-        <span>Enable SSL (Let&apos;s Encrypt via certbot)</span>
+        <span>{t('sites.enableSsl')}</span>
       </label>
 
       <label className="create-checkbox">
@@ -550,13 +553,13 @@ function CreateSiteForm({
           checked={createDb}
           onChange={(e) => setCreateDb(e.target.checked)}
         />
-        <span>Create MySQL Database</span>
+        <span>{t('sites.createMysqlDb')}</span>
       </label>
 
       {createDb && (
         <div className="create-db-fields">
           <div className="create-field">
-            <label>Database Name</label>
+            <label>{t('sites.dbName')}</label>
             <input
               type="text"
               className="create-input"
@@ -566,7 +569,7 @@ function CreateSiteForm({
             />
           </div>
           <div className="create-field">
-            <label>Database User</label>
+            <label>{t('sites.dbUser')}</label>
             <input
               type="text"
               className="create-input"
@@ -576,7 +579,7 @@ function CreateSiteForm({
             />
           </div>
           <div className="create-field">
-            <label>Database Password</label>
+            <label>{t('sites.dbPassword')}</label>
             <div className="create-input-row">
               <input
                 type="text"
@@ -598,7 +601,7 @@ function CreateSiteForm({
         onClick={handleCreate}
         disabled={creating || !domain.trim()}
       >
-        {creating ? 'Creating...' : 'Create Site'}
+        {creating ? t('sites.creating') : t('sites.createSite')}
       </button>
     </div>
   )
@@ -612,6 +615,7 @@ function CreateSiteProgress({
   logs: string[]
   onBack: () => void
 }) {
+  const { t } = useTranslation()
   const logEndRef = useRef<HTMLDivElement>(null)
   
   useEffect(() => {
@@ -634,11 +638,11 @@ function CreateSiteProgress({
   return (
     <div className="sw-running">
       <div className="sw-running-header">
-        <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>Site Creation Progress</h2>
+        <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>{t('sites.siteCreationProgress')}</h2>
       </div>
       <div className="sw-log-box">
         {logs.length === 0 ? (
-          <div className="sw-log-line">Starting site creation...</div>
+          <div className="sw-log-line">{t('sites.startingCreation')}</div>
         ) : (
           logs.map((line, i) => (
             <div key={i} className={`sw-log-line ${isErrorLine(line) ? 'error' : ''}`}>
@@ -650,7 +654,7 @@ function CreateSiteProgress({
       </div>
       {showBackButton && (
         <button className="sw-action-btn primary" onClick={onBack}>
-          Back to List
+          {t('sites.backToList')}
         </button>
       )}
     </div>

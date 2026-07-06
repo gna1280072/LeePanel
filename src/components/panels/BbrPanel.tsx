@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { useTranslation } from 'react-i18next'
 
 interface BbrStatus {
   enabled: boolean
@@ -12,6 +13,7 @@ interface BbrPanelProps {
 }
 
 export default function BbrPanel({ sessionId }: BbrPanelProps) {
+  const { t } = useTranslation()
   const [bbrStatus, setBbrStatus] = useState<BbrStatus | null>(null)
   const [bbrLoading, setBbrLoading] = useState(false)
   const [bbrSaving, setBbrSaving] = useState(false)
@@ -51,26 +53,26 @@ export default function BbrPanel({ sessionId }: BbrPanelProps) {
     }
   }
 
-  if (!sessionId) return <div className="sp-empty">Connect to a server first</div>
+  if (!sessionId) return <div className="sp-empty">{t('common.connectFirst')}</div>
 
   return (
     <div className="settings-panel">
-      <h2 className="settings-panel-title">BBR Acceleration</h2>
+      <h2 className="settings-panel-title">{t('bbr.title')}</h2>
 
       <div className="settings-section">
-        <div className="settings-section-header">TCP Congestion Control</div>
+        <div className="settings-section-header">{t('bbr.tcpCongestion')}</div>
         <div className="settings-section-body">
           <div className="settings-row">
             <span className="settings-label">
-              BBR Congestion Control Algorithm
+              {t('bbr.bbrAlgorithm')}
               {bbrStatus && (
                 <span className="settings-label-detail">
-                  Current algorithm: <code>{bbrStatus.congestion_control}</code> / Queue discipline: <code>{bbrStatus.qdisc}</code>
+                  {t('bbr.currentAlgorithm', { algorithm: bbrStatus.congestion_control, qdisc: bbrStatus.qdisc })}
                 </span>
               )}
             </span>
             <div className="settings-row-right">
-              {bbrLoading && <span className="settings-muted">Loading...</span>}
+              {bbrLoading && <span className="settings-muted">{t('common.loading')}</span>}
               {bbrStatus && (
                 <button
                   className={`firewall-toggle ${bbrStatus.enabled ? 'on' : 'off'} ${bbrSaving ? 'loading' : ''}`}
@@ -80,7 +82,7 @@ export default function BbrPanel({ sessionId }: BbrPanelProps) {
                   <span className="toggle-track">
                     <span className="toggle-thumb" />
                   </span>
-                  <span className="toggle-label">{bbrStatus.enabled ? 'ON' : 'OFF'}</span>
+                  <span className="toggle-label">{bbrStatus.enabled ? t('common.on') : t('common.off')}</span>
                 </button>
               )}
             </div>
@@ -88,7 +90,7 @@ export default function BbrPanel({ sessionId }: BbrPanelProps) {
           {bbrError && <div className="settings-error">{bbrError}</div>}
           {bbrSuccess && <div className="settings-success">{bbrSuccess}</div>}
           <div className="settings-hint">
-            BBR is a TCP congestion control algorithm developed by Google that improves network throughput and reduces latency. Requires Linux kernel 4.9 or higher.
+            {t('bbr.bbrHint')}
           </div>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { useTranslation } from 'react-i18next'
 
 interface DbInfo {
   name: string
@@ -28,6 +29,7 @@ interface DatabasePanelProps {
 }
 
 export default function DatabasePanel({ sessionId, onNavigateToSoftware }: DatabasePanelProps) {
+  const { t } = useTranslation()
   const [databases, setDatabases] = useState<DbInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -178,7 +180,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
   
   const handleCreateDatabase = async () => {
     if (!newDbName.trim() || !newDbUser.trim() || !newDbPass.trim()) {
-      setMsg('Please fill in all fields')
+      setMsg(t('database.fillAllFields'))
       return
     }
     
@@ -186,7 +188,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
     if (accessType === 'ip') {
       const ips = allowedIp.split('\n').map(line => line.trim()).filter(line => line.length > 0)
       if (ips.length === 0) {
-        setMsg('Please enter allowed IP addresses')
+        setMsg(t('database.enterAllowedIp'))
         return
       }
       // Basic validation: check for empty lines or invalid characters
@@ -237,7 +239,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       setAllowedIp('')
       await fetchDatabases()
     } catch (e) {
-      setMsg(`Creation failed: ${String(e)}`)
+      setMsg(`${t('common.error')}: ${String(e)}`)
     } finally {
       setCreating(false)
     }
@@ -258,7 +260,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       setDeleteTarget(null)
       await fetchDatabases()
     } catch (e) {
-      setMsg(`Deletion failed: ${String(e)}`)
+      setMsg(`${t('common.delete')}: ${String(e)}`)
     } finally {
       setDeleting(false)
     }
@@ -271,7 +273,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
     if (newAccessType === 'ip') {
       const ips = newAllowedIp.split('\n').map(line => line.trim()).filter(line => line.length > 0)
       if (ips.length === 0) {
-        setMsg('Please enter allowed IP addresses')
+        setMsg(t('database.enterAllowedIp'))
         return
       }
       // Basic validation: check for empty lines or invalid characters
@@ -314,7 +316,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       setNewAllowedIp('')
       await fetchDatabases()
     } catch (e) {
-      setMsg(`Failed to change access: ${String(e)}`)
+      setMsg(`${t('common.error')}: ${String(e)}`)
     } finally {
       setChangingAccess(false)
     }
@@ -341,7 +343,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
   
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
-    setMsg('Copied to clipboard')
+    setMsg(t('database.copiedToClipboard'))
     setTimeout(() => setMsg(''), 2000)
   }
   
@@ -365,7 +367,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
   
   const handleBatchOperation = () => {
     if (selectedDbs.size === 0) {
-      setMsg('Please select databases first')
+      setMsg(t('database.selectDatabases'))
       return
     }
     setMsg(`Batch operation: ${selectedDbs.size} databases selected`)
@@ -373,11 +375,11 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
   
   const handleChangeRootPassword = async () => {
     if (!newRootPassword.trim()) {
-      setMsg('Please enter a new password')
+      setMsg(t('database.enterNewPassword'))
       return
     }
     if (newRootPassword.length < 6) {
-      setMsg('Password must be at least 6 characters')
+      setMsg(t('database.enterNewPassword'))
       return
     }
     
@@ -391,7 +393,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       setShowChangePwDialog(false)
       setNewRootPassword('')
     } catch (e) {
-      setMsg('Change failed: ' + String(e))
+      setMsg(`${t('common.error')}: ` + String(e))
     } finally {
       setChangingPw(false)
     }
@@ -426,7 +428,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       }
     } catch (e) {
       console.error('Failed to save remark:', e)
-      setMsg('Failed to save remark')
+      setMsg(t('database.saveRemarkFailed'))
       setTimeout(() => setMsg(''), 2000)
     }
   }
@@ -465,7 +467,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
     if (!backupTarget || !sessionId) return
     const dbPassword = dbCredentials[backupTarget]?.password || ''
     if (!dbPassword) {
-      setMsg('Database password not saved. Please save it first when creating or changing password')
+      setMsg(t('database.dbNameNotSaved'))
       setTimeout(() => setMsg(''), 3000)
       return
     }
@@ -480,7 +482,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       const list = await invoke<BackupInfo[]>('server_list_db_backups', { sessionId, dbName: backupTarget })
       setBackups(list)
     } catch (e) {
-      setMsg('Backup failed: ' + String(e))
+      setMsg(`${t('common.error')}: ` + String(e))
       setTimeout(() => setMsg(''), 3000)
     } finally {
       setBackingUp(false)
@@ -497,7 +499,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       const list = await invoke<BackupInfo[]>('server_list_db_backups', { sessionId, dbName: backupTarget })
       setBackups(list)
     } catch (e) {
-      setMsg('Failed to delete backup: ' + String(e))
+      setMsg(`${t('common.error')}: ` + String(e))
       setTimeout(() => setMsg(''), 3000)
     }
   }
@@ -543,7 +545,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
     if (!importTarget || !sessionId) return
     const dbPassword = dbCredentials[importTarget]?.password || ''
     if (!dbPassword) {
-      setMsg('Database password not saved. Please save it first when creating or changing password')
+      setMsg(t('database.dbNameNotSaved'))
       setTimeout(() => setMsg(''), 3000)
       return
     }
@@ -571,14 +573,14 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
         })
         setMsg(result)
       } else {
-        setMsg('Please select a file to import')
+        setMsg(t('database.selectFileImport'))
         setImporting(false)
         return
       }
       setTimeout(() => setMsg(''), 3000)
       setShowImportDialog(false)
     } catch (e) {
-      setMsg('Import failed: ' + String(e))
+      setMsg(t('database.importFailed', { error: String(e) }))
       setTimeout(() => setMsg(''), 3000)
     } finally {
       setImporting(false)
@@ -589,7 +591,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
     if (!backupTarget || !sessionId) return
     const dbPassword = dbCredentials[backupTarget]?.password || ''
     if (!dbPassword) {
-      setMsg('Database password not saved. Please save it first when creating or changing password')
+      setMsg(t('database.dbNameNotSaved'))
       setTimeout(() => setMsg(''), 3000)
       return
     }
@@ -607,7 +609,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       setMsg(result)
       setTimeout(() => setMsg(''), 3000)
     } catch (e) {
-      setMsg('Import failed: ' + String(e))
+      setMsg(t('database.importFailed', { error: String(e) }))
       setTimeout(() => setMsg(''), 3000)
     } finally {
       setImporting(false)
@@ -617,21 +619,20 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
   return (
     <div className="panel-container">
       <div className="panel-header">
-        <h2>Database Management</h2>
+        <h2>{t('database.title')}</h2>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button 
             className="btn-secondary"
             onClick={fetchDatabases}
             disabled={loading}
-            title="Refresh database list"
           >
-            {loading ? 'Loading...' : ' Refresh'}
+            {loading ? t('common.loading') : t('common.refresh')}
           </button>
           <button className="btn-secondary" onClick={() => setShowChangePwDialog(true)}>
-            Change Root Password
+            {t('database.changeRootPw')}
           </button>
           <button className="btn-primary" onClick={() => setShowCreateDialog(true)}>
-            Add Database
+            {t('database.addDatabase')}
           </button>
         </div>
       </div>
@@ -647,14 +648,14 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
           {error.includes('command not found') || error.toLowerCase().includes('mysql') ? (
             <>
               <div style={{ marginBottom: '12px', fontSize: '14px' }}>
-                MySQL is not installed. Please go to Software to install it.
+                {t('database.mysqlNotInstalled')}
               </div>
               {onNavigateToSoftware && (
                 <button 
                   className="btn-primary"
                   onClick={onNavigateToSoftware}
                 >
-                  Go to Software
+                  {t('database.goToSoftware')}
                 </button>
               )}
             </>
@@ -668,7 +669,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       <div className="toolbar">
         <input
           type="text"
-          placeholder="Search databases..."
+          placeholder={t('database.searchPlaceholder')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="search-input"
@@ -687,26 +688,26 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                   onChange={toggleSelectAll}
                 />
               </th>
-              <th>Database</th>
-              <th>User</th>
-              <th>Password</th>
-              <th>Backup</th>
-              <th>Location</th>
-              <th>Remark</th>
-              <th>Actions</th>
+              <th>{t('database.database')}</th>
+              <th>{t('database.user')}</th>
+              <th>{t('database.password')}</th>
+              <th>{t('database.backup')}</th>
+              <th>{t('database.location')}</th>
+              <th>{t('database.remark')}</th>
+              <th>{t('database.actions')}</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
                 <td colSpan={9} style={{ textAlign: 'center', padding: '2rem' }}>
-                  Loading...
+                  {t('common.loading')}
                 </td>
               </tr>
             ) : paginatedDatabases.length === 0 ? (
               <tr>
                 <td colSpan={9} style={{ textAlign: 'center', padding: '2rem' }}>
-                  {filteredDatabases.length === 0 ? 'No matching databases found' : 'No databases yet'}
+                  {filteredDatabases.length === 0 ? t('database.noMatching') : t('database.noDatabases')}
                 </td>
               </tr>
             ) : (
@@ -724,7 +725,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                   <td>
                     <span style={{ fontFamily: 'monospace' }}>
                       {visiblePasswords.has(db.name) ? (
-                        db.password || '(Not saved)'
+                        db.password || t('database.notSaved')
                       ) : (
                         '••••••••'
                       )}
@@ -732,7 +733,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                     <button
                       className="icon-btn"
                       onClick={() => togglePasswordVisibility(db.name)}
-                      title={db.password ? (visiblePasswords.has(db.name) ? "Hide password" : "Show password") : "Password not saved for this database"}
+                      title={db.password ? (visiblePasswords.has(db.name) ? t('database.hidePassword') : t('database.showPassword')) : t('database.passwordNotSaved')}
                       disabled={!db.password}
                       style={{ opacity: db.password ? 1 : 0.3, cursor: db.password ? 'pointer' : 'not-allowed', fontSize: '14px', lineHeight: 1, padding: '2px 4px' }}
                     >
@@ -744,11 +745,11 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                         if (db.password) {
                           copyToClipboard(db.password)
                         } else {
-                          setMsg('Password not saved locally for this database')
+                          setMsg(t('database.passwordNotSavedMsg'))
                           setTimeout(() => setMsg(''), 2000)
                         }
                       }}
-                      title={db.password ? "Copy password" : "Password not saved for this database"}
+                      title={db.password ? t('database.copyPassword') : t('database.passwordNotSaved')}
                       disabled={!db.password}
                       style={{ opacity: db.password ? 1 : 0.3, cursor: db.password ? 'pointer' : 'not-allowed' }}
                     >
@@ -761,7 +762,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                       onClick={() => openBackupDialog(db.name)}
                       style={{ cursor: 'pointer' }}
                     >
-                      Click to backup
+                      {t('database.backup')}
                     </span>
                     {' | '}
                     <span 
@@ -772,11 +773,11 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                       Import
                     </span>
                   </td>
-                  <td>Local database</td>
+                  <td>{t('database.location')}</td>
                   <td 
                     onDoubleClick={() => handleDoubleClickRemark(db.name)}
                     style={{ cursor: 'pointer', userSelect: 'none' }}
-                    title="Double-click to edit remark"
+                    title={t('database.editRemark')}
                   >
                     {editingRemark === db.name ? (
                       <input
@@ -806,12 +807,12 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                     <button 
                       className="action-link"
                       onClick={() => openAccessDialog(db)}
-                      title="Change database access permission"
+                      title={t('database.accessControl')}
                     >
-                      Permission
+                      {t('database.accessControl')}
                     </button>
                     <span className="separator">|</span>
-                    <button className="action-link" onClick={() => { setChangePwTarget({ name: db.name, user: db.name }); setNewDbPassword(''); setShowChangePwDbDialog(true); }}>Change PW</button>
+                    <button className="action-link" onClick={() => { setChangePwTarget({ name: db.name, user: db.name }); setNewDbPassword(''); setShowChangePwDbDialog(true); }}>{t('database.changePassword')}</button>
                     <span className="separator">|</span>
                     <button 
                       className="action-link danger"
@@ -831,12 +832,12 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       <div className="bottom-toolbar">
         <div className="batch-ops">
           <select className="select-box">
-            <option>Select batch operation</option>
-            <option>Export selected databases</option>
-            <option>Delete selected databases</option>
+            <option>{t('database.batchOperations')}</option>
+            <option>{t('database.backupAll', { count: selectedDbs.size })}</option>
+            <option>{t('database.deleteSelected', { count: selectedDbs.size })}</option>
           </select>
           <button className="btn-secondary" onClick={handleBatchOperation}>
-            Batch Operation
+            {t('database.batchOperations')}
           </button>
         </div>
         
@@ -895,7 +896,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
         <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0 }}>Create Database</h3>
+              <h3 style={{ margin: 0 }}>{t('database.createDatabase')}</h3>
               <button 
                 onClick={() => setShowCreateDialog(false)}
                 style={{ background: 'none', border: 'none', color: '#8b949e', fontSize: '24px', cursor: 'pointer', padding: '0', lineHeight: 1 }}
@@ -907,7 +908,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
             
             <div style={{ display: 'flex', gap: '12px' }}>
               <div className="form-group">
-                <label><span style={{ color: '#ff4d4f' }}>*</span> Database Name:</label>
+                <label><span style={{ color: '#ff4d4f' }}>*</span> {t('database.databaseName')}:</label>
                 <input
                   type="text"
                   value={newDbName}
@@ -924,7 +925,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
               </div>
               
               <div className="form-group">
-                <label><span style={{ color: '#ff4d4f' }}>*</span> Username:</label>
+                <label><span style={{ color: '#ff4d4f' }}>*</span> {t('database.userName')}:</label>
                 <input
                   type="text"
                   value={newDbUser}
@@ -938,7 +939,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
             
             <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
               <div className="form-group" style={{ flex: 3 }}>
-                <label><span style={{ color: '#ff4d4f' }}>*</span> Password:</label>
+                <label><span style={{ color: '#ff4d4f' }}>*</span> {t('database.password')}:</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input
                     type="text"
@@ -959,7 +960,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                       }
                       setNewDbPass(pass)
                     }}
-                    title="Generate random password"
+                    title={t('database.generatePassword')}
                     style={{ padding: '6px 8px', fontSize: '14px', lineHeight: 1, minWidth: 'auto' }}
                   >
                     🔄
@@ -984,21 +985,21 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
             </div>
             
             <div className="form-group">
-              <label>Access:</label>
+              <label>{t('database.accessControl')}:</label>
               <select
                 value={accessType}
                 onChange={(e) => setAccessType(e.target.value as any)}
                 className="form-input"
               >
                 <option value="local">Local server (localhost)</option>
-                <option value="any">Anyone (any host %)</option>
-                <option value="ip">Specific IP</option>
+                <option value="any">{t('database.allowedIpsHint')}</option>
+                <option value="ip">{t('database.allowedIps')}</option>
               </select>
             </div>
             
             {accessType === 'ip' && (
               <div className="form-group">
-                <label>Allowed IPs:</label>
+                <label>{t('database.allowedIps')}:</label>
                 <textarea
                   value={allowedIp}
                   onChange={(e) => {
@@ -1027,7 +1028,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                   onChange={(e) => setSavePasswordLocally(e.target.checked)}
                   style={{ width: 'auto', margin: 0 }}
                 />
-                <span>Save password locally (for easy viewing)</span>
+                <span>{t('database.password')}</span>
               </label>
             </div>
             
@@ -1037,14 +1038,14 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                 onClick={() => setShowCreateDialog(false)}
                 disabled={creating}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button 
                 className="btn-primary"
                 onClick={handleCreateDatabase}
                 disabled={creating}
               >
-                {creating ? 'Creating...' : 'Confirm'}
+                {creating ? t('common.loading') : t('common.confirm')}
               </button>
             </div>
           </div>
@@ -1060,11 +1061,11 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
               onClick={() => { setDeleteTarget(null); setDeleteConfirmName(''); }}
               title="Close"
             >×</button>
-            <h3>Confirm Delete</h3>
-            <p style={{ color: '#f85149', fontSize: '13px', margin: '8px 0' }}>This will delete database "<strong>{deleteTarget.name}</strong>" and its associated users. This cannot be undone!</p>
+            <h3>{t('database.deleteDatabase')}</h3>
+            <p style={{ color: '#f85149', fontSize: '13px', margin: '8px 0' }}>{t('database.deleteConfirm')} "<strong>{deleteTarget.name}</strong>". {t('common.warning')}!</p>
             
             <div className="form-group">
-              <label style={{ fontSize: '13px' }}>Please enter database name <code style={{ background: '#21262d', padding: '2px 6px', borderRadius: '4px', color: '#f85149' }}>{deleteTarget.name}</code> to confirm:</label>
+              <label style={{ fontSize: '13px' }}>{t('database.databaseName')}: <code style={{ background: '#21262d', padding: '2px 6px', borderRadius: '4px', color: '#f85149' }}>{deleteTarget.name}</code></label>
               <input
                 type="text"
                 value={deleteConfirmName}
@@ -1089,14 +1090,14 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                 onClick={() => { setDeleteTarget(null); setDeleteConfirmName(''); }}
                 disabled={deleting}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button 
                 className="btn-danger"
                 onClick={handleDeleteDatabase}
                 disabled={deleting || deleteConfirmName.trim().toLowerCase() !== deleteTarget.name.toLowerCase()}
               >
-                {deleting ? 'Deleting...' : 'Confirm Delete'}
+                {deleting ? t('common.deleting') : t('common.delete')}
               </button>
             </div>
           </div>
@@ -1112,10 +1113,10 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
               onClick={() => setShowChangePwDialog(false)}
               title="Close"
             >×</button>
-            <h3>Change MySQL root Password</h3>
+            <h3>{t('database.changeRootPassword')}</h3>
                   
             <div className="form-group">
-              <label>New Password:</label>
+              <label>{t('database.newPassword')}:</label>
               <input
                 type="password"
                 value={newRootPassword}
@@ -1135,14 +1136,14 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                 onClick={() => setShowChangePwDialog(false)}
                 disabled={changingPw}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button 
                 className="btn-primary"
                 onClick={handleChangeRootPassword}
                 disabled={changingPw}
               >
-                {changingPw ? 'Changing...' : 'Confirm'}
+                {changingPw ? t('common.loading') : t('common.confirm')}
               </button>
             </div>
           </div>
@@ -1154,7 +1155,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
         <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0 }}>Change Access - {accessTarget.name}</h3>
+              <h3 style={{ margin: 0 }}>{t('database.accessControl')} - {accessTarget.name}</h3>
               <button 
                 onClick={() => setShowAccessDialog(false)}
                 style={{ background: 'none', border: 'none', color: '#8b949e', fontSize: '24px', cursor: 'pointer', padding: '0', lineHeight: 1 }}
@@ -1165,21 +1166,21 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
             </div>
                   
             <div className="form-group">
-              <label>Access:</label>
+              <label>{t('database.accessControl')}:</label>
               <select
                 value={newAccessType}
                 onChange={(e) => setNewAccessType(e.target.value as any)}
                 className="form-input"
               >
                 <option value="local">Local server (localhost)</option>
-                <option value="any">Anyone (any host %)</option>
-                <option value="ip">Specific IP</option>
+                <option value="any">{t('database.allowedIpsHint')}</option>
+                <option value="ip">{t('database.allowedIps')}</option>
               </select>
             </div>
                   
             {newAccessType === 'ip' && (
               <div className="form-group">
-                <label>Allowed IPs:</label>
+                <label>{t('database.allowedIps')}:</label>
                 <textarea
                   value={newAllowedIp}
                   onChange={(e) => {
@@ -1210,14 +1211,14 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                 onClick={() => setShowAccessDialog(false)}
                 disabled={changingAccess}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button 
                 className="btn-primary"
                 onClick={handleChangeAccess}
                 disabled={changingAccess}
               >
-                {changingAccess ? 'Changing...' : 'Confirm'}
+                {changingAccess ? t('common.loading') : t('common.confirm')}
               </button>
             </div>
           </div>
@@ -1234,11 +1235,11 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
               title="Close"
             >×</button>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0 }}>Change Password - {changePwTarget.name}</h3>
+              <h3 style={{ margin: 0 }}>{t('database.changePassword')} - {changePwTarget.name}</h3>
             </div>
             
             <div className="form-group">
-              <label>New Password:</label>
+              <label>{t('database.newPassword')}:</label>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <input
                   type="text"
@@ -1260,7 +1261,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                     }
                     setNewDbPassword(pass)
                   }}
-                  title="Generate random password"
+                  title={t('database.generatePassword')}
                   style={{ padding: '6px 8px', fontSize: '14px', lineHeight: 1, minWidth: 'auto' }}
                 >
                   🔄
@@ -1276,7 +1277,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                   onChange={(e) => setUpdateLocalPassword(e.target.checked)}
                   style={{ width: 'auto', margin: 0 }}
                 />
-                <span>Sync update locally saved password</span>
+                <span>{t('database.password')}</span>
               </label>
             </div>
             
@@ -1286,13 +1287,13 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                 onClick={() => setShowChangePwDbDialog(false)}
                 disabled={changingDbPw}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button 
                 className="btn-primary"
                 onClick={async () => {
-                  if (!newDbPassword.trim()) { setMsg('Please enter a new password'); return }
-                  if (newDbPassword.length < 6) { setMsg('Password must be at least 6 characters'); return }
+                  if (!newDbPassword.trim()) { setMsg(t('database.enterNewPassword')); return }
+                  if (newDbPassword.length < 6) { setMsg(t('database.enterNewPassword')); return }
                   setChangingDbPw(true)
                   try {
                     const cred = dbCredentials[changePwTarget.name]
@@ -1320,14 +1321,14 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                     setShowChangePwDbDialog(false)
                     setNewDbPassword('')
                   } catch (e) {
-                    setMsg('Change failed: ' + String(e))
+                    setMsg(`${t('common.error')}: ` + String(e))
                   } finally {
                     setChangingDbPw(false)
                   }
                 }}
                 disabled={changingDbPw}
               >
-                {changingDbPw ? 'Changing...' : 'Confirm'}
+                {changingDbPw ? t('common.loading') : t('common.confirm')}
               </button>
             </div>
           </div>
@@ -1344,7 +1345,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
               title="Close"
             >×</button>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0 }}>Backup Database - {backupTarget}</h3>
+              <h3 style={{ margin: 0 }}>{t('database.backupDatabase')} - {backupTarget}</h3>
             </div>
             
             <div style={{ marginBottom: '16px', fontSize: '13px', color: '#8b949e' }}>
@@ -1354,17 +1355,17 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
             {/* Backup list */}
             <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '16px', border: '1px solid #30363d', borderRadius: '6px' }}>
               {loadingBackups ? (
-                <div style={{ textAlign: 'center', padding: '20px', color: '#8b949e' }}>Loading...</div>
+                <div style={{ textAlign: 'center', padding: '20px', color: '#8b949e' }}>{t('common.loading')}</div>
               ) : backups.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '20px', color: '#8b949e' }}>No backup files</div>
+                <div style={{ textAlign: 'center', padding: '20px', color: '#8b949e' }}>{t('database.noBackups')}</div>
               ) : (
                 <table className="data-table" style={{ margin: 0 }}>
                   <thead>
                     <tr>
-                      <th style={{ fontSize: '12px' }}>Filename</th>
-                      <th style={{ fontSize: '12px', width: '80px' }}>Size</th>
-                      <th style={{ fontSize: '12px', width: '160px' }}>Created</th>
-                      <th style={{ fontSize: '12px', width: '180px' }}>Actions</th>
+                      <th style={{ fontSize: '12px' }}>{t('common.name')}</th>
+                      <th style={{ fontSize: '12px', width: '80px' }}>{t('common.size')}</th>
+                      <th style={{ fontSize: '12px', width: '160px' }}>{t('common.status')}</th>
+                      <th style={{ fontSize: '12px', width: '180px' }}>{t('common.actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1379,7 +1380,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                             onClick={() => handleDownloadBackup(backup.filename)}
                             style={{ fontSize: '12px' }}
                           >
-                            Download
+                            {t('common.download')}
                           </button>
                           <span className="separator">|</span>
                           <button 
@@ -1396,7 +1397,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                             onClick={() => handleDeleteBackup(backup.filename)}
                             style={{ fontSize: '12px' }}
                           >
-                            Delete
+                            {t('common.delete')}
                           </button>
                         </td>
                       </tr>
@@ -1412,14 +1413,14 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                 onClick={() => setShowBackupDialog(false)}
                 disabled={backingUp}
               >
-                Close
+                {t('common.close')}
               </button>
               <button 
                 className="btn-primary"
                 onClick={handleBackup}
                 disabled={backingUp}
               >
-                {backingUp ? 'Backing up...' : 'Backup Now'}
+                {backingUp ? t('common.loading') : t('database.backupDatabase')}
               </button>
             </div>
           </div>
@@ -1436,7 +1437,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
               title="Close"
             >×</button>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0 }}>Import Database - {importTarget}</h3>
+              <h3 style={{ margin: 0 }}>{t('database.importDatabase')} - {importTarget}</h3>
             </div>
             
             <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
@@ -1445,20 +1446,20 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                 onClick={() => setImportMode('upload')}
                 style={{ flex: 1 }}
               >
-                Upload File
+                {t('database.importFile')}
               </button>
               <button 
                 className={importMode === 'backup' ? 'btn-primary' : 'btn-secondary'}
                 onClick={() => setImportMode('backup')}
                 style={{ flex: 1 }}
               >
-                Import from Backup
+                {t('database.selectBackup')}
               </button>
             </div>
             
             {importMode === 'upload' ? (
               <div className="form-group">
-                <label>Select SQL File:</label>
+                <label>{t('database.importFile')}:</label>
                 <input
                   type="file"
                   accept=".sql"
@@ -1474,12 +1475,12 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
               </div>
             ) : (
               <div className="form-group">
-                <label>Select Backup File:</label>
+                <label>{t('database.selectBackup')}:</label>
                 {loadingImportBackups ? (
-                  <div style={{ padding: '12px', textAlign: 'center', color: '#8b949e' }}>Loading...</div>
+                  <div style={{ padding: '12px', textAlign: 'center', color: '#8b949e' }}>{t('common.loading')}</div>
                 ) : importBackups.length === 0 ? (
                   <div style={{ padding: '12px', textAlign: 'center', color: '#8b949e', border: '1px solid #30363d', borderRadius: '6px' }}>
-                    No backup files. Please create a backup first.
+                    {t('database.noBackups')}
                   </div>
                 ) : (
                   <select
@@ -1487,7 +1488,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                     onChange={(e) => setSelectedBackup(e.target.value)}
                     className="form-input"
                   >
-                    <option value="">-- Select backup file --</option>
+                    <option value="">-- {t('database.selectBackup')} --</option>
                     {importBackups.map((backup) => (
                       <option key={backup.filename} value={backup.filename}>
                         {backup.filename} ({formatBytes(backup.size_bytes)}) - {backup.created_at}
@@ -1499,7 +1500,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
             )}
             
             <div style={{ marginBottom: '16px', padding: '10px', background: '#f8514922', borderRadius: '6px', fontSize: '12px', color: '#f85149' }}>
-              ⚠️ Warning: Importing will overwrite existing data. Please make sure you have backed up current data!
+              ⚠️ {t('common.warning')}: Importing will overwrite existing data.
             </div>
             
             <div className="modal-actions">
@@ -1508,14 +1509,14 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                 onClick={() => setShowImportDialog(false)}
                 disabled={importing}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button 
                 className="btn-primary"
                 onClick={handleImport}
                 disabled={importing || (importMode === 'upload' ? !selectedFile : !selectedBackup)}
               >
-                {importing ? 'Importing...' : 'Start Import'}
+                {importing ? t('common.loading') : t('database.importDatabase')}
               </button>
             </div>
           </div>

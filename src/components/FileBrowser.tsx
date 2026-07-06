@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { useTranslation } from 'react-i18next'
 
 interface FileEntry {
   name: string
@@ -158,6 +159,7 @@ const RefreshIcon = () => (
 )
 
 export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrowser({ sessionId, connHost, jumpToPath, onTerminalCommand, onCdHere, onStartUpload }, ref) {
+  const { t } = useTranslation()
   const [currentPath, setCurrentPath] = useState('/')
   const [files, setFiles] = useState<FileEntry[]>([])
   const [loading, setLoading] = useState(false)
@@ -256,16 +258,16 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     if (!favorites.includes(path)) {
       setFavorites(prev => [...prev, path])
       if (sessionId) invoke('fb_favorites_add', { sessionId, path }).catch(() => {})
-      showToast(`Added to favorites: ${path}`, 'success')
+      showToast(t('files.addedToFavorites', { path }), 'success')
     } else {
-      showToast('Already in favorites', 'info')
+      showToast(t('files.alreadyInFavorites'), 'info')
     }
   }, [favorites, sessionId, showToast])
 
   const removeFavorite = useCallback((path: string) => {
     setFavorites(prev => prev.filter(p => p !== path))
     if (sessionId) invoke('fb_favorites_remove', { sessionId, path }).catch(() => {})
-    showToast(`Removed from favorites: ${path}`, 'info')
+    showToast(t('files.removedFromFavorites', { path }), 'info')
   }, [sessionId, showToast])
 
   const isFavorite = useCallback((path: string) => {
@@ -362,11 +364,11 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       const fileList = new Set((parts[2] || '').split('\n').filter(Boolean))
 
       if (!writeOk) {
-        showToast('No write permission in this directory', 'error')
+        showToast(t('files.noWritePerm'), 'error')
         return { ok: false, existingFiles: fileList }
       }
       if (availBytes < 1024) {
-        showToast('Insufficient disk space', 'error')
+        showToast(t('files.insufficientSpace'), 'error')
         return { ok: false, existingFiles: fileList }
       }
       return { ok: true, existingFiles: fileList }
@@ -380,14 +382,14 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     const unlisten = listen<{ progress: number; status: string; error?: string }>('download-progress', (e) => {
       setDownloadProgress({ progress: e.payload.progress, status: e.payload.status })
       if (e.payload.status === 'done') {
-        showToast('Download complete', 'success')
+        showToast(t('files.downloadComplete'), 'success')
         setTimeout(() => {
           setDownloadProgress(null)
           setDownloadDialog(null)
           navigateTo(currentPath)
         }, 800)
       } else if (e.payload.status === 'error') {
-        showToast(`Download failed: ${e.payload.error || 'unknown'}`, 'error')
+        showToast(t('files.downloadFailed', { error: e.payload.error || 'unknown' }), 'error')
         setTimeout(() => setDownloadProgress(null), 2000)
       }
     })
@@ -588,20 +590,8 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       initializedRef.current = true
       ;(async () => {
         const saved = connHost ? await invoke<string>('ui_state_get', { key: `fb_path_${connHost}` }).catch(() => '') : ''
-        if (saved) {
-          try {
-            await invoke<string>('ssh_list_dir', { sessionId, path: saved })
-            navigateTo(saved)
-          } catch {
-            invoke<string>('ssh_get_cwd', { sessionId })
-              .then(cwd => navigateTo(cwd))
-              .catch(() => navigateTo('/root'))
-          }
-        } else {
-          invoke<string>('ssh_get_cwd', { sessionId })
-            .then(cwd => navigateTo(cwd))
-            .catch(() => navigateTo('/root'))
-        }
+        const target = saved || await invoke<string>('ssh_get_cwd', { sessionId }).catch(() => '/root')
+        navigateTo(target, true)
       })()
     }
   }, [sessionId, jumpToPath]) // eslint-disable-line
@@ -627,7 +617,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       // Path exists, navigate
       navigateTo(target)
     } catch {
-      showToast(`Directory not found: ${target}`, 'error')
+      showToast(t('files.dirNotFound', { path: target }), 'error')
       // Keep input open, content unchanged
     }
   }
@@ -716,8 +706,8 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
             ok++
           } catch { fail++ }
         }
-        if (fail === 0) showToast(`Moved ${ok} item${ok > 1 ? 's' : ''} → ${targetName}/`, 'success')
-        else showToast(`Moved ${ok}, failed ${fail}`, 'error')
+        if (fail === 0) showToast(t('files.movedItems', { count: ok }), 'success')
+        else showToast(t('files.moveFailed', { ok, fail }), 'error')
         setSelectedFiles(new Set())
         navigateTo(currentPath)
       } else {
@@ -781,23 +771,23 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
   const openImageLocal = async (entry: FileEntry) => {
     if (!sessionId) return
     const filePath = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`
-    showToast(`Downloading ${entry.name}...`, 'info')
+    showToast(t('files.downloadingFile', { name: entry.name }), 'info')
     try {
       const localPath = await invoke<string>('ssh_download_to_local', {
         sessionId,
         remotePath: filePath,
         fileName: entry.name,
       })
-      showToast(`Opened: ${entry.name}`, 'success')
+      showToast(t('files.openImage', { name: entry.name }), 'success')
       onTerminalCommand?.(`# Downloaded ${filePath} -> ${localPath}`)
     } catch (e) {
-      showToast(`Failed to open image: ${e}`, 'error')
+      showToast(t('files.failedOpenImage', { error: e }), 'error')
     }
   }
 
   const openEditor = async (entry: FileEntry) => {
     if (!isTextFile(entry.name) || entry.size >= 1024 * 1024) {
-      showToast('Binary or large file — use terminal', 'info')
+      showToast(t('files.binaryOrLarge'), 'info')
       onTerminalCommand?.(`file ${currentPath}/${entry.name}`)
       return
     }
@@ -808,7 +798,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       onTerminalCommand?.(`cat ${filePath}`)
     } catch (e) {
       console.error('read_file error:', e)
-      showToast(`Read failed: ${e}`, 'error')
+      showToast(t('files.readFailed', { error: e }), 'error')
     }
   }
 
@@ -818,10 +808,10 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     try {
       await invoke('ssh_write_file', { sessionId, path: editor.path, content: editor.content })
       setEditor({ ...editor, originalContent: editor.content, saving: false })
-      showToast(`Saved: ${editor.name}`, 'success')
+      showToast(t('files.savedFile', { name: editor.name }), 'success')
       onTerminalCommand?.(`# Saved ${editor.path}`)
     } catch (e) {
-      showToast(`Save failed: ${e}`, 'error')
+      showToast(t('files.saveFailedMsg', { error: e }), 'error')
       setEditor({ ...editor, saving: false })
     }
   }
@@ -830,8 +820,8 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     const entries = getSelectedEntries()
     if (entries.length === 0) return
     const msg = entries.length === 1
-      ? `Delete ${entries[0].isDir ? 'folder' : 'file'} "${entries[0].name}"? This cannot be undone.`
-      : `Delete ${entries.length} items? This cannot be undone.`
+      ? t('files.deleteFileMsg', { type: entries[0].isDir ? t('files.folder') : t('files.file'), name: entries[0].name })
+      : t('files.deleteItemsMsg', { count: entries.length })
     showConfirm(msg, async () => {
       let ok = 0, fail = 0
       const logs: string[] = []
@@ -849,37 +839,37 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
         setDeleteLog(logs.join('\n'))
         setTimeout(() => setDeleteLog(null), 5000)
       }
-      if (fail === 0) showToast(`Deleted ${ok} item${ok > 1 ? 's' : ''}`, 'success')
-      else showToast(`Deleted ${ok}, failed ${fail}`, 'error')
+      if (fail === 0) showToast(t('files.deletedItems', { count: ok }), 'success')
+      else showToast(t('files.deleteFailed', { ok, fail }), 'error')
       setSelectedFiles(new Set())
       navigateTo(currentPath)
     })
   }
 
   const handleNewFile = () => {
-    showPrompt('New File Name', async (name) => {
+    showPrompt(t('files.newFileName'), async (name) => {
       if (!name) return
       const filePath = currentPath === '/' ? `/${name}` : `${currentPath}/${name}`
       try {
         await invoke('ssh_write_file', { sessionId, path: filePath, content: '' })
-        showToast(`Created file: ${name}`, 'success')
+        showToast(t('files.createdFile', { name }), 'success')
         navigateTo(currentPath)
       } catch (e) {
-        showToast(`Create failed: ${e}`, 'error')
+        showToast(t('files.createFailed', { error: e }), 'error')
       }
     })
   }
 
   const handleNewFolder = () => {
-    showPrompt('New Folder Name', async (name) => {
+    showPrompt(t('files.newFolderName'), async (name) => {
       if (!name) return
       const dirPath = currentPath === '/' ? `/${name}` : `${currentPath}/${name}`
       try {
         await invoke('ssh_create_dir', { sessionId, path: dirPath })
-        showToast(`Created folder: ${name}`, 'success')
+        showToast(t('files.createdFolder', { name }), 'success')
         navigateTo(currentPath)
       } catch (e) {
-        showToast(`Create folder failed: ${e}`, 'error')
+        showToast(t('files.createFolderFailed', { error: e }), 'error')
       }
     })
   }
@@ -892,7 +882,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     const isDirs = items.map(e => e.isDir)
     const hasDirs = items.some(e => e.isDir)
     setClipboard({ paths, names, isDirs, hasDirs, mode: 'copy' })
-    showToast(`Copied ${items.length} item${items.length > 1 ? 's' : ''}`, 'info')
+    showToast(t('files.copiedItems', { count: items.length }), 'info')
   }
 
   const handleCut = (entries?: FileEntry[]) => {
@@ -903,7 +893,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     const isDirs = items.map(e => e.isDir)
     const hasDirs = items.some(e => e.isDir)
     setClipboard({ paths, names, isDirs, hasDirs, mode: 'cut' })
-    showToast(`Cut ${items.length} item${items.length > 1 ? 's' : ''}`, 'info')
+    showToast(t('files.cutItems', { count: items.length }), 'info')
   }
 
   const handlePaste = async () => {
@@ -979,22 +969,22 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       setCopyProgress(prev => prev ? { ...prev, done: true } : prev)
     }
     if (clipboard.mode === 'cut') setClipboard(null)
-    if (fail === 0) showToast(`Pasted ${success} item${success > 1 ? 's' : ''}`, 'success')
-    else showToast(`Pasted ${success}, failed ${fail}`, 'error')
+    if (fail === 0) showToast(t('files.pastedItems', { count: success }), 'success')
+    else showToast(t('files.pasteFailed', { ok: success, fail }), 'error')
     navigateTo(currentPath)
   }
 
   const handleRename = (entry: FileEntry) => {
     const oldPath = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`
-    showPrompt(`Rename "${entry.name}"`, async (newName) => {
+    showPrompt(t('files.renameTitle', { name: entry.name }), async (newName) => {
       if (!newName || newName === entry.name) return
       const newPath = currentPath === '/' ? `/${newName}` : `${currentPath}/${newName}`
       try {
         await invoke('ssh_rename_file', { sessionId, oldPath, newPath })
-        showToast(`Renamed to: ${newName}`, 'success')
+        showToast(t('files.renamedTo', { name: newName }), 'success')
         navigateTo(currentPath)
       } catch (e) {
-        showToast(`Rename failed: ${e}`, 'error')
+        showToast(t('files.renameFailed', { error: e }), 'error')
       }
     }, entry.name)
   }
@@ -1034,12 +1024,12 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     const destPath = currentPath === '/' ? `/${fileName}` : `${currentPath}/${fileName}`
 
     setDownloadProgress({ progress: 0, status: 'starting' })
-    showToast(`Starting download: ${fileName}`, 'info')
+    showToast(t('files.startingDownload', { name: fileName }), 'info')
 
     try {
       await invoke('ssh_download_file', { sessionId, url, dest: destPath })
     } catch (e) {
-      showToast(`Download error: ${e}`, 'error')
+      showToast(t('files.downloadError', { error: e }), 'error')
       setDownloadProgress(null)
     }
   }
@@ -1053,28 +1043,28 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     if (!permissionDialog || !permissionDialog.mode) return
     try {
       await invoke('ssh_set_permissions', { sessionId, path: permissionDialog.path, mode: permissionDialog.mode })
-      showToast(`Permissions changed: ${permissionDialog.name} → ${permissionDialog.mode}`, 'success')
+      showToast(t('files.permChanged', { name: permissionDialog.name, mode: permissionDialog.mode }), 'success')
       setPermissionDialog(null)
       navigateTo(currentPath)
     } catch (e) {
-      showToast(`Permission change failed: ${e}`, 'error')
+      showToast(t('files.permFailed', { error: e }), 'error')
     }
   }
 
   const handleSaveAs = async (entry: FileEntry) => {
     if (!sessionId || entry.isDir) return
     const filePath = resolvePath(entry)
-    showToast(`Preparing download: ${entry.name}...`, 'info')
+    showToast(t('files.preparingDownload', { name: entry.name }), 'info')
     try {
       const localPath = await invoke<string>('ssh_save_as_local', {
         sessionId,
         remotePath: filePath,
         fileName: entry.name,
       })
-      showToast(`Saved: ${localPath}`, 'success')
+      showToast(t('files.savedTo', { path: localPath }), 'success')
     } catch (e) {
       if (String(e) !== 'Save cancelled') {
-        showToast(`Save failed: ${e}`, 'error')
+        showToast(t('files.saveFailed', { error: e }), 'error')
       }
     }
   }
@@ -1090,20 +1080,20 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     const outputName = archiveName + ext
     const outputPath = currentPath === '/' ? `/${outputName}` : `${currentPath}/${outputName}`
     const paths = names.map(n => currentPath === '/' ? `/${n}` : `${currentPath}/${n}`)
-    setArchiveProgress({ type: 'compress', logs: [`Compressing ${names.length} item${names.length > 1 ? 's' : ''}...`], done: false })
+    setArchiveProgress({ type: 'compress', logs: [t('files.compressingItems', { count: names.length })], done: false })
     try {
       await invoke('ssh_compress', { sessionId, paths, output: outputPath, format: 'zip' })
-      showToast(`Archive created: ${outputName}`, 'success')
+      showToast(t('files.archiveCreated', { name: outputName }), 'success')
       navigateTo(currentPath)
     } catch (e) {
       setArchiveProgress(prev => prev ? { ...prev, logs: [...prev.logs, `Error: ${e}`], done: true } : null)
-      showToast(`Compress failed: ${e}`, 'error')
+      showToast(t('files.compressFailed', { error: e }), 'error')
     }
   }
 
   const handleExtract = (entry: FileEntry) => {
     if (!sessionId) return
-    showPrompt('Extract to', async (destDir) => {
+    showPrompt(t('files.extractTo'), async (destDir) => {
       if (!destDir) return
       // Derive suggested folder name from archive filename
       let extractName = entry.name
@@ -1125,12 +1115,12 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       if (conflict) {
         const result = await showConflict({ name: extractName, isDir: true }, 0)
         if (result.action === 'skip') {
-          showToast(`Skipped: ${entry.name}`, 'info')
+          showToast(t('files.skipped', { name: entry.name }), 'info')
           return
         }
         if (result.action === 'rename') {
           const newName = await new Promise<string>((resolve) => {
-            showPrompt('Folder name', resolve, extractName + '_1')
+            showPrompt(t('files.folderName'), resolve, extractName + '_1')
           })
           if (!newName) return
           finalName = newName
@@ -1140,7 +1130,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
 
       const archivePath = resolvePath(entry)
       const tempDir = `/tmp/ssh_extract_${Date.now()}`
-      setArchiveProgress({ type: 'extract', logs: [`Extracting ${entry.name}...`], done: false })
+      setArchiveProgress({ type: 'extract', logs: [t('files.extractingFile', { name: entry.name })], done: false })
 
       try {
         // Step 1: Extract to temp directory
@@ -1157,7 +1147,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
         // Rename temp directory to final path (SFTP rename works for dirs)
         await invoke('ssh_rename_file', { sessionId, oldPath: tempDir, newPath: finalPath })
 
-        showToast(`Extracted: ${entry.name} \u2192 ${finalName}/`, 'success')
+        showToast(t('files.extracted', { name: entry.name, dest: finalName }), 'success')
         navigateTo(currentPath)
       } catch (e) {
         // Cleanup temp dir on failure
@@ -1165,7 +1155,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
           await invoke('ssh_delete_file', { sessionId, path: tempDir, isDir: true })
         } catch { /* ignore cleanup errors */ }
         setArchiveProgress(prev => prev ? { ...prev, logs: [...prev.logs, `Error: ${e}`], done: true } : null)
-        showToast(`Extract failed: ${e}`, 'error')
+        showToast(t('files.extractFailed', { error: e }), 'error')
       }
     }, currentPath)
   }
@@ -1307,7 +1297,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
   if (!sessionId) {
     return (
       <div className="file-browser fb-not-connected">
-        <div className="fb-not-connected-msg">Not connected</div>
+        <div className="fb-not-connected-msg">{t('files.notConnected')}</div>
       </div>
     )
   }
@@ -1322,7 +1312,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       {operationLog && (
         <div className="fb-delete-log fb-archive-log">
           <div className="fb-delete-log-header">
-            <span>📝 Operation Log</span>
+            <span>📝 {t('files.operationLog')}</span>
             <button className="fb-delete-log-close" onClick={() => setOperationLog(null)}>✕</button>
           </div>
           <pre ref={operationLogRef} className="fb-delete-log-content">{operationLog.lines.join('\n')}</pre>
@@ -1333,7 +1323,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       {deleteLog && (
         <div className="fb-delete-log">
           <div className="fb-delete-log-header">
-            <span>🗑️ Delete Log</span>
+            <span>🗑️ {t('files.deleteLog')}</span>
             <button className="fb-delete-log-close" onClick={() => setDeleteLog(null)}>✕</button>
           </div>
           <pre className="fb-delete-log-content">{deleteLog}</pre>
@@ -1344,7 +1334,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       {archiveProgress && (
         <div className="fb-delete-log fb-archive-log">
           <div className="fb-delete-log-header">
-            <span>{archiveProgress.type === 'compress' ? '🗜️ Compressing' : '📂 Extracting'}{archiveProgress.done ? ' — Done' : '...'}</span>
+            <span>{archiveProgress.type === 'compress' ? `🗜️ ${t('files.compressing')}` : `📂 ${t('files.extracting')}`}{archiveProgress.done ? ` — ${t('files.done')}` : '...'}</span>
             <button className="fb-delete-log-close" onClick={() => setArchiveProgress(null)}>✕</button>
           </div>
           <pre ref={archiveLogRef} className="fb-delete-log-content">{archiveProgress.logs.join('\n')}</pre>
@@ -1355,7 +1345,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       {copyProgress && (
         <div className="fb-delete-log fb-archive-log">
           <div className="fb-delete-log-header">
-            <span>📋 Copying{copyProgress.done ? ' — Done' : '...'}</span>
+            <span>📋 {t('files.copying')}{copyProgress.done ? ` — ${t('files.done')}` : '...'}</span>
             <button className="fb-delete-log-close" onClick={() => setCopyProgress(null)}>✕</button>
           </div>
           <pre ref={copyLogRef} className="fb-delete-log-content">{copyProgress.logs.join('\n')}</pre>
@@ -1364,10 +1354,10 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
 
       {/* Toolbar */}
       <div className="fb-toolbar">
-        <button className="fb-btn" onClick={goUp} disabled={currentPath === '/'} title="Go up">
+        <button className="fb-btn" onClick={goUp} disabled={currentPath === '/'} title={t('files.goUp')}>
           <BackIcon />
         </button>
-        <button className="fb-btn" onClick={() => navigateTo(currentPath, true)} title="Refresh">
+        <button className="fb-btn" onClick={() => navigateTo(currentPath, true)} title={t('files.refresh')}>
           <RefreshIcon />
         </button>
 
@@ -1392,24 +1382,24 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               e.preventDefault() // prevent input blur
               handleGoToPath()
             }}
-            title="Go to path"
+            title={t('files.go')}
           >
-            Go ➜
+            {t('files.go')} ➜
           </button>
           <div style={{ width: '1px', height: '20px', background: '#575b5cff', margin: '0 18px' }} />
           <div style={{ position: 'relative' }} ref={favoritesDropdownRef}>
             <button
               className="fb-btn fb-btn-favorites"
               onClick={() => setShowFavoritesDropdown(!showFavoritesDropdown)}
-              title="Favorites"
+              title={t('files.favorites')}
             >
-                   ⭐Favorites 
+                   ⭐{t('files.favorites')} 
             </button>
             {showFavoritesDropdown && (
               <div className="fb-favorites-dropdown">
                 {favorites.length === 0 ? (
                   <div className="fb-favorite-empty">
-                    No favorites yet. Right-click in the file browser to add a directory.
+                    {t('files.noFavorites')}
                   </div>
                 ) : (
                   favorites.map((path, idx) => (
@@ -1428,7 +1418,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
                           e.stopPropagation()
                           removeFavorite(path)
                         }}
-                        title="Remove from favorites"
+                        title={t('files.removeFromFavorites')}
                       >
                         ✕
                       </button>
@@ -1440,7 +1430,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
           </div>
         </div>
 
-        <div className="fb-count">{files.length} items</div>
+        <div className="fb-count">{files.length} {t('files.items')}</div>
       </div>
 
       {/* File Grid */}
@@ -1459,9 +1449,9 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
         }}
         onMouseDown={handleGridMouseDown}
       >
-        {dropActive && <div className="fb-drop-overlay"> Drop files here to upload</div>}
-        {loading && <div className="fb-loading">Loading...</div>}
-        {!loading && !jumpToPath && files.length === 0 && !dropActive && <div className="fb-empty">Empty directory</div>}
+        {dropActive && <div className="fb-drop-overlay"> {t('files.dropFilesHere')}</div>}
+        {loading && <div className="fb-loading">{t('common.loading')}</div>}
+        {!loading && !jumpToPath && files.length === 0 && !dropActive && <div className="fb-empty">{t('files.emptyDir')}</div>}
         {!loading && files.map((entry) => (
           <div
             key={entry.name}
@@ -1511,7 +1501,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               return f.isDir ? `[dir] ${f.permissions}` : `${formatSize(f.size)}  ${f.permissions}  ${formatTime(f.mtime)}`
             }
             const totalSize = sel.reduce((s, f) => s + (f.isDir ? 0 : f.size), 0)
-            return `${sel.length} selected (${formatSize(totalSize)})`
+            return `${sel.length} ${t('files.selected')} (${formatSize(totalSize)})`
           })()}
         </span>}
       </div>
@@ -1524,7 +1514,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
             return
           }
           if (editor.content !== editor.originalContent) {
-            showConfirm('Unsaved changes. Discard?', () => setEditor(null))
+            showConfirm(t('files.unsavedChanges'), () => setEditor(null))
             return
           }
           setEditor(null)
@@ -1538,15 +1528,15 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
                   onClick={handleSaveFile}
                   disabled={editor.saving || editor.content === editor.originalContent}
                 >
-                  {editor.saving ? 'Saving...' : '💾 Save'}
+                  {editor.saving ? t('common.saving') : `💾 ${t('common.save')}`}
                 </button>
-                <button className="fb-editor-btn minimize" onClick={() => setEditor({ ...editor, minimized: true })} title="Minimize">—</button>
-                <button className="fb-editor-btn maximize" onClick={() => setEditor({ ...editor, maximized: !editor.maximized })} title={editor.maximized ? 'Restore' : 'Maximize'}>
+                <button className="fb-editor-btn minimize" onClick={() => setEditor({ ...editor, minimized: true })} title={t('files.minimize')}>—</button>
+                <button className="fb-editor-btn maximize" onClick={() => setEditor({ ...editor, maximized: !editor.maximized })} title={editor.maximized ? t('files.restore') : t('files.maximize')}>
                   {editor.maximized ? '❐' : '▢'}
                 </button>
                 <button className="fb-editor-btn close" onClick={() => {
                   if (editor.content !== editor.originalContent) {
-                    showConfirm('Unsaved changes. Discard?', () => setEditor(null))
+                    showConfirm(t('files.unsavedChanges'), () => setEditor(null))
                     return
                   }
                   setEditor(null)
@@ -1585,7 +1575,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               navigateTo(newPath)
               setContextMenu(null)
             }}>
-              📂 Open
+              📂 {t('files.open')}
             </div>
             </>
           ) : (
@@ -1593,7 +1583,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               openEditor(contextMenu.entry)
               setContextMenu(null)
             }}>
-              ✏️ Edit
+              ✏️ {t('files.edit')}
             </div>
           )}
           <div className="fb-context-divider" />
@@ -1601,20 +1591,20 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
             handleCopy()
             setContextMenu(null)
           }}>
-            📋 Copy{selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
+            📋 {t('common.copy')}{selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
           </div>
           <div className="fb-context-item" onClick={() => {
             handleCut()
             setContextMenu(null)
           }}>
-            ✂️ Cut{selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
+            ✂️ {t('common.cut')}{selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
           </div>
           {clipboard && (
             <div className="fb-context-item" onClick={() => {
               handlePaste()
               setContextMenu(null)
             }}>
-              📎 Paste
+              📎 {t('common.paste')}
             </div>
           )}
           <div className="fb-context-divider" />
@@ -1622,48 +1612,48 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
             handleRename(contextMenu.entry)
             setContextMenu(null)
           }}>
-            ✏️ Rename
+            ✏️ {t('common.rename')}
           </div>
           {!contextMenu.entry.isDir && (
             <div className="fb-context-item" onClick={() => {
               handleSaveAs(contextMenu.entry)
               setContextMenu(null)
             }}>
-              💾 Save as...
+              💾 {t('files.saveAs')}
             </div>
           )}
           <div className="fb-context-item" onClick={() => {
             setCompressDialog({ names: selectedFiles.has(contextMenu.entry.name) && selectedFiles.size > 1 ? Array.from(selectedFiles) : [contextMenu.entry.name] })
             setContextMenu(null)
           }}>
-            🗜️ Compress{selectedFiles.has(contextMenu.entry.name) && selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
+            🗜️ {t('files.compress')}{selectedFiles.has(contextMenu.entry.name) && selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
           </div>
           {isArchive(contextMenu.entry.name) && (
             <div className="fb-context-item" onClick={() => {
               handleExtract(contextMenu.entry)
               setContextMenu(null)
             }}>
-              📂 Extract
+              📂 {t('files.extract')}
             </div>
           )}
           <div className="fb-context-item" onClick={() => {
             handleShowInfo(contextMenu.entry)
             setContextMenu(null)
           }}>
-            ℹ️ File info
+            ℹ️ {t('files.fileInfo')}
           </div>
           <div className="fb-context-item" onClick={() => {
             handleOpenPermissions(contextMenu.entry)
             setContextMenu(null)
           }}>
-            🔒 Set permissions
+            🔒 {t('files.setPermissions')}
           </div>
           <div className="fb-context-divider" />
           <div className="fb-context-item danger" onClick={() => {
             handleDelete()
             setContextMenu(null)
           }}>
-            🗑️ Delete{selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
+            🗑️ {t('common.delete')}{selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
           </div>
         </div>
       )}
@@ -1679,33 +1669,33 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
             navigateTo(currentPath, true)
             setBgContextMenu(null)
           }}>
-            🔄 Refresh
+            🔄 {t('files.refresh')}
           </div>
           <div className="fb-context-divider" />
           <div className="fb-context-item" onClick={() => {
             handleNewFile()
             setBgContextMenu(null)
           }}>
-            📄 New file
+            📄 {t('files.newFile')}
           </div>
           <div className="fb-context-item" onClick={() => {
             handleNewFolder()
             setBgContextMenu(null)
           }}>
-            📁 New folder
+            📁 {t('files.newFolder')}
           </div>
           <div className="fb-context-item" onClick={() => {
             onCdHere?.(currentPath)
             setBgContextMenu(null)
           }}>
-             cd here
+             {t('files.cdHere')}
           </div>
           <div className="fb-context-divider" />
           <div className="fb-context-item" onClick={() => {
             addFavorite(currentPath)
             setBgContextMenu(null)
           }}>
-            ⭐ {isFavorite(currentPath) ? 'Remove from Favorites' : 'Add to Favorites'}
+            ⭐ {isFavorite(currentPath) ? t('files.removeFromFavorites') : t('files.addToFavorites')}
           </div>
           {clipboard && (
             <>
@@ -1714,7 +1704,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
                 handlePaste()
                 setBgContextMenu(null)
               }}>
-                📎 Paste
+                📎 {t('common.paste')}
               </div>
             </>
           )}
@@ -1723,14 +1713,14 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
             setDownloadDialog({ url: '' })
             setBgContextMenu(null)
           }}>
-            ⬇️ Download
+            ⬇️ {t('common.download')}
           </div>
           {selectedFiles.size > 0 && (
             <div className="fb-context-item" onClick={() => {
               setCompressDialog({ names: Array.from(selectedFiles) })
               setBgContextMenu(null)
             }}>
-              🗜️ Compress ({selectedFiles.size})
+              🗜️ {t('files.compress')} ({selectedFiles.size})
             </div>
           )}
         </div>
@@ -1745,27 +1735,27 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               onClick={() => setFileInfo(null)}
               title="关闭"
             >×</button>
-            <div className="fb-dialog-title">File Info</div>
+            <div className="fb-dialog-title">{t('files.fileInfo')}</div>
             <div className="fb-info-grid">
-              <div className="fb-info-label">Name</div>
+              <div className="fb-info-label">{t('common.name')}</div>
               <div className="fb-info-value">{fileInfo.entry.name}</div>
-              <div className="fb-info-label">Type</div>
+              <div className="fb-info-label">{t('common.type')}</div>
               <div className="fb-info-value">
-                {fileInfo.entry.isDir ? 'Folder' : fileInfo.entry.isSymlink ? 'Symbolic link' : `File (.${getFileExtension(fileInfo.entry.name) || 'unknown'})`}
+                {fileInfo.entry.isDir ? t('files.folder') : fileInfo.entry.isSymlink ? t('files.symbolicLink') : `${t('files.file')} (.${getFileExtension(fileInfo.entry.name) || 'unknown'})`}
               </div>
-              <div className="fb-info-label">Size</div>
+              <div className="fb-info-label">{t('common.size')}</div>
               <div className="fb-info-value">{fileInfo.entry.isDir ? '—' : formatSize(fileInfo.entry.size)}</div>
-              <div className="fb-info-label">Permissions</div>
+              <div className="fb-info-label">{t('files.permissions')}</div>
               <div className="fb-info-value">{fileInfo.entry.permissions || '—'}</div>
-              <div className="fb-info-label">Owner</div>
+              <div className="fb-info-label">{t('files.owner')}</div>
               <div className="fb-info-value">{fileInfo.entry.owner || '—'}</div>
-              <div className="fb-info-label">Modified</div>
+              <div className="fb-info-label">{t('files.modified')}</div>
               <div className="fb-info-value">{formatTime(fileInfo.entry.mtime)}</div>
-              <div className="fb-info-label">Path</div>
+              <div className="fb-info-label">{t('common.path')}</div>
               <div className="fb-info-value fb-info-path">{fileInfo.path}</div>
             </div>
             <div className="fb-dialog-actions">
-              <button className="fb-dialog-btn primary" onClick={() => setFileInfo(null)}>Close</button>
+              <button className="fb-dialog-btn primary" onClick={() => setFileInfo(null)}>{t('common.close')}</button>
             </div>
           </div>
         </div>
@@ -1780,14 +1770,14 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               onClick={() => setConfirmDialog(null)}
               title="关闭"
             >×</button>
-            <div className="fb-dialog-title">Confirm</div>
+            <div className="fb-dialog-title">{t('files.confirmTitle')}</div>
             <div className="fb-confirm-msg">{confirmDialog.message}</div>
             <div className="fb-dialog-actions">
-              <button className="fb-dialog-btn" onClick={() => setConfirmDialog(null)}>Cancel</button>
+              <button className="fb-dialog-btn" onClick={() => setConfirmDialog(null)}>{t('common.cancel')}</button>
               <button className="fb-dialog-btn danger" onClick={() => {
                 confirmDialog.onConfirm()
                 setConfirmDialog(null)
-              }}>Confirm</button>
+              }}>{t('common.confirm')}</button>
             </div>
           </div>
         </div>
@@ -1805,16 +1795,16 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               }}
               title="关闭"
             >×</button>
-            <div className="fb-dialog-title">File Conflict</div>
+            <div className="fb-dialog-title">{t('files.fileConflict')}</div>
             <div className="fb-conflict-msg">
               <span className="fb-conflict-icon">{conflictDialog.item.isDir ? '📁' : '📄'}</span>
-              <strong>{conflictDialog.item.name}</strong> already exists as a {conflictDialog.item.isDir ? 'folder' : 'file'}.
+              {t('files.alreadyExists', { name: conflictDialog.item.name, type: conflictDialog.item.isDir ? t('files.folder') : t('files.file') })}
             </div>
-            <div className="fb-conflict-question">What would you like to do?</div>
+            <div className="fb-conflict-question">{t('files.whatToDo')}</div>
             {conflictDialog.remaining > 0 && (
               <label className="fb-conflict-apply-all">
                 <input type="checkbox" id="conflict-apply-all" />
-                <span>Apply to all {conflictDialog.remaining + 1} conflicts</span>
+                <span>{t('files.applyToAll', { count: conflictDialog.remaining + 1 })}</span>
               </label>
             )}
             <div className="fb-conflict-actions">
@@ -1826,7 +1816,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
                   setConflictDialog(null)
                 }}
               >
-                Replace
+                {t('files.replace')}
               </button>
               <button
                 className="fb-dialog-btn primary"
@@ -1836,7 +1826,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
                   setConflictDialog(null)
                 }}
               >
-                Rename
+                {t('common.rename')}
               </button>
               <button
                 className="fb-dialog-btn"
@@ -1846,7 +1836,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
                   setConflictDialog(null)
                 }}
               >
-                Skip
+                {t('files.skip')}
               </button>
             </div>
           </div>
@@ -1878,11 +1868,11 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               autoFocus
             />
             <div className="fb-dialog-actions">
-              <button className="fb-dialog-btn" onClick={() => setPromptDialog(null)}>Cancel</button>
+              <button className="fb-dialog-btn" onClick={() => setPromptDialog(null)}>{t('common.cancel')}</button>
               <button className="fb-dialog-btn primary" onClick={() => {
                 promptDialog.onSubmit(promptDialog.value)
                 setPromptDialog(null)
-              }}>OK</button>
+              }}>{t('common.ok')}</button>
             </div>
           </div>
         </div>
@@ -1897,10 +1887,10 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               onClick={() => setPermissionDialog(null)}
               title="关闭"
             >×</button>
-            <div className="fb-dialog-title">Set Permissions</div>
+            <div className="fb-dialog-title">{t('files.setPermissionsTitle')}</div>
             <div className="fb-perm-info">
               <span className="fb-perm-name">{permissionDialog.name}</span>
-              <span className="fb-perm-current">Current: {permissionDialog.currentPerms}</span>
+              <span className="fb-perm-current">{t('files.current')}: {permissionDialog.currentPerms}</span>
             </div>
             <div className="fb-perm-quick">
               {[['644','rw-r--r--'],['755','rwxr-xr-x'],['600','rw-------'],['700','rwx------'],['777','rwxrwxrwx'],['400','r--------']].map(([mode, label]) => (
@@ -1915,7 +1905,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
             </div>
             <input
               className="fb-prompt-input"
-              placeholder="Enter mode (e.g. 755)"
+              placeholder={t('files.enterMode')}
               value={permissionDialog.mode}
               onChange={(e) => setPermissionDialog({ ...permissionDialog, mode: e.target.value })}
               onKeyDown={(e) => {
@@ -1924,8 +1914,8 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               }}
             />
             <div className="fb-dialog-actions">
-              <button className="fb-dialog-btn" onClick={() => setPermissionDialog(null)}>Cancel</button>
-              <button className="fb-dialog-btn primary" onClick={handleApplyPermissions} disabled={!permissionDialog.mode}>Apply</button>
+              <button className="fb-dialog-btn" onClick={() => setPermissionDialog(null)}>{t('common.cancel')}</button>
+              <button className="fb-dialog-btn primary" onClick={handleApplyPermissions} disabled={!permissionDialog.mode}>{t('common.apply')}</button>
             </div>
           </div>
         </div>
@@ -1940,16 +1930,16 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               onClick={() => setCompressDialog(null)}
               title="关闭"
             >×</button>
-            <div className="fb-dialog-title">🗜️ Compress {compressDialog.names.length} item{compressDialog.names.length > 1 ? 's' : ''}</div>
+            <div className="fb-dialog-title">🗜️ {t('files.compressTitle', { count: compressDialog.names.length })}</div>
             <div className="fb-compress-items">
               {compressDialog.names.slice(0, 5).map(n => (
                 <span key={n} className="fb-compress-item">{n}</span>
               ))}
-              {compressDialog.names.length > 5 && <span className="fb-compress-more">+{compressDialog.names.length - 5} more...</span>}
+              {compressDialog.names.length > 5 && <span className="fb-compress-more">{t('files.moreItems', { count: compressDialog.names.length - 5 })}</span>}
             </div>
             <input
               className="fb-prompt-input"
-              placeholder="Archive name"
+              placeholder={t('files.archiveName')}
               defaultValue={(compressDialog.names.length === 1 ? compressDialog.names[0] : 'archive') + '.zip'}
               onKeyDown={(e) => {
                 const val = (e.target as HTMLInputElement).value
@@ -1960,11 +1950,11 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               id="compress-name-input"
             />
             <div className="fb-dialog-actions">
-              <button className="fb-dialog-btn" onClick={() => setCompressDialog(null)}>Cancel</button>
+              <button className="fb-dialog-btn" onClick={() => setCompressDialog(null)}>{t('common.cancel')}</button>
               <button className="fb-dialog-btn primary" onClick={() => {
                 const input = document.getElementById('compress-name-input') as HTMLInputElement
                 if (input?.value.trim()) handleCompress(compressDialog.names, input.value.trim())
-              }}>Compress (.zip)</button>
+              }}>{t('files.compress')} (.zip)</button>
             </div>
           </div>
         </div>
@@ -1977,7 +1967,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
           setDownloadDialog(null)
         }}>
           <div className="fb-dialog fb-download-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="fb-dialog-title">⬇️ Download from URL</div>
+            <div className="fb-dialog-title">⬇️ {t('files.downloadFromUrl')}</div>
             <input
               className="fb-prompt-input"
               placeholder="https://example.com/file.zip"
@@ -1991,12 +1981,12 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               autoFocus
             />
             <div className="fb-download-path">
-              Save to: {currentPath === '/' ? '/' : `${currentPath}/`}
+              {t('files.saveTo')} {currentPath === '/' ? '/' : `${currentPath}/`}
             </div>
             <div className="fb-dialog-actions">
-              <button className="fb-dialog-btn" onClick={() => setDownloadDialog(null)} disabled={!!downloadProgress}>Cancel</button>
+              <button className="fb-dialog-btn" onClick={() => setDownloadDialog(null)} disabled={!!downloadProgress}>{t('common.cancel')}</button>
               <button className="fb-dialog-btn primary" onClick={handleDownload} disabled={!downloadDialog.url || !!downloadProgress}>
-                {downloadProgress ? 'Downloading...' : 'Download'}
+                {downloadProgress ? t('files.downloading') : t('common.download')}
               </button>
             </div>
           </div>
@@ -2013,9 +2003,9 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
             />
           </div>
           <span className="fb-progress-text">
-            {downloadProgress.status === 'starting' ? 'Starting...' :
-             downloadProgress.status === 'done' ? 'Complete' :
-             downloadProgress.status === 'error' ? 'Failed' :
+            {downloadProgress.status === 'starting' ? t('files.starting') :
+             downloadProgress.status === 'done' ? t('files.complete') :
+             downloadProgress.status === 'error' ? t('files.failed') :
              `${Math.round(downloadProgress.progress)}%`}
           </span>
         </div>

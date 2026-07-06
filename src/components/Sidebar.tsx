@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
+import { useTranslation } from 'react-i18next'
 
 interface Connection {
   id: string
@@ -42,6 +43,7 @@ interface ContextMenu {
 }
 
 export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection, refreshKey, currentSessionId, connectingServerId }: SidebarProps) {
+  const { t, i18n } = useTranslation()
   const [connections, setConnections] = useState<Connection[]>([])
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
@@ -193,14 +195,14 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
   return (
     <div className="sidebar">
       <div className="sidebar-header">
-        <h2>Servers</h2>
-        <button className="btn-new" onClick={handleNewConnection} title="New Connection">
+        <h2>{t('sidebar.servers')}</h2>
+        <button className="btn-new" onClick={handleNewConnection} title={t('sidebar.newConnection')}>
           +
         </button>
       </div>
       <div className="connection-list">
         {connections.length === 0 && (
-          <p className="empty-hint">Click + to add a server</p>
+          <p className="empty-hint">{t('sidebar.clickToAdd')}</p>
         )}
         {connections.map((conn) => {
           const isConnected = conn.id === currentSessionId
@@ -212,7 +214,7 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
               onClick={() => onSelect(conn)}
               onDoubleClick={() => onConnect(conn)}
               onContextMenu={(e) => handleContextMenu(e, conn)}
-              title="Double-click to connect quickly"
+              title={t('sidebar.doubleClickHint')}
             >
               <div className="conn-info">
                 <span className="conn-name">{conn.name || conn.host}</span>
@@ -232,10 +234,10 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
                       onConnect(conn)
                     }
                   }}
-                  title={isConnected ? 'Disconnect' : 'Connect'}
+                  title={isConnected ? t('common.disconnect') : t('common.connect')}
                   disabled={connectingServerId === conn.id}
                 >
-                  {connectingServerId === conn.id ? 'Connecting...' : (isConnected ? 'Disconnect' : 'Connect')}
+                  {connectingServerId === conn.id ? t('common.connecting') : (isConnected ? t('common.disconnect') : t('common.connect'))}
                 </button>
                 <button
                   className="btn-edit"
@@ -245,9 +247,9 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
                     const fresh = list.find(c => c.id === conn.id)
                     setEditing(fresh ? { ...fresh } : { ...conn })
                   }}
-                  title="Edit"
+                  title={t('common.edit')}
                 >
-                  Edit
+                  {t('common.edit')}
                 </button>
               </div>
             </div>
@@ -269,7 +271,7 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
               setContextMenu(null)
             }}
           >
-            ⚡ Connect
+            ⚡ {t('common.connect')}
           </div>
           <div
             className="context-menu-item"
@@ -278,7 +280,7 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
               setContextMenu(null)
             }}
           >
-             Edit
+             {t('common.edit')}
           </div>
           <div className="context-menu-divider" />
           <div
@@ -288,7 +290,7 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
               setContextMenu(null)
             }}
           >
-            🗑 Delete
+            🗑 {t('common.delete')}
           </div>
         </div>
       )}
@@ -297,21 +299,21 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
         <div className="sidebar-confirm-overlay">
           <div className="sidebar-edit-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="sidebar-edit-header">
-              <div className="sidebar-confirm-title">Edit Connection</div>
+              <div className="sidebar-confirm-title">{t('sidebar.editConnection')}</div>
               <button className="sidebar-edit-close" onClick={() => setEditing(null)}>×</button>
             </div>
             <div className="sidebar-edit-fields">
               <div className="form-group">
-                <label>Name</label>
+                <label>{t('sidebar.name')}</label>
                 <input className="sidebar-edit-input" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Host</label>
+                  <label>{t('sidebar.host')}</label>
                   <input className="sidebar-edit-input" value={editing.host} onChange={(e) => setEditing({ ...editing, host: e.target.value })} />
                 </div>
                 <div className="form-group fixed-width">
-                  <label>Port</label>
+                  <label>{t('sidebar.port')}</label>
                   <input 
                     className="sidebar-edit-input" 
                     type="number" 
@@ -331,32 +333,32 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Username</label>
+                  <label>{t('sidebar.username')}</label>
                   <input className="sidebar-edit-input" value={editing.username} onChange={(e) => setEditing({ ...editing, username: e.target.value })} />
                 </div>
                 <div className="form-group medium-width">
-                  <label>Auth Type</label>
+                  <label>{t('sidebar.authType')}</label>
                   <select className="sidebar-edit-input" value={editing.auth_type} onChange={(e) => setEditing({ ...editing, auth_type: e.target.value, key_path: e.target.value === 'key' ? editing.key_path : undefined, password: e.target.value === 'password' ? editing.password : undefined })}>
-                    <option value="password">Password</option>
+                    <option value="password">{t('sidebar.password')}</option>
                     <option value="key">Key File</option>
                   </select>
                 </div>
               </div>
               {editing.auth_type === 'password' && (
                 <div className="form-group">
-                  <label>Password</label>
+                  <label>{t('sidebar.password')}</label>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <input className="sidebar-edit-input" style={{ flex: 1 }} type={showEditPassword ? 'text' : 'password'} value={editing.password || ''} onChange={(e) => setEditing({ ...editing, password: e.target.value })} />
-                    <button className="sidebar-edit-action-btn" onClick={() => setShowEditPassword(!showEditPassword)} title={showEditPassword ? 'Hide password' : 'Show password'}>{showEditPassword ? '🙈' : '👁'}</button>
+                    <button className="sidebar-edit-action-btn" onClick={() => setShowEditPassword(!showEditPassword)} title={showEditPassword ? t('sidebar.hidePassword') : t('sidebar.showPassword')}>{showEditPassword ? '🙈' : '👁'}</button>
                   </div>
                 </div>
               )}
               {editing.auth_type === 'key' && (
                 <div className="form-group">
-                  <label>Key Path</label>
+                  <label>{t('sidebar.keyPath')}</label>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <input className="sidebar-edit-input" style={{ flex: 1 }} value={editing.key_path || ''} onChange={(e) => setEditing({ ...editing, key_path: e.target.value })} />
-                    <button className="sidebar-edit-action-btn" onClick={pickKeyFile} title="Browse key file">📂</button>
+                    <button className="sidebar-edit-action-btn" onClick={pickKeyFile} title={t('sidebar.browseKeyFile')}>📂</button>
                   </div>
                 </div>
               )}
@@ -364,10 +366,10 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
             <div className="sidebar-confirm-actions">
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginRight: 'auto' }}>
                 <input type="checkbox" checked={editing.remember_me || false} onChange={(e) => setEditing({ ...editing, remember_me: e.target.checked })} />
-                <span style={{ color: 'red' }}>Remember me</span>
+                <span style={{ color: 'red' }}>{t('sidebar.rememberMe')}</span>
               </label>
-              <button className="sidebar-confirm-btn primary" onClick={handleSaveEdit}>Save</button>
-              <button className="sidebar-confirm-btn connect" onClick={handleSaveAndConnect}>Connect</button>
+              <button className="sidebar-confirm-btn primary" onClick={handleSaveEdit}>{t('common.save')}</button>
+              <button className="sidebar-confirm-btn connect" onClick={handleSaveAndConnect}>{t('common.connect')}</button>
             </div>
           </div>
         </div>
@@ -376,13 +378,13 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
       {confirmDelete && (
         <div className="sidebar-confirm-overlay" onClick={() => setConfirmDelete(null)}>
           <div className="sidebar-confirm-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="sidebar-confirm-title">Confirm Delete</div>
+            <div className="sidebar-confirm-title">{t('sidebar.confirmDelete')}</div>
             <div className="sidebar-confirm-msg">
-              Delete <strong>{confirmDelete.name}</strong>?
+              {t('sidebar.deleteConfirmMsg', { name: confirmDelete.name })}
             </div>
             <div className="sidebar-confirm-actions">
-              <button className="sidebar-confirm-btn cancel" onClick={() => setConfirmDelete(null)}>Cancel</button>
-              <button className="sidebar-confirm-btn danger" onClick={() => handleDelete(confirmDelete.id)}>Delete</button>
+              <button className="sidebar-confirm-btn cancel" onClick={() => setConfirmDelete(null)}>{t('common.cancel')}</button>
+              <button className="sidebar-confirm-btn danger" onClick={() => handleDelete(confirmDelete.id)}>{t('common.delete')}</button>
             </div>
           </div>
         </div>
@@ -392,21 +394,21 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
         <div className="sidebar-confirm-overlay">
           <div className="sidebar-edit-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="sidebar-edit-header">
-              <div className="sidebar-confirm-title">New Connection</div>
+              <div className="sidebar-confirm-title">{t('sidebar.newConnection')}</div>
               <button className="sidebar-edit-close" onClick={() => setCreating(null)}>×</button>
             </div>
             <div className="sidebar-edit-fields">
               <div className="form-group">
-                <label>Name</label>
-                <input className="sidebar-edit-input" value={creating.name} onChange={(e) => setCreating({ ...creating, name: e.target.value })} placeholder="Server name" />
+                <label>{t('sidebar.name')}</label>
+                <input className="sidebar-edit-input" value={creating.name} onChange={(e) => setCreating({ ...creating, name: e.target.value })} placeholder={t('sidebar.serverName')} />
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Host</label>
+                  <label>{t('sidebar.host')}</label>
                   <input className="sidebar-edit-input" value={creating.host} onChange={(e) => setCreating({ ...creating, host: e.target.value })} placeholder="192.168.1.1" />
                 </div>
                 <div className="form-group fixed-width">
-                  <label>Port</label>
+                  <label>{t('sidebar.port')}</label>
                   <input 
                     className="sidebar-edit-input" 
                     type="number" 
@@ -426,32 +428,32 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Username</label>
+                  <label>{t('sidebar.username')}</label>
                   <input className="sidebar-edit-input" value={creating.username} onChange={(e) => setCreating({ ...creating, username: e.target.value })} placeholder="root" />
                 </div>
                 <div className="form-group medium-width">
-                  <label>Auth Type</label>
+                  <label>{t('sidebar.authType')}</label>
                   <select className="sidebar-edit-input" value={creating.auth_type} onChange={(e) => setCreating({ ...creating, auth_type: e.target.value, key_path: e.target.value === 'key' ? creating.key_path : undefined, password: e.target.value === 'password' ? creating.password : undefined })}>
-                    <option value="password">Password</option>
+                    <option value="password">{t('sidebar.password')}</option>
                     <option value="key">Key File</option>
                   </select>
                 </div>
               </div>
               {creating.auth_type === 'password' && (
                 <div className="form-group">
-                  <label>Password</label>
+                  <label>{t('sidebar.password')}</label>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <input className="sidebar-edit-input" style={{ flex: 1 }} type={showCreatePassword ? 'text' : 'password'} value={creating.password || ''} onChange={(e) => setCreating({ ...creating, password: e.target.value })} placeholder="Enter password" />
-                    <button className="sidebar-edit-action-btn" onClick={() => setShowCreatePassword(!showCreatePassword)} title={showCreatePassword ? 'Hide password' : 'Show password'}>{showCreatePassword ? '🙈' : '👁'}</button>
+                    <input className="sidebar-edit-input" style={{ flex: 1 }} type={showCreatePassword ? 'text' : 'password'} value={creating.password || ''} onChange={(e) => setCreating({ ...creating, password: e.target.value })} placeholder={t('sidebar.enterPassword')} />
+                    <button className="sidebar-edit-action-btn" onClick={() => setShowCreatePassword(!showCreatePassword)} title={showCreatePassword ? t('sidebar.hidePassword') : t('sidebar.showPassword')}>{showCreatePassword ? '🙈' : '👁'}</button>
                   </div>
                 </div>
               )}
               {creating.auth_type === 'key' && (
                 <div className="form-group">
-                  <label>Key Path</label>
+                  <label>{t('sidebar.keyPath')}</label>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <input className="sidebar-edit-input" style={{ flex: 1 }} value={creating.key_path || ''} onChange={(e) => setCreating({ ...creating, key_path: e.target.value })} placeholder="~/.ssh/id_rsa" />
-                    <button className="sidebar-edit-action-btn" onClick={pickCreateKeyFile} title="Browse key file">📂</button>
+                    <button className="sidebar-edit-action-btn" onClick={pickCreateKeyFile} title={t('sidebar.browseKeyFile')}>📂</button>
                   </div>
                 </div>
               )}
@@ -459,14 +461,27 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
             <div className="sidebar-confirm-actions">
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginRight: 'auto' }}>
                 <input type="checkbox" checked={creating.remember_me || false} onChange={(e) => setCreating({ ...creating, remember_me: e.target.checked })} />
-                <span style={{ color: 'red' }}>Remember me</span>
+                <span style={{ color: 'red' }}>{t('sidebar.rememberMe')}</span>
               </label>
-              <button className="sidebar-confirm-btn cancel" onClick={() => setCreating(null)}>Cancel</button>
-              <button className="sidebar-confirm-btn primary" onClick={handleSaveNewConnection}>Create</button>
+              <button className="sidebar-confirm-btn cancel" onClick={() => setCreating(null)}>{t('common.cancel')}</button>
+              <button className="sidebar-confirm-btn primary" onClick={handleSaveNewConnection}>{t('common.create')}</button>
             </div>
           </div>
         </div>
       )}
+      {/* Language Switcher */}
+      <div className="sidebar-language-switcher">
+        <button
+          className="lang-toggle-btn"
+          onClick={() => {
+            const newLang = i18n.language === 'zh-CN' ? 'en' : 'zh-CN'
+            i18n.changeLanguage(newLang)
+            invoke('ui_state_set', { key: 'language', value: newLang }).catch(() => {})
+          }}
+        >
+          🌐 {i18n.language === 'zh-CN' ? '中文' : 'EN'} ▾
+        </button>
+      </div>
     </div>
   )
 }

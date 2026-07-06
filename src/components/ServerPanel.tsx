@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { useTranslation } from 'react-i18next'
 import Dashboard from './panels/Dashboard'
 import InstallLnmp from './panels/InstallLnmp'
 import NginxPanel from './panels/NginxPanel'
@@ -46,27 +47,28 @@ interface ServerPanelProps {
   onReconnect?: () => void
 }
 
-const NAV_ITEMS: { key: PanelSection; label: string; icon: string }[] = [
-  { key: 'dashboard', label: 'Dashboard', icon: '📊' },
-  { key: 'terminal', label: 'Terminal', icon: '💻' },
-  { key: 'files', label: 'Files', icon: '📂' },
-  { key: 'install', label: 'Install LNMP', icon: '📦' },
-  { key: 'software', label: 'Software', icon: '🧩' },
-  // { key: 'nginx', label: 'Nginx', icon: '' },
-  { key: 'database', label: 'DB/SQL管理', icon: '🗄' },
-  { key: 'redis', label: 'Redis', icon: '⚡' },
-  // { key: 'php', label: 'PHP', icon: '' },
-  { key: 'sites', label: 'Sites', icon: '🌐' },
-  { key: 'logs', label: 'Logs', icon: '📋' },
-  { key: 'ssl', label: 'SSL', icon: '🔒' },
-  { key: 'monitor', label: 'Monitor', icon: '📈' },
-  { key: 'firewall', label: 'Firewall', icon: '🧱' },
-  { key: 'bbr', label: 'BBR Acceleration', icon: '🚀' },
-  // { key: 'docker', label: 'Docker', icon: '' },
-  { key: 'settings', label: 'Settings', icon: '⚙' },
+const NAV_ITEMS: { key: PanelSection; labelKey: string; icon: string }[] = [
+  { key: 'dashboard', labelKey: 'nav.dashboard', icon: '📊' },
+  { key: 'terminal', labelKey: 'nav.terminal', icon: '💻' },
+  { key: 'files', labelKey: 'nav.files', icon: '📂' },
+  { key: 'install', labelKey: 'nav.installLnmp', icon: '📦' },
+  { key: 'software', labelKey: 'nav.software', icon: '🧩' },
+  // { key: 'nginx', labelKey: 'Nginx', icon: '' },
+  { key: 'database', labelKey: 'nav.database', icon: '🗄' },
+  { key: 'redis', labelKey: 'nav.redis', icon: '⚡' },
+  // { key: 'php', labelKey: 'PHP', icon: '' },
+  { key: 'sites', labelKey: 'nav.sites', icon: '🌐' },
+  { key: 'logs', labelKey: 'nav.logs', icon: '📋' },
+  { key: 'ssl', labelKey: 'nav.ssl', icon: '🔒' },
+  { key: 'monitor', labelKey: 'nav.monitor', icon: '📈' },
+  { key: 'firewall', labelKey: 'nav.firewall', icon: '🧱' },
+  { key: 'bbr', labelKey: 'nav.bbr', icon: '🚀' },
+  // { key: 'docker', labelKey: 'Docker', icon: '' },
+  { key: 'settings', labelKey: 'nav.settings', icon: '⚙' },
 ]
 
 export default function ServerPanel({ sessionId, connHost, jumpToPath, setJumpToPath, termRef, onStartUpload, onUploadComplete, appSettings, onToggleAutoReconnect, onUpdateSettings, onReconnect }: ServerPanelProps) {
+  const { t } = useTranslation()
   const [activeSection, setActiveSectionRaw] = useState<PanelSection>('dashboard')
   const cdHereRef = useRef<string | null>(null)
   const fileBrowserRef = useRef<FileBrowserHandle | null>(null)
@@ -173,7 +175,7 @@ export default function ServerPanel({ sessionId, connHost, jumpToPath, setJumpTo
             disabled={!sessionId && item.key !== 'dashboard'}
           >
             <span className="sp-nav-icon">{item.icon}</span>
-            <span className="sp-nav-label">{item.label}</span>
+            <span className="sp-nav-label">{t(item.labelKey)}</span>
           </button>
         ))}
       </nav>

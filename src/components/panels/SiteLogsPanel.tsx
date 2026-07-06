@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { useTranslation } from 'react-i18next'
 
 interface SiteInfo {
   domain: string
@@ -29,6 +30,7 @@ function formatSize(bytes: number): string {
 }
 
 export default function SiteLogsPanel({ sessionId }: SiteLogsPanelProps) {
+  const { t } = useTranslation()
   const [sites, setSites] = useState<SiteInfo[]>([])
   const [sitesLoading, setSitesLoading] = useState(true)
   const [selectedSite, setSelectedSite] = useState<string>('')
@@ -131,7 +133,7 @@ export default function SiteLogsPanel({ sessionId }: SiteLogsPanelProps) {
     ? logContent.split('\n').filter(line => line.toLowerCase().includes(searchTerm.toLowerCase())).join('\n')
     : logContent
 
-  if (!sessionId) return <div className="sp-empty">Connect to a server first</div>
+  if (!sessionId) return <div className="sp-empty">{t('common.connectFirst')}</div>
 
   return (
     <div className="site-logs-panel">
@@ -143,8 +145,8 @@ export default function SiteLogsPanel({ sessionId }: SiteLogsPanelProps) {
             onChange={(e) => setSelectedSite(e.target.value)}
             disabled={sitesLoading}
           >
-            {sitesLoading && <option value="">Loading sites...</option>}
-            {sites.length === 0 && !sitesLoading && <option value="">No sites found</option>}
+            {sitesLoading && <option value="">{t('logs.loadingSites')}</option>}
+            {sites.length === 0 && !sitesLoading && <option value="">{t('logs.noSites')}</option>}
             {sites.map(s => (
               <option key={s.domain} value={s.domain}>{s.domain}</option>
             ))}
@@ -161,7 +163,7 @@ export default function SiteLogsPanel({ sessionId }: SiteLogsPanelProps) {
             >
               {logs.map(l => (
                 <option key={l.path} value={l.path}>
-                  {l.log_type === 'access' ? '📗 Access' : '📕 Error'} — {l.path} ({formatSize(l.size)})
+                  {l.log_type === 'access' ? `📗 ${t('logs.access')}` : `📕 ${t('logs.error')}`} — {l.path} ({formatSize(l.size)})
                 </option>
               ))}
             </select>
@@ -174,7 +176,7 @@ export default function SiteLogsPanel({ sessionId }: SiteLogsPanelProps) {
             max={10000}
             value={logLines}
             onChange={(e) => setLogLines(Math.max(10, Math.min(10000, Number(e.target.value))))}
-            title="Number of lines"
+            title={t('logs.numberLines')}
           />
 
           <input
@@ -182,7 +184,7 @@ export default function SiteLogsPanel({ sessionId }: SiteLogsPanelProps) {
             type="datetime-local"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            title="From date/time"
+            title={t('logs.fromDate')}
           />
           <span className="site-logs-date-sep">~</span>
           <input
@@ -190,29 +192,29 @@ export default function SiteLogsPanel({ sessionId }: SiteLogsPanelProps) {
             type="datetime-local"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            title="To date/time"
+            title={t('logs.toDate')}
           />
           {(dateFrom || dateTo) && (
-            <button className="svc-cfg-btn" onClick={() => { setDateFrom(''); setDateTo('') }} title="Clear date range">
+            <button className="svc-cfg-btn" onClick={() => { setDateFrom(''); setDateTo('') }} title={t('logs.clearDateRange')}>
               ✕
             </button>
           )}
 
           <button className="svc-cfg-btn" onClick={readLog} disabled={!selectedLog}>
-            🔄 Refresh
+            🔄 {t('logs.refresh')}
           </button>
         </div>
 
         <div className="site-logs-search">
           <input
             className="site-logs-search-input"
-            placeholder="Search in log..."
+            placeholder={t('logs.searchPlaceholder')}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
           {searchTerm && (
             <span className="site-logs-search-count">
-              {filteredContent.split('\n').filter(Boolean).length} matches
+              {filteredContent.split('\n').filter(Boolean).length} {t('logs.matches')}
             </span>
           )}
         </div>
@@ -220,13 +222,13 @@ export default function SiteLogsPanel({ sessionId }: SiteLogsPanelProps) {
 
       {error && <div className="settings-error">{error}</div>}
 
-      {logsLoading && <div className="site-logs-status">Loading log files...</div>}
+      {logsLoading && <div className="site-logs-status">{t('logs.loadingLogFiles')}</div>}
       {!logsLoading && selectedSite && logs.length === 0 && (
-        <div className="site-logs-status">No log files found for {selectedSite}</div>
+        <div className="site-logs-status">{t('logs.noLogFiles', { domain: selectedSite })}</div>
       )}
 
       <pre ref={logRef} className="site-logs-content">
-        {logLoading ? 'Loading log content...' : filteredContent || 'Select a log file to view'}
+        {logLoading ? t('logs.loadingContent') : filteredContent || t('logs.selectToView')}
       </pre>
     </div>
   )

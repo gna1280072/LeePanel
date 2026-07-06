@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { useTranslation } from 'react-i18next'
 
 interface MonitorData {
   cpu_percent: number
@@ -31,6 +32,7 @@ interface MonitorPanelProps {
 const REFRESH_INTERVALS = [3, 5, 10, 30]
 
 export default function MonitorPanel({ sessionId }: MonitorPanelProps) {
+  const { t } = useTranslation()
   const [data, setData] = useState<MonitorData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -76,7 +78,7 @@ export default function MonitorPanel({ sessionId }: MonitorPanelProps) {
     }
   }, [autoRefresh, interval, fetchData, sessionId])
 
-  if (!sessionId) return <div className="sp-empty">Connect to a server first</div>
+  if (!sessionId) return <div className="sp-empty">{t('common.connectFirst')}</div>
 
   const memPercent = data ? (data.mem_total_mb > 0 ? Math.round((data.mem_used_mb / data.mem_total_mb) * 100) : 0) : 0
   const swapPercent = data ? (data.swap_total_mb > 0 ? Math.round((data.swap_used_mb / data.swap_total_mb) * 100) : 0) : 0
@@ -84,12 +86,12 @@ export default function MonitorPanel({ sessionId }: MonitorPanelProps) {
   return (
     <div className="monitor-panel">
       <div className="monitor-header">
-        <h2>System Monitor</h2>
+        <h2>{t('monitor.title')}</h2>
         <div className="monitor-controls">
           {data && <span className="monitor-uptime">{data.uptime}</span>}
           <label className="monitor-auto">
             <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
-            Auto
+            {t('monitor.auto')}
           </label>
           <select
             className="monitor-interval"
@@ -101,7 +103,7 @@ export default function MonitorPanel({ sessionId }: MonitorPanelProps) {
             ))}
           </select>
           <button className="svc-cfg-btn" onClick={fetchData} disabled={loading}>
-            {loading ? '...' : 'Refresh'}
+            {loading ? '...' : t('common.refresh')}
           </button>
         </div>
       </div>
@@ -112,35 +114,35 @@ export default function MonitorPanel({ sessionId }: MonitorPanelProps) {
         <>
           {/* Resource Gauges */}
           <div className="monitor-gauges">
-            <GaugeCard label="CPU" percent={data.cpu_percent} color={gaugeColor(data.cpu_percent)} />
-            <GaugeCard label="Memory" percent={memPercent} detail={`${formatMb(data.mem_used_mb)} / ${formatMb(data.mem_total_mb)}`} color={gaugeColor(memPercent)} />
+            <GaugeCard label={t('monitor.cpu')} percent={data.cpu_percent} color={gaugeColor(data.cpu_percent)} />
+            <GaugeCard label={t('monitor.memory')} percent={memPercent} detail={`${formatMb(data.mem_used_mb)} / ${formatMb(data.mem_total_mb)}`} color={gaugeColor(memPercent)} />
             {data.swap_total_mb > 0 && (
-              <GaugeCard label="Swap" percent={swapPercent} detail={`${formatMb(data.swap_used_mb)} / ${formatMb(data.swap_total_mb)}`} color={gaugeColor(swapPercent)} />
+              <GaugeCard label={t('monitor.swap')} percent={swapPercent} detail={`${formatMb(data.swap_used_mb)} / ${formatMb(data.swap_total_mb)}`} color={gaugeColor(swapPercent)} />
             )}
-            <InfoCard label="Load Average" value={data.load_avg} />
-            <InfoCard label="Network" value={`↓ ${data.net_rx} / ↑ ${data.net_tx}`} />
-            <InfoCard label="Disk I/O" value={`R ${data.disk_read} / W ${data.disk_write}`} />
+            <InfoCard label={t('monitor.loadAverage')} value={data.load_avg} />
+            <InfoCard label={t('monitor.network')} value={`↓ ${data.net_rx} / ↑ ${data.net_tx}`} />
+            <InfoCard label={t('monitor.diskIO')} value={`R ${data.disk_read} / W ${data.disk_write}`} />
           </div>
 
           {/* Mini History Chart */}
           {history.length > 2 && (
             <div className="monitor-chart-card">
-              <div className="monitor-chart-title">CPU & Memory History (last {history.length} samples)</div>
+              <div className="monitor-chart-title">{t('monitor.cpuMemHistory', { count: history.length })}</div>
               <MiniChart data={history} />
             </div>
           )}
 
           {/* Top Processes */}
           <div className="monitor-processes-card">
-            <div className="monitor-card-title">Top Processes (by CPU)</div>
+            <div className="monitor-card-title">{t('monitor.topProcesses')}</div>
             <table className="monitor-proc-table">
               <thead>
                 <tr>
-                  <th>PID</th>
-                  <th>User</th>
-                  <th>CPU%</th>
-                  <th>MEM%</th>
-                  <th>Command</th>
+                  <th>{t('monitor.pid')}</th>
+                  <th>{t('monitor.user')}</th>
+                  <th>{t('monitor.cpuPercent')}</th>
+                  <th>{t('monitor.memPercent')}</th>
+                  <th>{t('monitor.command')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -159,7 +161,7 @@ export default function MonitorPanel({ sessionId }: MonitorPanelProps) {
         </>
       )}
 
-      {loading && !data && <div className="sp-loading">Loading monitor data...</div>}
+      {loading && !data && <div className="sp-loading">{t('monitor.loadingData')}</div>}
     </div>
   )
 }

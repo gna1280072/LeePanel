@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { check } from '@tauri-apps/plugin-updater'
+import { useTranslation } from 'react-i18next'
 import Sidebar from './components/Sidebar'
 import ServerPanel from './components/ServerPanel'
 import type { TerminalHandle } from './components/Terminal'
@@ -46,6 +47,7 @@ interface Settings {
 }
 
 function App() {
+  const { t } = useTranslation()
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [connectedConfigId, setConnectedConfigId] = useState<string | null>(null)
   const [connectingServerId, setConnectingServerId] = useState<string | null>(null)
@@ -323,7 +325,7 @@ function App() {
         }
         setTimeout(attemptReconnect, settings.reconnect_interval * 1000)
       } else if (!autoReconnectRef.current) {
-        showToast(' Connection lost')
+        showToast(t('common.connectionLost'))
         clearSession()
       }
     })
@@ -473,7 +475,7 @@ function App() {
             <button 
               className="sidebar-toggle-btn visible"
               onClick={() => setSidebarVisible(false)}
-              title="Hide Servers Panel"
+              title={t('common.hidePanel')}
             >
               HIDE
             </button>
@@ -488,7 +490,7 @@ function App() {
         <button 
           className="sidebar-toggle-btn hidden"
           onClick={() => setSidebarVisible(true)}
-          title="Show Servers Panel"
+          title={t('common.showPanel')}
         >
           SHOW
         </button>
@@ -510,9 +512,9 @@ function App() {
                 {errorDialog.type === 'connection' && '⚠️'}
                 {errorDialog.type === 'other' && '❗'}
               </div>
-              <div className="error-dialog-title">Connection Failed</div>
+              <div className="error-dialog-title">{t('errorDialog.connectionFailed')}</div>
               <div className="error-dialog-message">{errorDialog.message}</div>
-              <button className="error-dialog-btn" onClick={() => setErrorDialog(null)}>Close</button>
+              <button className="error-dialog-btn" onClick={() => setErrorDialog(null)}>{t('common.close')}</button>
             </div>
           </div>
         )}
@@ -539,14 +541,14 @@ function App() {
       {showWelcome && (
         <div className="welcome-overlay">
           <div className="welcome-modal">
-            <button className="welcome-close-btn" onClick={() => setShowWelcome(false)} title="Close">×</button>
+            <button className="welcome-close-btn" onClick={() => setShowWelcome(false)} title={t('common.close')}>×</button>
             <div className="welcome-icon"></div>
-            <h2 className="welcome-title">Welcome to LeePanel</h2>
-            <p className="welcome-subtitle">Your powerful SSH server management companion</p>
+            <h2 className="welcome-title">{t('welcome.title')}</h2>
+            <p className="welcome-subtitle">{t('welcome.subtitle')}</p>
             <div className="welcome-features">
-              <span>✓ Secure Connections</span>
-              <span>✓ File Management</span>
-              <span>✓ Server Control</span>
+              <span>✓ {t('welcome.secureConnections')}</span>
+              <span>✓ {t('welcome.fileManagement')}</span>
+              <span>✓ {t('welcome.serverControl')}</span>
             </div>
           </div>
         </div>
@@ -564,6 +566,7 @@ function UploadPanel({ upload, onPause, onResume, onStop, onDismiss }: {
   onStop: () => void
   onDismiss: () => void
 }) {
+  const { t } = useTranslation()
   const [collapsed, setCollapsed] = useState(false)
   const pct = upload.totalBytes > 0 ? Math.round((upload.uploadedBytes / upload.totalBytes) * 100) : 0
   const uploadedMB = (upload.uploadedBytes / 1048576).toFixed(1)
@@ -579,7 +582,7 @@ function UploadPanel({ upload, onPause, onResume, onStop, onDismiss }: {
     <div className={`upload-panel ${collapsed ? 'collapsed' : ''}`}>
       <div className="upload-panel-header" onClick={() => setCollapsed(!collapsed)}>
         <span className="upload-panel-title">
-          📤 {upload.active ? (upload.paused ? 'Paused' : 'Uploading') : allDone ? 'Complete' : 'Stopped'}
+          📤 {upload.active ? (upload.paused ? t('upload.paused') : t('upload.uploading')) : allDone ? t('upload.complete') : t('upload.stopped')}
           {' '}{doneCount}/{upload.queue.length}
           {upload.active && !upload.paused && ` — ${pct}%`}
         </span>
@@ -593,7 +596,7 @@ function UploadPanel({ upload, onPause, onResume, onStop, onDismiss }: {
                 <div className="upload-progress-fill" style={{ width: `${pct}%` }} />
               </div>
               <div className="upload-progress-info">
-                {uploadedMB}M / {totalMB}M | Remaining {remainingMB}M | {speedStr}
+                {uploadedMB}M / {totalMB}M | {t('upload.remaining')} {remainingMB}M | {speedStr}
               </div>
             </div>
           )}
@@ -612,18 +615,18 @@ function UploadPanel({ upload, onPause, onResume, onStop, onDismiss }: {
           <div className="upload-panel-actions">
             {upload.active && !upload.paused && (
               <>
-                <button className="upload-btn" onClick={onPause} title="Pause">⏸ Pause</button>
-                <button className="upload-btn danger" onClick={onStop} title="Stop">⏹ Stop</button>
+                <button className="upload-btn" onClick={onPause} title={t('upload.pause')}>⏸ {t('upload.pause')}</button>
+                <button className="upload-btn danger" onClick={onStop} title={t('upload.stop')}>⏹ {t('upload.stop')}</button>
               </>
             )}
             {upload.active && upload.paused && (
               <>
-                <button className="upload-btn" onClick={onResume} title="Resume">▶ Resume</button>
-                <button className="upload-btn danger" onClick={onStop} title="Stop">⏹ Stop</button>
+                <button className="upload-btn" onClick={onResume} title={t('upload.resume')}>▶ {t('upload.resume')}</button>
+                <button className="upload-btn danger" onClick={onStop} title={t('upload.stop')}>⏹ {t('upload.stop')}</button>
               </>
             )}
             {!upload.active && (
-              <button className="upload-btn" onClick={onDismiss} title="Close">✕ Close</button>
+              <button className="upload-btn" onClick={onDismiss} title={t('common.close')}>✕ {t('common.close')}</button>
             )}
           </div>
         </>

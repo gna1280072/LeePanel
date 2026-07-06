@@ -494,6 +494,31 @@ body {
   background: #f85149;
 }
 
+/* ===== Language Switcher ===== */
+.sidebar-language-switcher {
+  padding: 10px 12px;
+  border-top: 1px solid #30363d;
+  flex-shrink: 0;
+}
+
+.lang-toggle-btn {
+  width: 100%;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #30363d;
+  background: #21262d;
+  color: #c9d1d9;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.lang-toggle-btn:hover {
+  background: #30363d;
+  border-color: #58a6ff;
+}
+
 /* ===== Main Area ===== */
 .main-area {
   flex: 1;

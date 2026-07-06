@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { useTranslation } from 'react-i18next'
 
 interface RedisKeyInfo {
   key: string
@@ -26,6 +27,7 @@ interface RedisPanelProps {
 }
 
 export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPanelProps) {
+  const { t } = useTranslation()
   const [redisStatus, setRedisStatus] = useState<'checking' | 'running' | 'stopped' | 'not_installed'>('checking')
   const [redisVersion, setRedisVersion] = useState<string>('')
   const [dbSizes, setDbSizes] = useState<RedisDbSize[]>([])
@@ -191,7 +193,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
   
   const handleAddKey = async () => {
     if (!newKeyName.trim() || !newValue.trim()) {
-      setMsg('Please fill in key name and value')
+      setMsg(t('redis.fillKeyAndValue'))
       return
     }
     
@@ -215,7 +217,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
       // Refresh list
       await loadKeys()
     } catch (e) {
-      setMsg('Add failed: ' + String(e))
+      setMsg(`${t('common.error')}: ` + String(e))
     } finally {
       setAdding(false)
     }
@@ -238,7 +240,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
       // Refresh list
       await loadKeys()
     } catch (e) {
-      setMsg('Delete failed: ' + String(e))
+      setMsg(`${t('common.error')}: ` + String(e))
     } finally {
       setDeleting(false)
     }
@@ -246,7 +248,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
   
   const handleBatchDelete = async () => {
     if (selectedKeys.size === 0) {
-      setMsg('Please select keys to delete first')
+      setMsg(t('redis.selectKeysToDelete'))
       return
     }
     
@@ -264,7 +266,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
       // Refresh list
       await loadKeys()
     } catch (e) {
-      setMsg('Batch delete failed: ' + String(e))
+      setMsg(`${t('common.error')}: ` + String(e))
     } finally {
       setDeleting(false)
     }
@@ -277,7 +279,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
   
   const confirmFlushDb = async () => {
     if (flushInput.toLowerCase() !== 'redis') {
-      setMsg('Flush operation cancelled')
+      setMsg(t('redis.flushCancelled'))
       setShowFlushConfirm(false)
       return
     }
@@ -293,7 +295,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
       setFlushInput('')
       await loadKeys()
     } catch (e) {
-      setMsg('Flush failed: ' + String(e))
+      setMsg(`${t('common.error')}: ` + String(e))
       setShowFlushConfirm(false)
     }
   }
@@ -305,7 +307,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
       setMsg(`Backup created: ${backupPath}`)
       await loadBackups()
     } catch (e) {
-      setMsg('Backup failed: ' + String(e))
+      setMsg(`${t('common.error')}: ` + String(e))
     } finally {
       setCreatingBackup(false)
     }
@@ -319,7 +321,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
       const backupList = await invoke<BackupInfo[]>('server_redis_list_backups', { sessionId })
       setBackups(backupList)
     } catch (e) {
-      setMsg('Failed to load backup list: ' + String(e))
+      setMsg(`${t('common.error')}: ` + String(e))
     } finally {
       setLoadingBackups(false)
     }
@@ -344,7 +346,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
   }
   
   const formatTTL = (ttl: number): string => {
-    if (ttl === -1) return 'Permanent'
+    if (ttl === -1) return t('redis.permanent')
     if (ttl < 60) return `${ttl}s`
     if (ttl < 3600) return `${Math.floor(ttl / 60)}m`
     if (ttl < 86400) return `${Math.floor(ttl / 3600)}h`
@@ -372,19 +374,19 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
     return (
       <div className="panel-container">
         <div className="panel-header">
-          <h2>Redis Management</h2>
+          <h2>{t('redis.title')}</h2>
         </div>
         
         <div className="alert alert-error">
           <div style={{ marginBottom: '12px', fontSize: '14px' }}>
-            Redis is not installed. Please go to Software to install it.
+            {t('redis.notInstalled')}
           </div>
           {onNavigateToSoftware && (
             <button 
               className="btn-primary"
               onClick={onNavigateToSoftware}
             >
-              Go to Software
+              {t('redis.goToSoftware')}
             </button>
           )}
         </div>
@@ -396,38 +398,38 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
   if (redisStatus === 'stopped') {
     const handleStartRedis = async () => {
       try {
-        setMsg('Starting Redis service...')
+        setMsg(t('common.loading'))
         await invoke<string>('server_service_action', { 
           sessionId, 
           service: 'redis', 
           action: 'start' 
         })
-        setMsg('Redis service started. Please refresh the page.')
+        setMsg(t('common.loading'))
         // Auto-check after 2 seconds
         setTimeout(() => {
           checkRedis()
           setMsg('')
         }, 2000)
       } catch (e) {
-        setMsg('Start failed: ' + String(e))
+        setMsg(`${t('common.error')}: ` + String(e))
       }
     }
     
     return (
       <div className="panel-container">
         <div className="panel-header">
-          <h2>Redis Management</h2>
+          <h2>{t('redis.title')}</h2>
         </div>
         
         <div className="alert alert-error">
           <div style={{ marginBottom: '12px', fontSize: '14px' }}>
-            Redis service is not running. Please start Redis.
+            {t('redis.notRunning')}
           </div>
           <button 
             className="btn-primary"
             onClick={handleStartRedis}
           >
-            Start Redis
+            {t('redis.startRedis')}
           </button>
         </div>
       </div>
@@ -439,20 +441,20 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
       {/* Header */}
       <div className="panel-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h2>Redis Management</h2>
+          <h2>{t('redis.title')}</h2>
           <span style={{ fontSize: '12px', color: '#4CAF50', fontWeight: 'bold' }}>
             Redis {redisVersion} ▶
           </span>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button className="btn-primary" onClick={() => setShowAddDialog(true)}>
-            Add Key
+            {t('redis.addKey')}
           </button>
           <button className="btn-secondary" onClick={() => { setShowBackupDialog(true); loadBackups(); }}>
-            Backup List
+            {t('redis.backupList')}
           </button>
           <button className="btn-secondary" onClick={handleFlushDb}>
-            Flush Database
+            {t('redis.flushDatabase')}
           </button>
         </div>
       </div>
@@ -500,13 +502,13 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
           onChange={(e) => setSearchType(e.target.value as 'key' | 'value')}
           style={{ marginRight: '8px', padding: '6px 12px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#2a2a2a', color: '#fff' }}
         >
-          <option value="key">Key</option>
-          <option value="value">Value</option>
+          <option value="key">{t('redis.key')}</option>
+          <option value="value">{t('redis.value')}</option>
         </select>
         <input
           type="text"
           className="search-input"
-          placeholder={searchType === 'key' ? 'Enter key name' : 'Enter key value'}
+          placeholder={searchType === 'key' ? t('redis.searchByKey') : t('redis.searchByValue')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
@@ -528,25 +530,25 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
                   onChange={toggleSelectAll}
                 />
               </th>
-              <th>Key</th>
-              <th>Value</th>
-              <th>Type</th>
-              <th>Length</th>
-              <th>TTL</th>
-              <th>Actions</th>
+              <th>{t('redis.key')}</th>
+              <th>{t('redis.value')}</th>
+              <th>{t('redis.type')}</th>
+              <th>{t('redis.length')}</th>
+              <th>{t('redis.ttl')}</th>
+              <th>{t('redis.actions')}</th>
             </tr>
           </thead>
           <tbody>
             {loading && keys.length === 0 ? (
               <tr>
                 <td colSpan={7} style={{ textAlign: 'center', padding: '2rem' }}>
-                  Loading...
+                  {t('common.loading')}
                 </td>
               </tr>
             ) : keys.length === 0 ? (
               <tr>
                 <td colSpan={7} style={{ textAlign: 'center', padding: '2rem' }}>
-                  Database is empty
+                  {t('common.noData')}
                 </td>
               </tr>
             ) : (
@@ -584,7 +586,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
                       className="action-link danger"
                       onClick={() => setDeleteTarget(keyInfo)}
                     >
-                      Delete
+                      {t('common.delete')}
                     </button>
                   </td>
                 </tr>
@@ -606,8 +608,8 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
               }
             }}
           >
-            <option value="">Select batch operation</option>
-            <option value="delete">Batch Delete</option>
+            <option value="">{t('database.batchOperations')}</option>
+            <option value="delete">{t('redis.deleteSelected')}</option>
           </select>
         </div>
         
@@ -617,7 +619,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
             onClick={() => loadKeys(true)}
             disabled={loading}
           >
-            Refresh
+            {t('common.refresh')}
           </button>
           
           {cursor !== 0 && (
@@ -626,12 +628,12 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
               onClick={handleLoadMore}
               disabled={loading}
             >
-              Load More
+              {t('common.loading')}
             </button>
           )}
           
           <span className="page-info">
-            Total: {keys.length} (Overall: {totalKeys})
+            {keys.length} / {totalKeys}
           </span>
           
           <select 
@@ -658,10 +660,10 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
               onClick={() => setShowAddDialog(false)}
               title="Close"
             >×</button>
-            <h3>Add Key</h3>
+            <h3>{t('redis.addNewKey')}</h3>
             
             <div className="form-group">
-              <label>Key:</label>
+              <label>{t('redis.key')}:</label>
               <input
                 type="text"
                 value={newKeyName}
@@ -672,7 +674,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
             </div>
             
             <div className="form-group">
-              <label>Value:</label>
+              <label>{t('redis.value')}:</label>
               <textarea
                 value={newValue}
                 onChange={(e) => setNewValue(e.target.value)}
@@ -684,7 +686,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
             </div>
             
             <div className="form-group">
-              <label>TTL (seconds, optional):</label>
+              <label>{t('redis.ttlSeconds')}:</label>
               <input
                 type="number"
                 value={newTTL}
@@ -700,14 +702,14 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
                 onClick={() => setShowAddDialog(false)}
                 disabled={adding}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button 
                 className="btn-primary"
                 onClick={handleAddKey}
                 disabled={adding}
               >
-                {adding ? 'Adding...' : 'Confirm'}
+                {adding ? t('redis.adding') : t('common.confirm')}
               </button>
             </div>
           </div>
@@ -723,8 +725,8 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
               onClick={() => setDeleteTarget(null)}
               title="Close"
             >×</button>
-            <h3>Confirm Delete</h3>
-            <p>Are you sure you want to delete key "{deleteTarget.key}"?</p>
+            <h3>{t('redis.confirmDelete')}</h3>
+            <p>{t('common.delete')} "{deleteTarget.key}"?</p>
             
             <div className="modal-actions">
               <button 
@@ -732,14 +734,14 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
                 onClick={() => setDeleteTarget(null)}
                 disabled={deleting}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button 
                 className="btn-danger"
                 onClick={handleDeleteKey}
                 disabled={deleting}
               >
-                {deleting ? 'Deleting...' : 'Confirm Delete'}
+                {deleting ? t('redis.deleting') : t('common.delete')}
               </button>
             </div>
           </div>
@@ -755,7 +757,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
               onClick={() => setShowBackupDialog(false)}
               title="Close"
             >×</button>
-            <h3>Backup List</h3>
+            <h3>{t('redis.backupList')}</h3>
             
             <div style={{ marginBottom: '16px' }}>
               <button 
@@ -763,22 +765,22 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
                 onClick={handleCreateBackup}
                 disabled={creatingBackup}
               >
-                {creatingBackup ? 'Creating...' : 'Create Backup'}
+                {creatingBackup ? t('common.loading') : t('redis.backupList')}
               </button>
             </div>
             
             {loadingBackups ? (
-              <p>Loading...</p>
+              <p>{t('common.loading')}</p>
             ) : backups.length === 0 ? (
-              <p>No backups</p>
+              <p>{t('redis.noBackups')}</p>
             ) : (
               <div className="table-wrapper" style={{ maxHeight: '400px', overflowY: 'auto' }}>
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>Filename</th>
-                      <th>Size</th>
-                      <th>Created</th>
+                      <th>{t('common.name')}</th>
+                      <th>{t('common.size')}</th>
+                      <th>{t('common.status')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -799,7 +801,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
                 className="btn-secondary"
                 onClick={() => setShowBackupDialog(false)}
               >
-                Close
+                {t('common.close')}
               </button>
             </div>
           </div>
@@ -818,11 +820,11 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
               }}
               title="Close"
             >×</button>
-            <h3 style={{ color: '#ff7b72' }}>⚠️ Flush Database Warning</h3>
+            <h3 style={{ color: '#ff7b72' }}>⚠️ {t('redis.flushDatabase')}</h3>
             
             <div style={{ marginBottom: '16px', padding: '12px', background: 'rgba(255, 123, 114, 0.1)', borderRadius: '6px', border: '1px solid #ff7b72' }}>
               <p style={{ margin: '0 0 8px 0', color: '#c9d1d9', fontWeight: 'bold' }}>
-                You are about to flush database DB{currentDb}
+                {t('redis.flushConfirm', { db: currentDb })}
               </p>
               <p style={{ margin: '0', color: '#8b949e', fontSize: '13px' }}>
                 This will permanently delete all data in this database and cannot be undone!
@@ -830,7 +832,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
             </div>
             
             <div className="form-group">
-              <label>Please enter <strong style={{ color: '#ff7b72' }}>redis</strong> to confirm flush:</label>
+              <label>{t('common.confirm')}:</label>
               <input
                 type="text"
                 value={flushInput}
@@ -854,7 +856,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
                   setFlushInput('')
                 }}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button 
                 className="btn-primary"
@@ -862,7 +864,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
                 onClick={confirmFlushDb}
                 disabled={flushInput.toLowerCase() !== 'redis'}
               >
-                Confirm Flush
+                {t('common.confirm')}
               </button>
             </div>
           </div>

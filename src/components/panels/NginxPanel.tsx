@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { useTranslation } from 'react-i18next'
 
 interface ServiceInfo {
   name: string
@@ -20,6 +21,7 @@ interface NginxPanelProps {
 type Tab = 'status' | 'config' | 'vhosts' | 'logs'
 
 export default function NginxPanel({ sessionId }: NginxPanelProps) {
+  const { t } = useTranslation()
   const [tab, setTab] = useState<Tab>('status')
   const [info, setInfo] = useState<ServiceInfo | null>(null)
   const [loading, setLoading] = useState(true)
@@ -60,19 +62,19 @@ export default function NginxPanel({ sessionId }: NginxPanelProps) {
     }
   }
 
-  if (!sessionId) return <div className="sp-empty">Connect to a server first</div>
-  if (loading && !info) return <div className="sp-loading">Loading Nginx info...</div>
+  if (!sessionId) return <div className="sp-empty">{t('common.connectFirst')}</div>
+  if (loading && !info) return <div className="sp-loading">{t('nginx.loadingInfo')}</div>
 
   return (
     <div className="svc-panel">
       {/* Header */}
       <div className="svc-header">
         <div className="svc-title">
-          <h2>Nginx</h2>
+          <h2>{t('nginx.title')}</h2>
           {info && (
             <>
               <span className={`svc-status-badge ${info.active ? 'active' : 'inactive'}`}>
-                {info.active ? 'Running' : 'Stopped'}
+                {info.active ? t('nginx.running') : t('nginx.stopped')}
               </span>
               {info.version && <span className="svc-version">v{info.version}</span>}
             </>
@@ -80,13 +82,13 @@ export default function NginxPanel({ sessionId }: NginxPanelProps) {
         </div>
         <div className="svc-actions">
           {info && !info.active && (
-            <ActionBtn label="Start" action="start" onClick={handleAction} loading={actionLoading} />
+            <ActionBtn label={t('common.start')} action="start" onClick={handleAction} loading={actionLoading} />
           )}
           {info && info.active && (
             <>
-              <ActionBtn label="Reload" action="reload" onClick={handleAction} loading={actionLoading} primary />
-              <ActionBtn label="Restart" action="restart" onClick={handleAction} loading={actionLoading} />
-              <ActionBtn label="Stop" action="stop" onClick={handleAction} loading={actionLoading} danger />
+              <ActionBtn label={t('common.reload')} action="reload" onClick={handleAction} loading={actionLoading} primary />
+              <ActionBtn label={t('common.restart')} action="restart" onClick={handleAction} loading={actionLoading} />
+              <ActionBtn label={t('common.stop')} action="stop" onClick={handleAction} loading={actionLoading} danger />
             </>
           )}
         </div>
@@ -96,13 +98,13 @@ export default function NginxPanel({ sessionId }: NginxPanelProps) {
 
       {/* Tabs */}
       <div className="svc-tabs">
-        {(['status', 'config', 'vhosts', 'logs'] as Tab[]).map((t) => (
+        {(['status', 'config', 'vhosts', 'logs'] as Tab[]).map((tabKey) => (
           <button
-            key={t}
-            className={`svc-tab ${tab === t ? 'active' : ''}`}
-            onClick={() => setTab(t)}
+            key={tabKey}
+            className={`svc-tab ${tab === tabKey ? 'active' : ''}`}
+            onClick={() => setTab(tabKey)}
           >
-            {t === 'status' ? 'Status' : t === 'config' ? 'Config' : t === 'vhosts' ? 'VHosts' : 'Logs'}
+            {tabKey === 'status' ? t('nginx.status') : tabKey === 'config' ? t('nginx.config') : tabKey === 'vhosts' ? t('nginx.vhosts') : t('nginx.logs')}
           </button>
         ))}
       </div>
@@ -138,14 +140,15 @@ function ActionBtn({
 }
 
 function StatusTab({ info }: { info: ServiceInfo }) {
+  const { t } = useTranslation()
   return (
     <div className="svc-status-grid">
-      <InfoRow label="Status" value={info.status_text} />
-      <InfoRow label="PID" value={info.pid || '-'} />
-      <InfoRow label="Memory" value={info.memory || '-'} />
-      <InfoRow label="Uptime" value={info.uptime || '-'} />
-      <InfoRow label="Version" value={info.version || '-'} />
-      <InfoRow label="Config" value={info.config_path} mono />
+      <InfoRow label={t('nginx.status')} value={info.status_text} />
+      <InfoRow label={t('nginx.pid')} value={info.pid || '-'} />
+      <InfoRow label={t('nginx.memory')} value={info.memory || '-'} />
+      <InfoRow label={t('nginx.uptime')} value={info.uptime || '-'} />
+      <InfoRow label={t('common.version')} value={info.version || '-'} />
+      <InfoRow label={t('common.config')} value={info.config_path} mono />
     </div>
   )
 }
@@ -160,6 +163,7 @@ function InfoRow({ label, value, mono }: { label: string; value: string; mono?: 
 }
 
 function ConfigTab({ sessionId, configPath }: { sessionId: string; configPath: string }) {
+  const { t } = useTranslation()
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -205,16 +209,16 @@ function ConfigTab({ sessionId, configPath }: { sessionId: string; configPath: s
     }
   }
 
-  if (loading) return <div className="svc-loading">Loading config...</div>
+  if (loading) return <div className="svc-loading">{t('nginx.loadingConfig')}</div>
 
   return (
     <div className="svc-config">
       <div className="svc-config-toolbar">
         <span className="svc-config-path">{configPath}</span>
         <div className="svc-config-btns">
-          <button className="svc-cfg-btn" onClick={handleTest}>Test Config</button>
+          <button className="svc-cfg-btn" onClick={handleTest}>{t('nginx.testConfig')}</button>
           <button className="svc-cfg-btn primary" onClick={handleSave} disabled={!dirty || saving}>
-            {saving ? 'Saving...' : 'Save'}
+            {saving ? t('common.saving') : t('common.save')}
           </button>
         </div>
       </div>
@@ -235,6 +239,7 @@ function ConfigTab({ sessionId, configPath }: { sessionId: string; configPath: s
 }
 
 function VhostsTab({ sessionId }: { sessionId: string }) {
+  const { t } = useTranslation()
   const [vhosts, setVhosts] = useState<string[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [content, setContent] = useState('')
@@ -283,13 +288,13 @@ function VhostsTab({ sessionId }: { sessionId: string }) {
     }
   }
 
-  if (loading) return <div className="svc-loading">Loading vhosts...</div>
+  if (loading) return <div className="svc-loading">{t('nginx.loadingVhosts')}</div>
 
   return (
     <div className="svc-vhosts">
       <div className="svc-vhosts-list">
-        <div className="svc-vhosts-title">Virtual Hosts ({vhosts.length})</div>
-        {vhosts.length === 0 && <div className="svc-empty">No vhosts found</div>}
+        <div className="svc-vhosts-title">{t('nginx.virtualHosts', { count: vhosts.length })}</div>
+        {vhosts.length === 0 && <div className="svc-empty">{t('nginx.noVhosts')}</div>}
         {vhosts.map((v) => (
           <button
             key={v}
@@ -305,7 +310,7 @@ function VhostsTab({ sessionId }: { sessionId: string }) {
           <div className="svc-config-toolbar">
             <span className="svc-config-path">{selected}</span>
             <button className="svc-cfg-btn primary" onClick={handleSave} disabled={!dirty || saving}>
-              {saving ? 'Saving...' : 'Save'}
+              {saving ? t('common.saving') : t('common.save')}
             </button>
           </div>
           {msg && <div className="svc-msg">{msg}</div>}
@@ -322,6 +327,7 @@ function VhostsTab({ sessionId }: { sessionId: string }) {
 }
 
 function LogsTab({ sessionId }: { sessionId: string }) {
+  const { t } = useTranslation()
   const [logPath, setLogPath] = useState('/var/log/nginx/error.log')
   const [logContent, setLogContent] = useState('')
   const [loading, setLoading] = useState(false)
@@ -354,7 +360,7 @@ function LogsTab({ sessionId }: { sessionId: string }) {
           <option value="/var/log/nginx/access.log">access.log</option>
         </select>
         <button className="svc-cfg-btn" onClick={loadLog} disabled={loading}>
-          {loading ? 'Loading...' : 'Refresh'}
+          {loading ? t('common.loading') : t('common.refresh')}
         </button>
       </div>
       <pre className="svc-log-content">{logContent}</pre>

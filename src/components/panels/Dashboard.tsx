@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { useTranslation } from 'react-i18next'
 
 interface OsInfo {
   distro: string
@@ -60,6 +61,7 @@ function percentBar(used: number, total: number): { percent: number; color: stri
 }
 
 export default function Dashboard({ sessionId, onNavigate }: DashboardProps) {
+  const { t } = useTranslation()
   const [sysInfo, setSysInfo] = useState<SystemInfo | null>(null)
   const [services, setServices] = useState<ServiceStatus[]>([])
   const [loading, setLoading] = useState(true)
@@ -111,18 +113,18 @@ export default function Dashboard({ sessionId, onNavigate }: DashboardProps) {
   }, [sessionId])
 
   if (!sessionId) {
-    return <div className="sp-empty">Connect to a server to view dashboard</div>
+    return <div className="sp-empty">{t('dashboard.connectToView')}</div>
   }
 
   if (loading && !sysInfo) {
-    return <div className="sp-loading">Loading system information...</div>
+    return <div className="sp-loading">{t('dashboard.loadingSystem')}</div>
   }
 
   if (error && !sysInfo) {
     return (
       <div className="sp-error">
-        <p>Failed to load: {error}</p>
-        <button className="sp-retry-btn" onClick={fetchData}>Retry</button>
+        <p>{t('common.failedToLoad', { error })}</p>
+        <button className="sp-retry-btn" onClick={fetchData}>{t('common.retry')}</button>
       </div>
     )
   }
@@ -159,37 +161,37 @@ export default function Dashboard({ sessionId, onNavigate }: DashboardProps) {
           )}
         </div>
         <button className="sp-refresh-btn" onClick={fetchData} disabled={loading}>
-          {loading ? 'Refreshing...' : 'Refresh'}
+          {loading ? t('common.refreshing') : t('common.refresh')}
         </button>
       </div>
 
       {/* System Info Card */}
       {sysInfo && (
         <div className="sp-card">
-          <div className="sp-card-title">System</div>
+          <div className="sp-card-title">{t('dashboard.system')}</div>
           <div className="sp-info-grid">
             <div className="sp-info-item">
-              <span className="sp-info-label">OS</span>
+              <span className="sp-info-label">{t('dashboard.os')}</span>
               <span className="sp-info-value">{sysInfo.os.distro} {sysInfo.os.version}</span>
             </div>
             <div className="sp-info-item">
-              <span className="sp-info-label">Kernel</span>
+              <span className="sp-info-label">{t('dashboard.kernel')}</span>
               <span className="sp-info-value">{sysInfo.os.kernel}</span>
             </div>
             <div className="sp-info-item">
-              <span className="sp-info-label">Architecture</span>
+              <span className="sp-info-label">{t('dashboard.architecture')}</span>
               <span className="sp-info-value">{sysInfo.os.arch}</span>
             </div>
             <div className="sp-info-item">
-              <span className="sp-info-label">Hostname</span>
+              <span className="sp-info-label">{t('dashboard.hostname')}</span>
               <span className="sp-info-value">{sysInfo.os.hostname}</span>
             </div>
             <div className="sp-info-item">
-              <span className="sp-info-label">Uptime</span>
+              <span className="sp-info-label">{t('dashboard.uptime')}</span>
               <span className="sp-info-value">{sysInfo.uptime}</span>
             </div>
             <div className="sp-info-item">
-              <span className="sp-info-label">Load Average</span>
+              <span className="sp-info-label">{t('dashboard.loadAverage')}</span>
               <span className="sp-info-value">{sysInfo.load_avg}</span>
             </div>
           </div>
@@ -199,14 +201,14 @@ export default function Dashboard({ sessionId, onNavigate }: DashboardProps) {
       {/* Resources Card */}
       {sysInfo && (
         <div className="sp-card">
-          <div className="sp-card-title">Resources</div>
+          <div className="sp-card-title">{t('dashboard.resources')}</div>
           <div className="sp-resource-list">
             {/* CPU */}
             {cpu && (
               <div className="sp-resource-item">
                 <div className="sp-resource-header">
-                  <span>CPU</span>
-                  <span>{sysInfo.cpu_percent}% - {sysInfo.cpu_model} ({sysInfo.cpu_cores} cores)</span>
+                  <span>{t('dashboard.cpu')}</span>
+                  <span>{sysInfo.cpu_percent}% - {sysInfo.cpu_model} ({sysInfo.cpu_cores} {t('dashboard.cores')})</span>
                 </div>
                 <div className="sp-progress-track">
                   <div className="sp-progress-fill" style={{ width: `${cpu.percent}%`, background: cpu.color }} />
@@ -217,7 +219,7 @@ export default function Dashboard({ sessionId, onNavigate }: DashboardProps) {
             {mem && (
               <div className="sp-resource-item">
                 <div className="sp-resource-header">
-                  <span>Memory</span>
+                  <span>{t('dashboard.memory')}</span>
                   <span>{formatMb(sysInfo.mem_used_mb)} / {formatMb(sysInfo.mem_total_mb)} ({mem.percent}%)</span>
                 </div>
                 <div className="sp-progress-track">
@@ -229,7 +231,7 @@ export default function Dashboard({ sessionId, onNavigate }: DashboardProps) {
             {swap && sysInfo.swap_total_mb > 0 && (
               <div className="sp-resource-item">
                 <div className="sp-resource-header">
-                  <span>Swap</span>
+                  <span>{t('dashboard.swap')}</span>
                   <span>{formatMb(sysInfo.swap_used_mb)} / {formatMb(sysInfo.swap_total_mb)} ({swap.percent}%)</span>
                 </div>
                 <div className="sp-progress-track">
@@ -244,7 +246,7 @@ export default function Dashboard({ sessionId, onNavigate }: DashboardProps) {
               return (
                 <div className="sp-resource-item" key={i}>
                   <div className="sp-resource-header">
-                    <span>Disk {d.mount}</span>
+                    <span>{t('dashboard.disk')} {d.mount}</span>
                     <span>{d.used} / {d.size} ({d.use_percent})</span>
                   </div>
                   <div className="sp-progress-track">
@@ -259,13 +261,13 @@ export default function Dashboard({ sessionId, onNavigate }: DashboardProps) {
 
       {/* Services Card */}
       <div className="sp-card">
-        <div className="sp-card-title">Services</div>
+        <div className="sp-card-title">{t('dashboard.services')}</div>
         {displayServices.length === 0 ? (
           <div className="sp-services-empty">
-            <p>No LNMP services detected.</p>
+            <p>{t('dashboard.noLnmp')}</p>
             {onNavigate && (
               <button className="install-nav-btn" onClick={() => onNavigate('install')}>
-                Install LNMP Environment
+                {t('dashboard.installLnmp')}
               </button>
             )}
           </div>
@@ -280,7 +282,7 @@ export default function Dashboard({ sessionId, onNavigate }: DashboardProps) {
                 <div className="sp-service-meta">
                   {svc.version && <span className="sp-service-version">v{svc.version}</span>}
                   <span className={`sp-service-state ${svc.active ? 'running' : 'stopped'}`}>
-                    {svc.active ? 'Running' : 'Stopped'}
+                    {svc.active ? t('common.running') : t('common.stopped')}
                   </span>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 use crate::ssh::SshManager;
+use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use russh_keys::key::{KeyPair, SignatureHash};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
@@ -6442,50 +6443,45 @@ pub async fn get_redis_version(
 }
 
 /// Get sizes of all databases (0-15)
+/// ponytail: single INFO keyspace call replaces 16 redis-cli DBSIZE processes
 pub async fn redis_dbsize_all(
     ssh_mgr: &SshManager,
     session_id: &str,
 ) -> Result<Vec<RedisDbSize>, String> {
-    // Optimize: Query all DB sizes in a single command using bash loop
-    // redis-cli DBSIZE returns "(integer) N", so we extract just the number
-    let cmd = "for i in $(seq 0 15); do echo -n \"$i:\"; redis-cli -n $i DBSIZE | grep -o '[0-9]\\+'; done";
-    
     let (out, _, code) = ssh_mgr
-        .exec_with_output(session_id, cmd, 10)
+        .exec_with_output(session_id, "redis-cli INFO keyspace", 5)
         .await?;
-    
+
     if code != 0 {
         return Err(format!("Failed to get database sizes: {}", out));
     }
-    
-    let mut results = Vec::new();
+
+    let mut results = vec![0usize; 16];
     for line in out.lines() {
-        let parts: Vec<&str> = line.split(':').collect();
-        if parts.len() == 2 {
-            if let Ok(db_idx) = parts[0].parse::<u8>() {
-                let count = parts[1].trim().parse::<usize>().unwrap_or(0);
-                results.push(RedisDbSize {
-                    db_index: db_idx,
-                    key_count: count,
-                });
+        // Format: db0:keys=123,expires=0,avg_ttl=0
+        if let Some(rest) = line.strip_prefix("db") {
+            if let Some((idx_str, kv)) = rest.split_once(':') {
+                if let Ok(idx) = idx_str.parse::<usize>() {
+                    if idx < 16 {
+                        for part in kv.split(',') {
+                            if let Some(n) = part.strip_prefix("keys=") {
+                                results[idx] = n.trim().parse().unwrap_or(0);
+                            }
+                        }
+                    }
+                }
             }
         }
     }
-    
-    // Fill missing DBs with 0 count
-    while results.len() < 16 {
-        results.push(RedisDbSize {
-            db_index: results.len() as u8,
-            key_count: 0,
-        });
-    }
-    
-    Ok(results)
+
+    Ok(results.into_iter().enumerate().map(|(i, c)| RedisDbSize {
+        db_index: i as u8,
+        key_count: c,
+    }).collect())
 }
 
 /// Scan keys in a database with pattern matching and pagination
-/// Optimized: single SSH call with bash loop instead of per-key SSH calls
-/// ponytail: bash loop spawns ~4N local redis-cli processes on remote, but avoids 4N SSH round-trips
+/// ponytail: redis-cli pipeline mode replaces ~4N redis-cli processes with 3 (SCAN + 2 pipelines)
 pub async fn redis_scan_keys(
     ssh_mgr: &SshManager,
     session_id: &str,
@@ -6496,94 +6492,175 @@ pub async fn redis_scan_keys(
     count: usize,
 ) -> Result<(Vec<RedisKeyInfo>, usize), String> {
     let match_pattern = if pattern.is_empty() { "*" } else { pattern };
-    // Escape single quotes for bash
     let safe_pat = match_pattern.replace('\'', "'\\''");
-    
-    // For value search, we need to scan all keys and filter by value
-    let cmd = if search_type == "value" {
-        // Search by value: SCAN all keys, then GET each and grep for pattern
-        format!(
-            "_s=$(redis-cli -n {db} SCAN {cur} MATCH '*' COUNT {cnt} 2>&1) || {{ echo ERROR:$_s; exit 1; }}; \
-             _c=$(echo \"$_s\" | head -1); echo \"CURSOR:$_c\"; \
-             echo \"$_s\" | tail -n +2 | while IFS= read -r _k; do \
-               [ -z \"$_k\" ] && continue; \
-               _v=$(redis-cli -n {db} GET \"$_k\" 2>/dev/null); \
-               if echo \"$_v\" | grep -q '{pat}'; then \
-                 _t=$(redis-cli -n {db} TYPE \"$_k\"); \
-                 _t=$(echo $_t | tr -d '\\r\\n'); \
-                 _ttl=$(redis-cli -n {db} TTL \"$_k\"); \
-                 _ttl=$(echo $_ttl | tr -d '\\r\\n'); \
-                 case \"$_t\" in \
-                   string) _l=$(redis-cli -n {db} STRLEN \"$_k\") ;; \
-                   list)   _l=$(redis-cli -n {db} LLEN \"$_k\") ;; \
-                   set)    _l=$(redis-cli -n {db} SCARD \"$_k\") ;; \
-                   hash)   _l=$(redis-cli -n {db} HLEN \"$_k\") ;; \
-                   zset)   _l=$(redis-cli -n {db} ZCARD \"$_k\") ;; \
-                   *)      _l=0 ;; \
-                 esac; \
-                 _l=$(echo $_l | tr -d '\\r\\n'); \
-                 _vp=$(echo \"$_v\" | head -1 | tr -d '\\r'); \
-                 printf '%s\t%s\t%s\t%s\t%s\n' \"$_k\" \"$_t\" \"$_ttl\" \"$_l\" \"$_vp\"; \
-               fi; \
-             done",
-            db = db_index, cur = cursor, pat = safe_pat, cnt = count
-        )
-    } else {
-        // Search by key name (default)
-        format!(
-            "_s=$(redis-cli -n {db} SCAN {cur} MATCH '{pat}' COUNT {cnt} 2>&1) || {{ echo ERROR:$_s; exit 1; }}; \
-             _c=$(echo \"$_s\" | head -1); echo \"CURSOR:$_c\"; \
-             echo \"$_s\" | tail -n +2 | while IFS= read -r _k; do \
-               [ -z \"$_k\" ] && continue; \
-               _t=$(redis-cli -n {db} TYPE \"$_k\"); \
-               _t=$(echo $_t | tr -d '\\r\\n'); \
-               _ttl=$(redis-cli -n {db} TTL \"$_k\"); \
-               _ttl=$(echo $_ttl | tr -d '\\r\\n'); \
-               case \"$_t\" in \
-                 string) _l=$(redis-cli -n {db} STRLEN \"$_k\"); _v=$(redis-cli -n {db} GETRANGE \"$_k\" 0 199) ;; \
-                 list)   _l=$(redis-cli -n {db} LLEN \"$_k\");   _v=\"List with $_l elements\" ;; \
-                 set)    _l=$(redis-cli -n {db} SCARD \"$_k\");   _v=\"Set with $_l members\" ;; \
-                 hash)   _l=$(redis-cli -n {db} HLEN \"$_k\");    _v=\"Hash with $_l fields\" ;; \
-                 zset)   _l=$(redis-cli -n {db} ZCARD \"$_k\");   _v=\"Sorted set with $_l members\" ;; \
-                 *)      _l=0; _v=\"<Unknown type>\" ;; \
-               esac; \
-               _l=$(echo $_l | tr -d '\\r\\n'); \
-               _v=$(echo \"$_v\" | head -1 | tr -d '\\r'); \
-               printf '%s\t%s\t%s\t%s\t%s\n' \"$_k\" \"$_t\" \"$_ttl\" \"$_l\" \"$_v\"; \
-             done",
-            db = db_index, cur = cursor, pat = safe_pat, cnt = count
-        )
+
+    // Helper: send commands via base64-encoded pipeline (avoids all shell escaping issues)
+    let run_pipeline = |cmds: String| {
+        let b64 = B64.encode(cmds.as_bytes());
+        let cmd = format!("printf '%s' '{}' | base64 -d | redis-cli --raw -n {}", b64, db_index);
+        let mgr_clone = ssh_mgr;
+        let sid = session_id.to_string();
+        async move {
+            let (out, _, code) = mgr_clone.exec_with_output(&sid, &cmd, 30).await?;
+            if code != 0 {
+                return Err(format!("Pipeline failed: {}", out));
+            }
+            Ok(out.lines().map(|l| l.trim_end().to_string()).collect::<Vec<_>>())
+        }
     };
 
-    let (out, _, code) = ssh_mgr.exec_with_output(session_id, &cmd, 30).await?;
-
+    // Step 1: SCAN
+    let scan_match = if search_type == "value" { "*" } else { &safe_pat };
+    let scan_cmd = format!(
+        "redis-cli --raw -n {} SCAN {} MATCH '{}' COUNT {}",
+        db_index, cursor, scan_match, count
+    );
+    let (scan_out, _, code) = ssh_mgr.exec_with_output(session_id, &scan_cmd, 15).await?;
     if code != 0 {
-        return Err(format!("Failed to scan keys: {}", out));
+        return Err(format!("Failed to scan keys: {}", scan_out));
     }
 
-    let mut next_cursor = 0usize;
+    let mut scan_lines = scan_out.lines();
+    let next_cursor: usize = scan_lines.next().unwrap_or("0").trim().parse().unwrap_or(0);
+    let key_names: Vec<String> = scan_lines
+        .map(|l| l.to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    if key_names.is_empty() {
+        return Ok((vec![], next_cursor));
+    }
+
+    // Step 2: Pipeline TYPE + TTL for all keys
+    let type_ttl_cmds: String = key_names.iter()
+        .map(|k| format!("TYPE \"{}\"\nTTL \"{}\"", k, k))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let type_ttl_lines = run_pipeline(type_ttl_cmds).await?;
+
+    let mut types = Vec::with_capacity(key_names.len());
+    let mut ttls = Vec::with_capacity(key_names.len());
+    let mut i = 0;
+    while i < type_ttl_lines.len() {
+        let t = type_ttl_lines.get(i).map(|s| s.as_str()).unwrap_or("none");
+        let ttl = type_ttl_lines.get(i + 1).and_then(|s| s.parse::<i64>().ok()).unwrap_or(-1);
+        // Skip error results (e.g. key deleted between SCAN and TYPE)
+        if !t.starts_with("ERR") && !t.starts_with("WRONGTYPE") {
+            types.push(t.to_string());
+            ttls.push(ttl);
+        } else {
+            types.push("none".to_string());
+            ttls.push(-1);
+        }
+        i += 2;
+    }
+
+    // Value search: filter string-type keys by GET value
+    let (key_names, types, ttls) = if search_type == "value" {
+        let mut get_cmds = String::new();
+        let mut string_indices = Vec::new();
+        for (idx, t) in types.iter().enumerate() {
+            if t == "string" {
+                get_cmds.push_str(&format!("GET \"{}\"\n", key_names[idx]));
+                string_indices.push(idx);
+            }
+        }
+        if string_indices.is_empty() {
+            return Ok((vec![], next_cursor));
+        }
+        let get_lines = run_pipeline(get_cmds).await?;
+        let search_pat = match_pattern;
+        // ponytail: all kept keys are type=string (value search only matches strings)
+        let mut kept_names = Vec::new();
+        let mut kept_ttls = Vec::new();
+        for (gi, &idx) in string_indices.iter().enumerate() {
+            if let Some(val) = get_lines.get(gi) {
+                if val.contains(search_pat) {
+                    kept_names.push(key_names[idx].clone());
+                    kept_ttls.push(ttls[idx]);
+                }
+            }
+        }
+        let kept_types = vec!["string".to_string(); kept_names.len()];
+        (kept_names, kept_types, kept_ttls)
+    } else {
+        (key_names, types, ttls)
+    };
+
+    if key_names.is_empty() {
+        return Ok((vec![], next_cursor));
+    }
+
+    // Step 3: Pipeline length + value preview based on type
+    let mut len_cmds = String::new();
+    let mut results_per_key: Vec<usize> = Vec::new();
+    for (idx, k) in key_names.iter().enumerate() {
+        match types[idx].as_str() {
+            "string" => {
+                len_cmds.push_str(&format!("STRLEN \"{}\"\nGETRANGE \"{}\" 0 199\n", k, k));
+                results_per_key.push(2);
+            }
+            "list" => {
+                len_cmds.push_str(&format!("LLEN \"{}\"\n", k));
+                results_per_key.push(1);
+            }
+            "set" => {
+                len_cmds.push_str(&format!("SCARD \"{}\"\n", k));
+                results_per_key.push(1);
+            }
+            "hash" => {
+                len_cmds.push_str(&format!("HLEN \"{}\"\n", k));
+                results_per_key.push(1);
+            }
+            "zset" => {
+                len_cmds.push_str(&format!("ZCARD \"{}\"\n", k));
+                results_per_key.push(1);
+            }
+            _ => results_per_key.push(0),
+        }
+    }
+
+    let len_lines = if len_cmds.is_empty() {
+        vec![]
+    } else {
+        run_pipeline(len_cmds).await?
+    };
+
+    // Assemble final results
     let mut keys = Vec::new();
+    let mut line_idx = 0;
+    for (idx, k) in key_names.iter().enumerate() {
+        let t = types.get(idx).map(|s| s.as_str()).unwrap_or("none");
+        let ttl = ttls.get(idx).copied().unwrap_or(-1);
+        let n = results_per_key.get(idx).copied().unwrap_or(0);
 
-    for line in out.lines() {
-        let line = line.trim();
-        if line.is_empty() { continue; }
+        let (length, preview) = if n >= 2 {
+            let len_val = len_lines.get(line_idx).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
+            let vp = len_lines.get(line_idx + 1).cloned().unwrap_or_default();
+            line_idx += 2;
+            (len_val, vp)
+        } else if n == 1 {
+            let len_val = len_lines.get(line_idx).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
+            line_idx += 1;
+            let vp = match t {
+                "list" => format!("List with {} elements", len_val),
+                "set" => format!("Set with {} members", len_val),
+                "hash" => format!("Hash with {} fields", len_val),
+                "zset" => format!("Sorted set with {} members", len_val),
+                _ => String::new(),
+            };
+            (len_val, vp)
+        } else {
+            (0usize, "<Unknown type>".to_string())
+        };
 
-        if let Some(c) = line.strip_prefix("CURSOR:") {
-            next_cursor = c.trim().parse().unwrap_or(0);
-            continue;
-        }
-
-        // Tab-separated: key\ttype\tttl\tlength\tvalue_preview
-        let f: Vec<&str> = line.split('\t').collect();
-        if f.len() >= 5 {
-            keys.push(RedisKeyInfo {
-                key: f[0].to_string(),
-                data_type: f[1].to_string(),
-                ttl: f[2].parse().unwrap_or(-1),
-                length: f[3].parse().unwrap_or(0),
-                value_preview: f[4].to_string(),
-            });
-        }
+        keys.push(RedisKeyInfo {
+            key: k.clone(),
+            data_type: t.to_string(),
+            ttl,
+            length,
+            value_preview: preview,
+        });
     }
 
     Ok((keys, next_cursor))

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { useTranslation } from 'react-i18next'
 
@@ -66,6 +66,9 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
   
   const [creatingBackup, setCreatingBackup] = useState(false)
   
+  // ponytail: skip duplicate loadKeys on initial mount (loadDbSizes already loads keys)
+  const initialKeysLoaded = useRef(false)
+  
   // Check Redis status on mount
   useEffect(() => {
     checkRedis()
@@ -75,7 +78,9 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
     if (!sessionId) return
     
     try {
-      // Parallelize status check and version fetch
+      // ponytail: fire dbSizes speculatively in parallel with status check
+      const sizesPromise = invoke<RedisDbSize[]>('server_redis_dbsize_all', { sessionId }).catch(() => null)
+      
       const [isRunning, version] = await Promise.all([
         invoke<boolean>('server_redis_check_status', { sessionId }),
         invoke<string>('server_redis_get_version', { sessionId }).catch(() => '')
@@ -84,7 +89,14 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
       if (isRunning) {
         setRedisStatus('running')
         setRedisVersion(version || 'Unknown')
-        await loadDbSizes()
+        const sizes = await sizesPromise
+        if (sizes) {
+          setDbSizes(sizes)
+          setTotalKeys(sizes.find(d => d.db_index === 0)?.key_count || 0)
+          await loadKeysForDb(0, sizes)
+        } else {
+          await loadDbSizes()
+        }
       } else {
         setRedisStatus('stopped')
       }
@@ -136,6 +148,33 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
     }
   }
   
+  // ponytail: load keys for a specific db using pre-fetched sizes (avoids duplicate SSH calls on init)
+  const loadKeysForDb = async (db: number, sizes: RedisDbSize[]) => {
+    if (!sessionId) return
+    try {
+      setLoading(true)
+      setError('')
+      const pattern = searchQuery ? `*${searchQuery}*` : '*'
+      const result = await invoke<[RedisKeyInfo[], number]>('server_redis_scan_keys', {
+        sessionId,
+        dbIndex: db,
+        pattern,
+        searchType,
+        cursor: 0,
+        count: pageSize
+      })
+      const [keyList, nextCursor] = result
+      setKeys(keyList)
+      setCursor(nextCursor)
+      setTotalKeys(sizes.find(d => d.db_index === db)?.key_count || 0)
+      initialKeysLoaded.current = true
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+  
   const loadKeys = async (resetCursor = true) => {
     if (!sessionId) return
     
@@ -174,9 +213,13 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
     }
   }
   
-  // Reload when DB changes
+  // Reload when DB changes (skip initial mount — loadDbSizes already loaded keys)
   useEffect(() => {
     if (redisStatus === 'running' && dbSizes.length > 0) {
+      if (initialKeysLoaded.current) {
+        initialKeysLoaded.current = false
+        return
+      }
       loadKeys()
     }
   }, [currentDb])

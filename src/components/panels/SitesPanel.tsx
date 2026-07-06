@@ -172,6 +172,14 @@ export default function SitesPanel({ sessionId, onOpenFolder, onNavigateToInstal
     <div className="sites-panel">
       <div className="sites-header">
         <h2>{t('sites.title')}</h2>
+        {view !== 'create' && (
+          <button
+            className="svc-cfg-btn primary"
+            onClick={() => setView('create')}
+          >
+            {t('sites.newSite')}
+          </button>
+        )}
         <div className="sites-header-actions">
           <input
             type="text"
@@ -187,12 +195,6 @@ export default function SitesPanel({ sessionId, onOpenFolder, onNavigateToInstal
             disabled={loading}
           >
             {loading ? t('common.loading') : t('common.refresh')}
-          </button>
-          <button
-            className="svc-cfg-btn primary"
-            onClick={() => setView(view === 'create' ? 'list' : 'create')}
-          >
-            {view === 'create' ? t('common.cancel') : t('sites.newSite')}
           </button>
         </div>
       </div>
@@ -217,6 +219,7 @@ export default function SitesPanel({ sessionId, onOpenFolder, onNavigateToInstal
             setProgressLogs([])
             setView('progress')
           }}
+          onCancel={() => setView('list')}
         />
       ) : view === 'progress' ? (
         <CreateSiteProgress
@@ -395,6 +398,7 @@ interface CreateSiteFormProps {
   onError: (msg: string) => void
   onNavigateToInstall?: () => void
   onViewProgress?: () => void
+  onCancel?: () => void
 }
 
 function CreateSiteForm({
@@ -402,6 +406,7 @@ function CreateSiteForm({
   onError,
   onNavigateToInstall,
   onViewProgress,
+  onCancel,
 }: CreateSiteFormProps) {
   const { t } = useTranslation()
   const [domain, setDomain] = useState('')
@@ -596,13 +601,21 @@ function CreateSiteForm({
         </div>
       )}
 
-      <button
-        className="install-btn"
-        onClick={handleCreate}
-        disabled={creating || !domain.trim()}
-      >
-        {creating ? t('sites.creating') : t('sites.createSite')}
-      </button>
+      <div style={{ display: 'flex', gap: '12px' }}>
+        <button
+          className="install-btn"
+          onClick={handleCreate}
+          disabled={creating || !domain.trim()}
+        >
+          {creating ? t('sites.creating') : t('sites.createSite')}
+        </button>
+        <button
+          className="install-btn secondary"
+          onClick={() => onCancel?.()}
+        >
+          {t('common.cancel')}
+        </button>
+      </div>
     </div>
   )
 }

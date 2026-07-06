@@ -239,7 +239,13 @@ export default function SitesPanel({ sessionId, onOpenFolder, onNavigateToInstal
               </button>
             </div>
           ) : (
-            <div className="sites-grid">
+            <>
+              {searchQuery && (
+                <div style={{ color: '#ef4444', marginBottom: '12px', fontSize: '14px' }}>
+                  {t('sites.searchResultsHint')}
+                </div>
+              )}
+              <div className="sites-grid">
               {sites
                 .filter(s => !searchQuery || s.domain.toLowerCase().includes(searchQuery.toLowerCase()))
                 .map((site) => (
@@ -294,6 +300,7 @@ export default function SitesPanel({ sessionId, onOpenFolder, onNavigateToInstal
                 </div>
               ))}
             </div>
+            </>
           )}
         </>
       )}

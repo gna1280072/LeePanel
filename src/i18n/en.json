@@ -369,6 +369,7 @@
   "sites": {
     "title": "Sites",
     "searchDomain": "Search domain...",
+    "searchResultsHint": "Current search results:",
     "newSite": "+ New Site",
     "noSites": "No sites configured",
     "createFirst": "Create Your First Site",

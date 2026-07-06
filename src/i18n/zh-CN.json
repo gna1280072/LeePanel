@@ -369,6 +369,7 @@
   "sites": {
     "title": "站点",
     "searchDomain": "搜索域名...",
+    "searchResultsHint": "当前的搜索结果是：",
     "newSite": "+ 新建站点",
     "noSites": "暂无站点",
     "createFirst": "创建您的第一个站点",

@@ -1400,8 +1400,9 @@ fi
 
 /// Parse a single nginx vhost config to extract site info
 fn parse_site_config(path: &str, content: &str) -> Option<SiteInfo> {
-    // ponytail: extract all server_names from all server_name directives
-    let domains = content
+    // ponytail: extract all server_names from all server_name directives, dedupe to handle Certbot's multiple server blocks
+    use std::collections::HashSet;
+    let domains: Vec<String> = content
         .lines()
         .filter(|l| l.trim().starts_with("server_name"))
         .flat_map(|l| {
@@ -1413,7 +1414,9 @@ fn parse_site_config(path: &str, content: &str) -> Option<SiteInfo> {
                 .map(String::from)
                 .collect::<Vec<_>>()
         })
-        .collect::<Vec<String>>();
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
     
     let domains_str = if domains.is_empty() {
         "unknown".to_string()

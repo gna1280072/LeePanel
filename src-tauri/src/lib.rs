@@ -336,6 +336,22 @@ fn config_delete(db: tauri::State<'_, DbPool>, id: &str) -> Result<(), String> {
     ConfigManager::delete(&conn, id)
 }
 
+#[tauri::command]
+fn config_save_credentials(
+    db: tauri::State<'_, DbPool>,
+    id: String,
+    username: String,
+    auth_type: String,
+    key_path: Option<String>,
+    password: Option<String>,
+    remember_me: bool,
+) -> Result<(), String> {
+    println!("Saving credentials: id={}, username={}, auth_type={}, key_path={:?}, password={:?}, remember_me={}", 
+             id, username, auth_type, key_path, password.as_ref().map(|_| "***"), remember_me);
+    let conn = db.lock().unwrap();
+    ConfigManager::save_credentials(&conn, &id, &username, &auth_type, key_path.as_deref(), password.as_deref(), remember_me)
+}
+
 // ===== Settings Commands =====
 
 #[tauri::command]
@@ -1584,7 +1600,7 @@ pub fn run() {
             ssh_compress, ssh_extract, ssh_reconnect,
             ssh_generate_keypair, save_key_to_local,
             // Config
-            config_list, config_save, config_delete,
+            config_list, config_save, config_delete, config_save_credentials,
             // Settings
             settings_load, settings_save,
             // Favorites

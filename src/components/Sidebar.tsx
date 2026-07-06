@@ -119,6 +119,31 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
     loadConnections()
   }
 
+  const handleSaveAndConnect = async () => {
+    if (!editing) return
+    
+    // Save first
+    const trimmed = {
+      ...editing,
+      host: editing.host.trim(),
+      username: editing.username.trim(),
+      port: Number(String(editing.port).trim()) || editing.port,
+      remember_me: editing.remember_me || false,
+      // Only save credentials if remember_me is checked
+      password: editing.remember_me ? editing.password : undefined,
+      key_path: editing.remember_me ? editing.key_path : undefined
+    }
+    await invoke('config_save', { connection: trimmed })
+    
+    setEditing(null)
+    loadConnections()
+    
+    // Trigger reconnect via custom event
+    window.dispatchEvent(new CustomEvent('sidebar-reconnect-after-edit', {
+      detail: { conn: trimmed }
+    }))
+  }
+
   const pickKeyFile = async () => {
     const path = await open()
     if (path) setEditing({ ...editing!, key_path: String(path) })
@@ -341,8 +366,8 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
                 <input type="checkbox" checked={editing.remember_me || false} onChange={(e) => setEditing({ ...editing, remember_me: e.target.checked })} />
                 <span style={{ color: 'red' }}>Remember me</span>
               </label>
-              <button className="sidebar-confirm-btn cancel" onClick={() => setEditing(null)}>Cancel</button>
               <button className="sidebar-confirm-btn primary" onClick={handleSaveEdit}>Save</button>
+              <button className="sidebar-confirm-btn connect" onClick={handleSaveAndConnect}>Connect</button>
             </div>
           </div>
         </div>

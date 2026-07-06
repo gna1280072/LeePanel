@@ -58,6 +58,68 @@ impl ConfigManager {
             .map_err(|e| format!("Delete connection failed: {}", e))?;
         Ok(())
     }
+
+    pub fn save_credentials(
+        conn: &SqliteConn,
+        id: &str,
+        username: &str,
+        auth_type: &str,
+        key_path: Option<&str>,
+        password: Option<&str>,
+        remember_me: bool,
+    ) -> Result<(), String> {
+        println!("=== DEBUG save_credentials ===");
+        println!("id: {}", id);
+        println!("username: {}", username);
+        println!("auth_type: {}", auth_type);
+        println!("key_path: {:?}", key_path);
+        println!("password: {:?}", password.as_ref().map(|_| "***"));
+        println!("remember_me: {}", remember_me);
+        
+        let sql = "UPDATE connections SET username = ?1, auth_type = ?2, key_path = ?3, password = ?4, remember_me = ?5 WHERE id = ?6";
+        println!("SQL: {}", sql);
+        
+        let result = conn.execute(
+            sql,
+            params![username, auth_type, key_path, password, if remember_me { 1 } else { 0 }, id],
+        );
+        
+        match result {
+            Ok(rows_affected) => {
+                println!("Rows affected: {}", rows_affected);
+                
+                // Verify the update by reading back
+                let mut stmt = conn.prepare("SELECT username, auth_type, key_path, password, remember_me FROM connections WHERE id = ?1")
+                    .map_err(|e| format!("Prepare select failed: {}", e))?;
+                
+                let row_result = stmt.query_row(params![id], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                        row.get::<_, i64>(4)? == 1,
+                    ))
+                });
+                
+                match row_result {
+                    Ok((db_username, db_auth_type, db_key_path, db_password, db_remember)) => {
+                        println!("After update - username: {}, auth_type: {}, key_path: {:?}, password: {:?}, remember_me: {}",
+                            db_username, db_auth_type, db_key_path, db_password.as_ref().map(|_| "***"), db_remember);
+                    }
+                    Err(e) => {
+                        println!("Failed to verify update: {}", e);
+                    }
+                }
+                
+                Ok(())
+            }
+            Err(e) => {
+                println!("Error executing UPDATE: {}", e);
+                Err(format!("Save credentials failed: {}", e))
+            }
+        }
+    }
 }
 
 // ===== Favorite =====

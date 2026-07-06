@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { open } from '@tauri-apps/plugin-dialog'
 import { check } from '@tauri-apps/plugin-updater'
 import Sidebar from './components/Sidebar'
 import ServerPanel from './components/ServerPanel'
@@ -37,15 +36,6 @@ interface SidebarConnection {
   remember_me?: boolean
 }
 
-interface ConnectionConfig {
-  host: string
-  port: number
-  username: string
-  password?: string
-  keyPath?: string
-  rememberMe?: boolean
-}
-
 interface Settings {
   auto_reconnect: boolean
   reconnect_interval: number
@@ -63,16 +53,7 @@ function App() {
   const [toast, setToast] = useState('')
   const [showWelcome, setShowWelcome] = useState(false)
   const termRef = useRef<TerminalHandle | null>(null)
-
-  // Password prompt dialog
-  const [passwordPrompt, setPasswordPrompt] = useState<{
-    show: boolean
-    host: string
-    username: string
-    port: number
-    configId?: string
-    retryFn: ((params: { username: string; password?: string; keyPath?: string }) => void) | null
-  }>({ show: false, host: '', username: '', port: 22, configId: undefined, retryFn: null })
+  const [errorDialog, setErrorDialog] = useState<{ visible: boolean; message: string; type: 'auth' | 'network' | 'connection' | 'other' } | null>(null)
 
   // Settings
   const [settings, setSettings] = useState<Settings>({
@@ -378,115 +359,39 @@ function App() {
     }
   }
 
-  // Check if a connection with same host/port/username already exists
-  const findDuplicateConn = async (host: string, port: number, username: string): Promise<string | null> => {
-    try {
-      const conns = await invoke<SidebarConnection[]>('config_list')
-      const dup = conns.find(c => c.host === host && c.port === port && c.username === username)
-      return dup?.id ?? null
-    } catch { return null }
-  }
-
-  const isAuthError = (e: string) => {
-    const s = e.toLowerCase()
-    return s.includes('auth failed') || s.includes('auth error') || s.includes('authentication') || s.includes('no authentication') || s.includes('permission denied')
-  }
-
-  const handleConnect = async (config: ConnectionConfig) => {
-    setConnectingServerId(config.host + ':' + config.port)
-    setError('')
-
-    // Save connection immediately on Connect click, regardless of outcome
-    let configId: string | null = null
-    try {
-      const existingId = await findDuplicateConn(config.host, config.port, config.username)
-      if (!existingId) {
-        configId = Date.now().toString()
-        await invoke('config_save', {
-          connection: {
-            id: configId,
-            name: config.host,
-            host: config.host,
-            port: config.port,
-            username: config.username,
-            auth_type: config.keyPath ? 'key' : 'password',
-            key_path: config.keyPath,
-            password: config.password,
-          },
-        })
-        setSidebarRefreshKey(k => k + 1)
-      } else {
-        configId = existingId
-        // Update existing connection's auth info
-        const conns = await invoke<SidebarConnection[]>('config_list')
-        const existing = conns.find(c => c.id === existingId)
-        if (existing) {
-          await invoke('config_save', {
-            connection: {
-              ...existing,
-              auth_type: config.keyPath ? 'key' : 'password',
-              key_path: config.keyPath,
-              password: config.password,
-            },
-          })
-        }
-      }
-    } catch (e) { console.error('Save connection failed:', e) }
-
-    try {
-      const sid = await invoke<string>('ssh_connect', {
-        config: {
-          host: config.host,
-          port: config.port,
-          username: config.username,
-          password: config.password,
-          keyPath: config.keyPath,
-        },
-      })
-      setSessionId(sid)
-      setConnectedConfigId(configId)
-      console.log('Connected! sessionId:', sid, 'configId:', configId)
-      setConnHost(`${config.host}_${config.port}`)
-      manualDisconnectRef.current = false
-      showToast(`✓ Connected`)
-      // Show welcome modal on first connection or new session
-      setShowWelcome(true)
-      console.log('Showing welcome modal')
-      setTimeout(() => {
-        setShowWelcome(false)
-        console.log('Hiding welcome modal after 4 seconds')
-      }, 4000)
-    } catch (e) {
-      const errMsg = String(e)
-      if (isAuthError(errMsg)) {
-        setPasswordPrompt({
-          show: true,
-          host: config.host,
-          username: config.username,
-          port: config.port,
-          configId: configId ?? undefined,
-          retryFn: (params) => {
-            setPasswordPrompt(p => ({ ...p, show: false }))
-            handleConnect({ ...config, username: params.username, password: params.password, keyPath: params.keyPath })
-          },
-        })
-      } else {
-        setError(errMsg)
-      }
-    } finally {
-      setConnectingServerId(null)
+  const classifyError = (errorMsg: string): { type: 'auth' | 'network' | 'connection' | 'other'; message: string } => {
+    const s = errorMsg.toLowerCase()
+    
+    // Authentication errors
+    if (s.includes('auth failed') || s.includes('auth error') || s.includes('authentication') || 
+        s.includes('no authentication') || s.includes('permission denied') || s.includes('invalid password')) {
+      return { type: 'auth', message: 'Authentication failed. Please check your username and password.' }
     }
+    
+    // Network errors
+    if (s.includes('timeout') || s.includes('timed out') || s.includes('network unreachable')) {
+      return { type: 'network', message: 'Connection timed out. Please check network connectivity.' }
+    }
+    
+    // Connection refused
+    if (s.includes('connection refused') || s.includes('host unreachable')) {
+      return { type: 'connection', message: 'Connection refused. Server may be offline or port is incorrect.' }
+    }
+    
+    // Key file errors
+    if (s.includes('key') && (s.includes('not found') || s.includes('invalid'))) {
+      return { type: 'auth', message: 'SSH key file not found or invalid.' }
+    }
+    
+    // Default
+    return { type: 'other', message: errorMsg }
   }
 
   const handleSelectConnection = (_conn: SidebarConnection) => {
     // ponytail: no-op, kept for interface compatibility
   }
 
-  const showAuthDialog = (host: string, port: number, username: string, configId: string | undefined, onRetry: (params: { username: string; password?: string; keyPath?: string }) => void) => {
-    setPasswordPrompt({ show: true, host, username, port, configId, retryFn: (params) => { setPasswordPrompt(p => ({ ...p, show: false })); onRetry(params) } })
-  }
-
-  const handleDirectConnect = async (conn: SidebarConnection) => {
+  const handleDirectConnect = useCallback(async (conn: SidebarConnection) => {
     // If already connected, disconnect first (mark as manual to prevent auto-reconnect)
     if (sessionId) {
       manualDisconnectRef.current = true
@@ -524,11 +429,8 @@ function App() {
         }, 4000)
       }).catch(e => {
         const msg = String(e)
-        if (isAuthError(msg)) {
-          showAuthDialog(conn.host, conn.port, username, conn.id, (params) => doConnect(params.username, params.password, params.keyPath))
-        } else {
-          setError(msg)
-        }
+        const { type, message } = classifyError(msg)
+        setErrorDialog({ visible: true, message, type })
       }).finally(() => setConnectingServerId(null))
     }
 
@@ -538,20 +440,28 @@ function App() {
     // Only use stored credentials if remember_me is true
     if (conn.remember_me) {
       if (conn.auth_type === 'password' && !conn.password) {
-        // No stored password - show prompt dialog
-        showAuthDialog(conn.host, conn.port, conn.username, conn.id, (params) => doConnect(params.username, params.password, params.keyPath))
+        setErrorDialog({ visible: true, message: 'No password saved. Please edit the connection to add credentials.', type: 'auth' })
         return
       }
       if (conn.auth_type === 'password') password = conn.password
       if (conn.auth_type === 'key') keyPath = conn.key_path
     } else {
-      // If remember_me is false, always show auth dialog
-      showAuthDialog(conn.host, conn.port, conn.username, conn.id, (params) => doConnect(params.username, params.password, params.keyPath))
+      setErrorDialog({ visible: true, message: 'Please edit the connection to configure authentication.', type: 'auth' })
       return
     }
 
     doConnect(conn.username, password, keyPath)
-  }
+  }, [sessionId])
+
+  // Listen for reconnect-after-edit from Sidebar (Connect button)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.conn) handleDirectConnect(detail.conn)
+    }
+    window.addEventListener('sidebar-reconnect-after-edit', handler)
+    return () => window.removeEventListener('sidebar-reconnect-after-edit', handler)
+  }, [handleDirectConnect])
 
   return (
     <div className="app">
@@ -588,22 +498,31 @@ function App() {
           {error && <div className="error-bar">{error}</div>}
           {toast && <div className="toast-bar">{toast}</div>}
         </div>
+        
+        {/* Error Dialog */}
+        {errorDialog?.visible && (
+          <div className="error-dialog-overlay" onClick={() => setErrorDialog(null)}>
+            <div className="error-dialog" onClick={(e) => e.stopPropagation()}>
+              <button className="error-dialog-close" onClick={() => setErrorDialog(null)}>×</button>
+              <div className="error-dialog-icon">
+                {errorDialog.type === 'auth' && '🔐'}
+                {errorDialog.type === 'network' && '🌐'}
+                {errorDialog.type === 'connection' && '⚠️'}
+                {errorDialog.type === 'other' && '❗'}
+              </div>
+              <div className="error-dialog-title">Connection Failed</div>
+              <div className="error-dialog-message">{errorDialog.message}</div>
+              <button className="error-dialog-btn" onClick={() => setErrorDialog(null)}>Close</button>
+            </div>
+          </div>
+        )}
         <div className="split-container" ref={splitContainerRef}>
           <div className="split-full">
             <ServerPanel sessionId={sessionId} connHost={connHost} jumpToPath={jumpToPath} setJumpToPath={setJumpToPath} termRef={termRef} onStartUpload={handleStartUpload} onUploadComplete={uploadCompleteRef} appSettings={settings} onToggleAutoReconnect={toggleAutoReconnect} onUpdateSettings={handleUpdateSettings} onReconnect={handleDisconnectAfterInstall} />
           </div>
         </div>
       </div>
-      {/* Password Prompt Dialog */}
-      {passwordPrompt.show && (
-        <PasswordPromptDialog
-          host={passwordPrompt.host}
-          username={passwordPrompt.username}
-          configId={passwordPrompt.configId}
-          onSubmit={(params) => passwordPrompt.retryFn?.(params)}
-          onCancel={() => setPasswordPrompt(p => ({ ...p, show: false, retryFn: null }))}
-        />
-      )}
+
 
       {/* Floating Upload Panel */}
       {upload.queue.length > 0 && (
@@ -636,131 +555,7 @@ function App() {
   )
 }
 
-function PasswordPromptDialog({ host, username, configId, onSubmit, onCancel }: {
-  host: string
-  username: string
-  configId?: string
-  onSubmit: (params: { username: string; password?: string; keyPath?: string }) => void
-  onCancel: () => void
-}) {
-  const [user, setUser] = useState(username)
-  const [authType, setAuthType] = useState<'password' | 'key'>('password')
-  const [pw, setPw] = useState('')
-  const [showPw, setShowPw] = useState(false)
-  const [keyPath, setKeyPath] = useState('')
-  const [rememberMe, setRememberMe] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
-
-  const handleBrowseKey = async () => {
-    const selected = await open({ multiple: false, directory: false, title: 'Select SSH Key File', filters: [{ name: 'All Files', extensions: ['*'] }] })
-    if (selected) setKeyPath(selected as string)
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    // If we have a configId, save the new credentials before connecting
-    if (configId) {
-      try {
-        await invoke('config_save', {
-          connection: {
-            id: configId,
-            name: '', // Name is not updated here
-            host: host.split('_')[0], // Extract host from "host_port" format if needed, or just use host
-            port: 22, // Default, actual port is handled by caller
-            username: user,
-            auth_type: authType,
-            remember_me: rememberMe,
-            key_path: rememberMe && authType === 'key' ? keyPath : undefined,
-            password: rememberMe && authType === 'password' ? pw : undefined,
-          },
-        })
-        console.log('Credentials saved:', { configId, rememberMe, authType })
-      } catch (err) {
-        console.error('Failed to save credentials:', err)
-      }
-    }
-
-    if (authType === 'password') {
-      if (pw) onSubmit({ username: user, password: pw })
-    } else {
-      if (keyPath) onSubmit({ username: user, keyPath })
-    }
-  }
-
-  const canSubmit = authType === 'password' ? !!pw : !!keyPath
-
-  return (
-    <div className="fb-dialog-overlay">
-      <div className="fb-dialog password-prompt-dialog" onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div className="fb-dialog-title">Incorrect password, please re-enter</div>
-          <button type="button" onClick={onCancel} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: 20, padding: '4px 8px' }}>×</button>
-        </div>
-        <form onSubmit={handleSubmit}>
-          <div className="edit-field">
-            <label>Server: <span className="edit-hint">{host}</span></label>
-          </div>
-          <div className="edit-field">
-            <label>Username</label>
-            <input
-              type="text"
-              value={user}
-              onChange={(e) => setUser(e.target.value)}
-              placeholder="root"
-              className="create-input"
-            />
-          </div>
-          <div className="edit-field">
-            <label>Auth</label>
-            <select className="create-select" value={authType} onChange={(e) => setAuthType(e.target.value as 'password' | 'key')}>
-              <option value="password">Password</option>
-              <option value="key">Key File</option>
-            </select>
-          </div>
-          {authType === 'password' ? (
-            <div className="edit-field">
-              <label>Password</label>
-              <div className="input-with-toggle">
-                <input
-                  ref={inputRef}
-                  type={showPw ? 'text' : 'password'}
-                  value={pw}
-                  onChange={(e) => setPw(e.target.value)}
-                  placeholder="Enter password"
-                  className="create-input"
-                />
-                <button type="button" className="btn-toggle-password" onClick={() => setShowPw(!showPw)} tabIndex={-1}>
-                  {showPw ? '🙈' : '👁'}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="edit-field">
-              <label>Key Path</label>
-              <div className="input-with-browse">
-                <input value={keyPath} onChange={(e) => setKeyPath(e.target.value)} placeholder="~/.ssh/id_rsa" className="create-input" />
-                <button type="button" className="btn-browse" onClick={handleBrowseKey} tabIndex={-1}>📂</button>
-              </div>
-            </div>
-          )}
-          <div className="fb-dialog-actions">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginRight: 'auto' }}>
-              <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
-              <span style={{ color: 'red' }}>Remember me</span>
-            </label>
-            <button type="button" className="fb-dialog-btn" onClick={onCancel}>Cancel</button>
-            <button type="submit" className="fb-dialog-btn primary" disabled={!canSubmit}>Connect</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
 
 function UploadPanel({ upload, onPause, onResume, onStop, onDismiss }: {
   upload: UploadState

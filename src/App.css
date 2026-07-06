@@ -387,6 +387,18 @@ body {
   box-shadow: 0 4px 12px rgba(35, 134, 54, 0.4);
 }
 
+.sidebar-confirm-btn.connect {
+  background: linear-gradient(135deg, #1f6feb 0%, #388bfd 100%);
+  color: #fff;
+  border-color: #1f6feb;
+  box-shadow: 0 2px 8px rgba(31, 111, 235, 0.3);
+}
+
+.sidebar-confirm-btn.connect:hover {
+  background: linear-gradient(135deg, #388bfd 0%, #58a6ff 100%);
+  box-shadow: 0 4px 12px rgba(31, 111, 235, 0.4);
+}
+
 /* ===== Sidebar Confirm Dialog ===== */
 .sidebar-confirm-overlay {
   position: fixed;
@@ -895,6 +907,103 @@ body {
 @keyframes toast-in {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== Error Dialog ===== */
+.error-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: overlay-in 0.2s ease;
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.error-dialog {
+  background: #1a1a1a;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 24px;
+  width: 400px;
+  max-width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  position: relative;
+  animation: dialog-in 0.3s ease;
+}
+
+@keyframes dialog-in {
+  from { opacity: 0; transform: scale(0.9) translateY(-20px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.error-dialog-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  color: #8b949e;
+  font-size: 24px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.error-dialog-close:hover {
+  background: #30363d;
+  color: #f0f6fc;
+}
+
+.error-dialog-icon {
+  font-size: 48px;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.error-dialog-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #f0f6fc;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.error-dialog-message {
+  font-size: 14px;
+  color: #8b949e;
+  text-align: center;
+  line-height: 1.5;
+  margin-bottom: 20px;
+  word-break: break-word;
+}
+
+.error-dialog-btn {
+  width: 100%;
+  padding: 10px 16px;
+  background: #238636;
+  color: #fff;
+  border: 1px solid rgba(240, 246, 252, 0.1);
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.error-dialog-btn:hover {
+  background: #2ea043;
 }
 
 /* ===== File Browser ===== */
@@ -2201,46 +2310,6 @@ body.dragging-files * {
   padding: 10px 14px;
   border-top: 1px solid #333;
   flex-shrink: 0;
-}
-
-.password-prompt-dialog {
-  min-width: 380px;
-  max-width: 420px;
-}
-.password-prompt-dialog .edit-field {
-  margin-bottom: 12px;
-}
-.password-prompt-dialog .input-with-toggle {
-  display: flex;
-  gap: 6px;
-}
-.password-prompt-dialog .input-with-toggle input {
-  flex: 1;
-}
-.password-prompt-dialog .btn-toggle-password {
-  background: #21262d;
-  border: 1px solid #30363d;
-  color: #c9d1d9;
-  border-radius: 6px;
-  cursor: pointer;
-  padding: 0 8px;
-  font-size: 14px;
-}
-.password-prompt-dialog .input-with-browse {
-  display: flex;
-  gap: 6px;
-}
-.password-prompt-dialog .input-with-browse input {
-  flex: 1;
-}
-.password-prompt-dialog .btn-browse {
-  background: #21262d;
-  border: 1px solid #30363d;
-  color: #c9d1d9;
-  border-radius: 6px;
-  cursor: pointer;
-  padding: 0 8px;
-  font-size: 14px;
 }
 
 .edit-field {

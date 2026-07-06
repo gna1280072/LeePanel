@@ -183,7 +183,7 @@ export default function ServerPanel({ sessionId, connHost, jumpToPath, setJumpTo
           <Terminal ref={termRef} sessionId={sessionId} isActive={activeSection === 'terminal'} />
         </div>
         {/* Files always mounted to preserve state and avoid reload flash */}
-        <div style={{ display: activeSection === 'files' ? 'block' : 'none', height: '100%' }}>
+        <div key={sessionId} style={{ display: activeSection === 'files' ? 'block' : 'none', height: '100%' }}>
           <FileBrowser sessionId={sessionId} connHost={connHost} jumpToPath={jumpToPath} ref={fileBrowserRef} onTerminalCommand={termRef?.current ? (cmd: string) => termRef.current?.sendCommand(cmd) : undefined} onCdHere={handleCdHere} onStartUpload={onStartUpload} />
         </div>
         {/* Sites always mounted to preserve list state */}

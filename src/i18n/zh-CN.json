@@ -447,10 +447,10 @@
   "settings": {
     "title": "服务器设置",
     "appSettings": "应用设置",
-    "autoReconnect": "自动重连",
+    "autoReconnect": "SSH断线自动重连",
     "reconnectInterval": "重连间隔（秒）",
     "maxAttempts": "最大尝试次数",
-    "fileCache": "文件缓存",
+    "fileCache": "文件目录缓存",
     "directories": "个目录",
     "cacheTtl": "缓存有效期（小时）",
     "cacheTtlHint": "过期缓存将从服务器刷新",

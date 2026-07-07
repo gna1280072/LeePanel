@@ -285,7 +285,7 @@ export default function SitesPanel({ sessionId, onOpenFolder, onNavigateToInstal
                     >
                       {site.enabled ? t('common.stop') : t('common.start')}
                     </button>
-                    <button className="svc-cfg-btn" onClick={() => openEdit(site)}>
+                    <button className="svc-cfg-btn" style={{ background: '#16a34a', color: '#fff', border: '1px solid #15803d' }} onClick={() => openEdit(site)}>
                       {t('common.edit')}
                     </button>
                   </div>

@@ -1357,20 +1357,15 @@ fi
     let mut sites: Vec<SiteInfo> = Vec::new();
     let mut current_file = String::new();
     let mut current_content = String::new();
-    let mut current_time: i64 = 0;
 
     for line in stdout.lines() {
         if line.starts_with("===TIME:") && line.ends_with("===") {
-            current_time = line
-                .trim_start_matches("===TIME:")
-                .trim_end_matches("===")
-                .parse::<i64>()
-                .unwrap_or(0);
+            // ponytail: TIME lines parsed but ignored — creation time now tracked in site_metadata DB
+            continue;
         } else if line.starts_with("===FILE:") && line.ends_with("===") {
             // Process previous file
             if !current_file.is_empty() {
-                if let Some(mut site) = parse_site_config(&current_file, &current_content) {
-                    site.created_at = current_time * 1000; // Convert seconds to milliseconds
+                if let Some(site) = parse_site_config(&current_file, &current_content) {
                     sites.push(site);
                 }
             }
@@ -1386,8 +1381,7 @@ fi
     }
     // Process last file
     if !current_file.is_empty() {
-        if let Some(mut site) = parse_site_config(&current_file, &current_content) {
-            site.created_at = current_time * 1000; // Convert seconds to milliseconds
+        if let Some(site) = parse_site_config(&current_file, &current_content) {
             sites.push(site);
         }
     }
@@ -1637,7 +1631,7 @@ fn parse_site_config(path: &str, content: &str) -> Option<SiteInfo> {
         hotlink_allowed_domains,
         hotlink_response,
         hotlink_allow_empty_referer,
-        created_at: 0, // set by caller from ===TIME: marker
+        created_at: 0, // set by caller from site_metadata DB
     })
 }
 

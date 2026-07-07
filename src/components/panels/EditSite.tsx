@@ -27,13 +27,6 @@ interface SiteInfo {
 const REWRITE_TEMPLATES: Record<string, string> = {
   WordPress: `location / {
     try_files $uri $uri/ /index.php?$args;
-}
-
-location ~ \\.php$ {
-    include snippets/fastcgi-php.conf;
-    fastcgi_pass unix:/run/php/php-fpm.sock;
-    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-    include fastcgi_params;
 }`,
   Laravel: `location / {
     try_files $uri $uri/ /index.php?$query_string;
@@ -64,14 +57,6 @@ location ~ \\.php$ {
     rewrite ^([^\\.]*)/([^/]+)-([0-9]+)-([0-9]+)-([0-9]+)-([0-9]+)-([0-9]+)\\.html$ $1/$2.php?mod=forumdisplay&fid=$3&page=$4 last;
     rewrite ^([^\\.]*)/([^/]+)-([0-9]+)-([0-9]+)\\.html$ $1/$2.php?mod=viewthread&tid=$3&extra=page%3D$4 last;
     rewrite ^([^\\.]*)/([^/]+)\\.html$ $1/$2.php?rewrite=$2 last;
-}`,
-  'Next.js (proxy)': `location / {
-    proxy_pass http://127.0.0.1:3000;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection 'upgrade';
-    proxy_set_header Host $host;
-    proxy_cache_bypass $http_upgrade;
 }`,
   'Vue/React SPA': `location / {
     try_files $uri $uri/ /index.html;

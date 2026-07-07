@@ -296,24 +296,30 @@ fn ssh_generate_keypair(algorithm: &str) -> Result<server::SshKeyPair, String> {
 
 #[tauri::command]
 async fn save_key_to_local(
+    app: tauri::AppHandle,
     content: &str,
     file_name: &str,
 ) -> Result<String, String> {
-    // ponytail: uses app handle from tauri context — requires running app
-    let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    let default_path = home.join(".ssh").join(file_name);
-    // Save directly to ~/.ssh/ without dialog for simplicity
-    std::fs::create_dir_all(home.join(".ssh"))
-        .map_err(|e| format!("Failed to create .ssh dir: {}", e))?;
-    std::fs::write(&default_path, content)
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel::<Option<tauri_plugin_dialog::FilePath>>();
+    let dialog = app.dialog().file();
+    dialog.set_file_name(file_name).save_file(move |path| {
+        let _ = tx.send(path);
+    });
+    let local_path = match rx.await.map_err(|_| "Dialog cancelled")? {
+        Some(p) => p,
+        None => return Err("Save cancelled".to_string()),
+    };
+    let local_str = local_path.to_string();
+    std::fs::write(&local_str, content)
         .map_err(|e| format!("Failed to write key: {}", e))?;
     // Set permissions on Unix
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&default_path, std::fs::Permissions::from_mode(0o600));
+        let _ = std::fs::set_permissions(&local_str, std::fs::Permissions::from_mode(0o600));
     }
-    Ok(default_path.to_string_lossy().to_string())
+    Ok(local_str)
 }
 
 // ===== Config Commands =====
@@ -897,10 +903,31 @@ async fn server_install_lnmp(
 #[tauri::command]
 async fn server_list_sites(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    db: tauri::State<'_, DbPool>,
     session_id: &str,
 ) -> Result<Vec<server::SiteInfo>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::list_sites(&mgr, session_id).await
+    let mut sites = server::list_sites(&mgr, session_id).await?;
+    let host = mgr.get_host(session_id).unwrap_or_default();
+    drop(mgr);
+    // ponytail: fix up creation times from DB after SSH call (db is not Send)
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    for site in &mut sites {
+        if let Ok(created_at) = db::SiteMetadataManager::save_or_get_created_at(
+            &conn,
+            &host,
+            &site.domain,
+            now_ms,
+        ) {
+            site.created_at = created_at;
+        }
+    }
+    sites.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    Ok(sites)
 }
 
 // ===== File Browser Favorites (SQLite) =====

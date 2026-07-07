@@ -291,11 +291,10 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
   const handleDownloadKey = async () => {
     if (!keyPair) return
     try {
-      const path = await invoke<string>('save_key_to_local', {
+      await invoke<string>('save_key_to_local', {
         content: keyPair.private_key_pem,
         fileName: `id_${keyAlgorithm}`,
       })
-      setKeyMessage(`Private key saved to ${path}`)
     } catch (e) {
       const msg = String(e)
       if (!msg.includes('cancelled')) setKeyError(msg)

@@ -72,6 +72,13 @@ pub fn init_db() -> Result<Mutex<SqliteConn>, String> {
             access_type TEXT NOT NULL DEFAULT 'local',
             allowed_ip TEXT NOT NULL DEFAULT '',
             PRIMARY KEY(server_host, db_name)
+        );
+
+        CREATE TABLE IF NOT EXISTS site_metadata (
+            server_host TEXT NOT NULL,
+            domain TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY(server_host, domain)
         );"
     ).map_err(|e| format!("Failed to create tables: {}", e))?;
 
@@ -358,6 +365,60 @@ impl DbRemarksManager {
             "DELETE FROM db_remarks WHERE server_host = ?1 AND db_name = ?2",
             rusqlite::params![server_host, db_name],
         ).map_err(|e| format!("Failed to delete db remark: {}", e))?;
+        Ok(())
+    }
+}
+
+// ===== Site Metadata (for tracking site creation time) =====
+
+pub struct SiteMetadataManager;
+
+impl SiteMetadataManager {
+    /// Save or get site creation timestamp.
+    /// If the site already exists, return its stored created_at.
+    /// Otherwise, store current_mtime as created_at and return it.
+    pub fn save_or_get_created_at(
+        conn: &SqliteConn,
+        server_host: &str,
+        domain: &str,
+        current_mtime: i64,
+    ) -> Result<i64, String> {
+        let existing = conn.query_row(
+            "SELECT created_at FROM site_metadata WHERE server_host = ?1 AND domain = ?2",
+            rusqlite::params![server_host, domain],
+            |row| row.get::<_, i64>(0),
+        );
+        match existing {
+            Ok(ts) => Ok(ts),
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                conn.execute(
+                    "INSERT INTO site_metadata (server_host, domain, created_at) VALUES (?1, ?2, ?3)",
+                    rusqlite::params![server_host, domain, current_mtime],
+                ).map_err(|e| format!("Failed to save site metadata: {}", e))?;
+                Ok(current_mtime)
+            }
+            Err(e) => Err(format!("Failed to query site metadata: {}", e)),
+        }
+    }
+
+    /// List all site metadata for a server
+    pub fn list_for_server(conn: &SqliteConn, server_host: &str) -> Vec<(String, i64)> {
+        let mut stmt = conn.prepare(
+            "SELECT domain, created_at FROM site_metadata WHERE server_host = ?1"
+        ).unwrap();
+        stmt.query_map([server_host], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        }).unwrap()
+        .filter_map(|r| r.ok())
+        .collect()
+    }
+
+    /// Delete site metadata
+    pub fn delete(conn: &SqliteConn, server_host: &str, domain: &str) -> Result<(), String> {
+        conn.execute(
+            "DELETE FROM site_metadata WHERE server_host = ?1 AND domain = ?2",
+            rusqlite::params![server_host, domain],
+        ).map_err(|e| format!("Failed to delete site metadata: {}", e))?;
         Ok(())
     }
 }

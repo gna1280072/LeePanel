@@ -514,16 +514,28 @@ fn generate_install_script(os: &OsInfo, config: &LnmpInstallConfig) -> String {
             script.push_str("\n# Install MySQL/MariaDB\n");
             if config.mysql_variant == "mariadb" {
                 script.push_str("log 'Installing MariaDB...'\n");
+                // Clean up any conflicting MySQL repos first
+                script.push_str("rm -f /etc/apt/sources.list.d/mysql*.list 2>/dev/null || true\n");
+                script.push_str("apt-get update -qq 2>/dev/null || true\n");
                 script.push_str("apt-get install -y mariadb-server mariadb-client || err 'Failed to install MariaDB'\n");
                 script.push_str("systemctl enable mariadb\n");
                 script.push_str("systemctl start mariadb\n");
                 script.push_str("log 'MariaDB installed successfully'\n");
             } else {
                 script.push_str("log 'Installing MySQL...'\n");
-                script.push_str("apt-get install -y mysql-server mysql-client || err 'Failed to install MySQL'\n");
-                script.push_str("systemctl enable mysql\n");
-                script.push_str("systemctl start mysql\n");
-                script.push_str("log 'MySQL installed successfully'\n");
+                // Clean up any conflicting MySQL repos first (use system default mysql-server)
+                script.push_str("rm -f /etc/apt/sources.list.d/mysql*.list 2>/dev/null || true\n");
+                script.push_str("apt-get update -qq 2>/dev/null || true\n");
+                // Try default mysql-server first, fallback to mariadb if not available
+                script.push_str("if apt-cache show mysql-server >/dev/null 2>&1; then\n");
+                script.push_str("  apt-get install -y mysql-server mysql-client || { log 'MySQL not available, trying MariaDB...'; apt-get install -y mariadb-server mariadb-client || err 'Failed to install database server'; }\n");
+                script.push_str("  systemctl enable mysql 2>/dev/null || systemctl enable mariadb\n");
+                script.push_str("else\n");
+                script.push_str("  apt-get install -y mariadb-server mariadb-client || err 'Failed to install MariaDB'\n");
+                script.push_str("  systemctl enable mariadb\n");
+                script.push_str("fi\n");
+                script.push_str("systemctl start mysql 2>/dev/null || systemctl start mariadb\n");
+                script.push_str("log 'MySQL/MariaDB installed successfully'\n");
             }
         }
 
@@ -575,10 +587,14 @@ fn generate_install_script(os: &OsInfo, config: &LnmpInstallConfig) -> String {
             } else {
                 script.push_str("log 'Installing MySQL...'\n");
                 // For CentOS 8/9, use mysql-server from appstream
-                script.push_str(&format!("{} install -y mysql-server mysql || err 'Failed to install MySQL'\n", pkg_mgr));
-                script.push_str("systemctl enable mysqld\n");
-                script.push_str("systemctl start mysqld\n");
-                script.push_str("log 'MySQL installed successfully'\n");
+                script.push_str(&format!("{} install -y mysql-server mysql\n", pkg_mgr));
+                script.push_str("if [ $? -ne 0 ]; then\n");
+                script.push_str("  log 'MySQL not available, trying MariaDB...'\n");
+                script.push_str(&format!("  {} install -y mariadb-server mariadb || err 'Failed to install database server'\n", pkg_mgr));
+                script.push_str("fi\n");
+                script.push_str("systemctl enable mysqld 2>/dev/null || systemctl enable mariadb\n");
+                script.push_str("systemctl start mysqld 2>/dev/null || systemctl start mariadb\n");
+                script.push_str("log 'MySQL/MariaDB installed successfully'\n");
             }
         }
 

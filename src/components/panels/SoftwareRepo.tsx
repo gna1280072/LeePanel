@@ -49,8 +49,9 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
   // Options for install
   // ponytail: phpVersion removed (Install PHP Version card removed)
   const [apacheVersion, setApacheVersion] = useState('2.4')
-  const [mysqlVariant, setMysqlVariant] = useState<'mysql' | 'mariadb'>('mysql')
-  const [mysqlVersion, setMysqlVersion] = useState('8.0')
+  // ponytail: mysql/mariadb functionality removed
+  // const [mysqlVariant, setMysqlVariant] = useState<'mysql' | 'mariadb'>('mysql')
+  // const [mysqlVersion, setMysqlVersion] = useState('8.0')
   const [nodeVersion, setNodeVersion] = useState('20')
   const [redisVersion, setRedisVersion] = useState('7')
 
@@ -98,7 +99,8 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
     if (action === 'install') {
       // ponytail: php version selection removed
       if (sw.name === 'apache') options = apacheVersion
-      if (sw.name === 'mysql') options = `${mysqlVariant}:${mysqlVersion}`
+      // ponytail: mysql/mariadb options removed
+      // if (sw.name === 'mysql') options = `${mysqlVariant}:${mysqlVersion}`
       if (sw.name === 'nodejs') options = nodeVersion
       if (sw.name === 'redis') options = redisVersion
     }
@@ -202,7 +204,8 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
 
   const categories = [
     { key: 'web', label: t('software.webServer') },
-    { key: 'database', label: t('software.database') },
+    // ponytail: database category removed (MySQL/MariaDB functionality removed)
+    // { key: 'database', label: t('software.database') },
     { key: 'runtime', label: t('software.runtime') },
     { key: 'container', label: t('software.container') },
   ]
@@ -386,7 +389,8 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
               </div>
             )}
 
-            {confirmAction.action === 'install' && confirmAction.software.name === 'mysql' && (
+            {/* ponytail: MySQL/MariaDB version selector removed */}
+            {/* {confirmAction.action === 'install' && confirmAction.software.name === 'mysql' && (
               <div className="sw-confirm-options">
                 <label>{t('software.dbVariantLabel')}</label>
                 <div className="sw-radio-group">
@@ -417,7 +421,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
                   }
                 </div>
               </div>
-            )}
+            )} */}
 
             {confirmAction.action === 'install' && confirmAction.software.name === 'nodejs' && (
               <div className="sw-confirm-options">

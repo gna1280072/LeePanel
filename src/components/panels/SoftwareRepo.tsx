@@ -204,8 +204,8 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
 
   const categories = [
     { key: 'web', label: t('software.webServer') },
-    // ponytail: database category removed (MySQL/MariaDB functionality removed)
-    // { key: 'database', label: t('software.database') },
+    // ponytail: database category restored (only MySQL/MariaDB removed, Redis/PostgreSQL/Memcached kept)
+    { key: 'database', label: t('software.database') },
     { key: 'runtime', label: t('software.runtime') },
     { key: 'container', label: t('software.container') },
   ]
@@ -270,7 +270,8 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
       {(state === 'ready' || state === 'error') && software.length > 0 && (
         <div className="sw-categories">
           {categories.map(cat => {
-            const items = software.filter(s => s.category === cat.key)
+            // ponytail: filter out mysql since MySQL/MariaDB functionality removed
+            const items = software.filter(s => s.category === cat.key && s.name !== 'mysql')
             if (items.length === 0 && cat.key !== 'web') return null
             return (
               <div key={cat.key} className="sw-category">

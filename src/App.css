@@ -6612,7 +6612,7 @@ body.dragging-files * {
   display: block;
   width: 60px;
   height: 60px;
-  background-image: url('/favicon.svg');
+  background-image: url('/app-icon.png');
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;

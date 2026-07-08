@@ -130,6 +130,7 @@
     "monitor": "Monitor",
     "firewall": "Firewall",
     "bbr": "BBR Acceleration",
+    "docker": "Docker",
     "settings": "Settings"
   },
   "files": {

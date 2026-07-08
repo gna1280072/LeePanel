@@ -16,8 +16,7 @@ import SiteLogsPanel from './panels/SiteLogsPanel'
 import BbrPanel from './panels/BbrPanel'
 import DatabasePanel from './panels/DatabasePanel'
 import RedisPanel from './panels/RedisPanel'
-// ponytail: DockerPanel not yet wired up
-// import DockerPanel from './panels/DockerPanel'
+import DockerPanel from './panels/DockerPanel'
 import Terminal from './Terminal'
 import type { TerminalHandle } from './Terminal'
 import FileBrowser, { type FileBrowserHandle } from './FileBrowser'
@@ -63,7 +62,7 @@ const NAV_ITEMS: { key: PanelSection; labelKey: string; icon: string }[] = [
   { key: 'monitor', labelKey: 'nav.monitor', icon: '📈' },
   { key: 'firewall', labelKey: 'nav.firewall', icon: '🧱' },
   { key: 'bbr', labelKey: 'nav.bbr', icon: '🚀' },
-  // { key: 'docker', labelKey: 'Docker', icon: '' },
+    { key: 'docker', labelKey: 'nav.docker', icon: '' },
   { key: 'settings', labelKey: 'nav.settings', icon: '⚙' },
 ]
 
@@ -155,8 +154,8 @@ export default function ServerPanel({ sessionId, connHost, jumpToPath, setJumpTo
         return <DatabasePanel sessionId={sessionId} onNavigateToSoftware={() => setActiveSection('software')} />
       case 'redis':
         return <RedisPanel sessionId={sessionId} onNavigateToSoftware={() => setActiveSection('software')} />
-      // case 'docker':
-      //   return <DockerPanel sessionId={sessionId} />
+      case 'docker':
+        return <DockerPanel sessionId={sessionId} />
       case 'settings':
         return <ServerSettingsPanel sessionId={sessionId} onNavigate={handleNavigate} appSettings={appSettings} onToggleAutoReconnect={onToggleAutoReconnect} onUpdateSettings={onUpdateSettings} />
       default:

@@ -130,6 +130,7 @@
     "monitor": "监控",
     "firewall": "防火墙",
     "bbr": "BBR 加速",
+    "docker": "Docker",
     "settings": "设置"
   },
   "files": {

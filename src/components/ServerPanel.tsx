@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { useTranslation } from 'react-i18next'
 import Dashboard from './panels/Dashboard'
-import InstallLnmp from './panels/InstallLnmp'
+// ponytail: InstallLnmp removed
+// import InstallLnmp from './panels/InstallLnmp'
 import NginxPanel from './panels/NginxPanel'
 // ponytail: PhpPanel not yet wired up
 // import PhpPanel from './panels/PhpPanel'
@@ -21,7 +22,7 @@ import Terminal from './Terminal'
 import type { TerminalHandle } from './Terminal'
 import FileBrowser, { type FileBrowserHandle } from './FileBrowser'
 
-type PanelSection = 'dashboard' | 'terminal' | 'files' | 'install' | 'software' | 'nginx' | 'php' | 'sites' | 'logs' | 'ssl' | 'monitor' | 'firewall' | 'bbr' | 'docker' | 'database' | 'redis' | 'settings'
+type PanelSection = 'dashboard' | 'terminal' | 'files' | 'software' | 'nginx' | 'php' | 'sites' | 'logs' | 'ssl' | 'monitor' | 'firewall' | 'bbr' | 'docker' | 'database' | 'redis' | 'settings'
 
 interface AppSettings {
   auto_reconnect: boolean
@@ -50,7 +51,7 @@ const NAV_ITEMS: { key: PanelSection; labelKey: string; icon: string }[] = [
   { key: 'dashboard', labelKey: 'nav.dashboard', icon: '📊' },
   { key: 'terminal', labelKey: 'nav.terminal', icon: '💻' },
   { key: 'files', labelKey: 'nav.files', icon: '📂' },
-  { key: 'install', labelKey: 'nav.installLnmp', icon: '📦' },
+  // { key: 'install', labelKey: 'nav.installLnmp', icon: '📦' },
   { key: 'software', labelKey: 'nav.software', icon: '🧩' },
   // { key: 'nginx', labelKey: 'Nginx', icon: '' },
   { key: 'sites', labelKey: 'nav.sites', icon: '🌐' },
@@ -132,8 +133,8 @@ export default function ServerPanel({ sessionId, connHost, jumpToPath, setJumpTo
     switch (activeSection) {
       case 'dashboard':
         return <Dashboard sessionId={sessionId} onNavigate={handleNavigate} />
-      case 'install':
-        return <InstallLnmp sessionId={sessionId} onInstallationComplete={onReconnect} />
+      // case 'install':
+      //   return <InstallLnmp sessionId={sessionId} onInstallationComplete={onReconnect} />
       case 'nginx':
         return <NginxPanel sessionId={sessionId} />
       // case 'php':
@@ -189,7 +190,7 @@ export default function ServerPanel({ sessionId, connHost, jumpToPath, setJumpTo
         </div>
         {/* Sites always mounted to preserve list state */}
         <div style={{ display: activeSection === 'sites' ? 'block' : 'none', height: '100%' }}>
-          <SitesPanel sessionId={sessionId} onOpenFolder={handleInternalOpenFolder} onNavigateToInstall={() => setActiveSection('install')} />
+          <SitesPanel sessionId={sessionId} onOpenFolder={handleInternalOpenFolder} />
         </div>
         {activeSection !== 'terminal' && activeSection !== 'files' && activeSection !== 'sites' && renderContent()}
       </div>

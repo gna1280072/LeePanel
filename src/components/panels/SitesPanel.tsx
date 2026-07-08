@@ -29,12 +29,11 @@ interface SiteInfo {
 interface SitesPanelProps {
   sessionId: string | null
   onOpenFolder?: (path: string) => void
-  onNavigateToInstall?: () => void
 }
 
 type View = 'list' | 'create' | 'edit' | 'progress'
 
-export default function SitesPanel({ sessionId, onOpenFolder, onNavigateToInstall }: SitesPanelProps) {
+export default function SitesPanel({ sessionId, onOpenFolder }: SitesPanelProps) {
   const { t } = useTranslation()
   const [view, setView] = useState<View>('list')
   const [sites, setSites] = useState<SiteInfo[]>([])
@@ -214,7 +213,6 @@ export default function SitesPanel({ sessionId, onOpenFolder, onNavigateToInstal
         <CreateSiteForm
           sessionId={sessionId}
           onError={setError}
-          onNavigateToInstall={onNavigateToInstall}
           onViewProgress={() => {
             setProgressLogs([])
             setView('progress')
@@ -403,7 +401,6 @@ export default function SitesPanel({ sessionId, onOpenFolder, onNavigateToInstal
 interface CreateSiteFormProps {
   sessionId: string
   onError: (msg: string) => void
-  onNavigateToInstall?: () => void
   onViewProgress?: () => void
   onCancel?: () => void
 }
@@ -411,7 +408,6 @@ interface CreateSiteFormProps {
 function CreateSiteForm({
   sessionId,
   onError,
-  onNavigateToInstall,
   onViewProgress,
   onCancel,
 }: CreateSiteFormProps) {
@@ -480,11 +476,7 @@ function CreateSiteForm({
       // Check if error is about nginx not installed
       if (errMsg.toLowerCase().includes('nginx') && errMsg.toLowerCase().includes('install')) {
         _setShowNginxPrompt(true)
-        // Auto-navigate to Install LNMP after 5 seconds
-        setTimeout(() => {
-          _setShowNginxPrompt(false)
-          onNavigateToInstall?.()
-        }, 5000)
+        // ponytail: Install LNMP removed, just show prompt without auto-navigate
       } else {
         onError(errMsg)
       }

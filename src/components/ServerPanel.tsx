@@ -158,7 +158,7 @@ export default function ServerPanel({ sessionId, connHost, jumpToPath, setJumpTo
       case 'docker':
         return <DockerPanel sessionId={sessionId} />
       case 'settings':
-        return <ServerSettingsPanel sessionId={sessionId} onNavigate={handleNavigate} appSettings={appSettings} onToggleAutoReconnect={onToggleAutoReconnect} onUpdateSettings={onUpdateSettings} />
+        return <ServerSettingsPanel sessionId={sessionId} appSettings={appSettings} onToggleAutoReconnect={onToggleAutoReconnect} onUpdateSettings={onUpdateSettings} />
       default:
         return null
     }

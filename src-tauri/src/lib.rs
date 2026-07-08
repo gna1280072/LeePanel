@@ -1316,7 +1316,7 @@ async fn server_firewall_toggle(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
     session_id: &str,
     enable: bool,
-) -> Result<bool, String> {
+) -> Result<FirewallToggleResult, String> {
     let mgr = ssh_mgr.lock().await;
     let result = server::toggle_firewall(&mgr, session_id, enable).await;
     mgr.cache.invalidate(session_id, &["firewall"]).await;

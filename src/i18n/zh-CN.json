@@ -562,7 +562,8 @@
     "noRules": "未配置防火墙规则。",
     "disabledHint": "防火墙已禁用，开启后可管理规则。",
     "enableFirewall": "启用防火墙",
-    "disableFirewall": "禁用防火墙"
+    "disableFirewall": "禁用防火墙",
+    "sshPortAutoOpened": "已自动放行 SSH 端口 {{port}}，防止连接断开。"
   },
   "ssl": {
     "title": "SSL 证书",

@@ -24,22 +24,17 @@ interface AppSettings {
 
 interface ServerSettingsPanelProps {
   sessionId: string | null
-  onNavigate?: (section: string) => void
   appSettings?: AppSettings
   onToggleAutoReconnect?: () => void
   onUpdateSettings?: (settings: Partial<AppSettings>) => Promise<void>
 }
 
-export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings, onToggleAutoReconnect, onUpdateSettings }: ServerSettingsPanelProps) {
+export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAutoReconnect, onUpdateSettings }: ServerSettingsPanelProps) {
   const { t } = useTranslation()
   // Reboot state
   const [rebootLoading, setRebootLoading] = useState(false)
   const [rebootConfirm, setRebootConfirm] = useState<{ show: boolean; force: boolean }>({ show: false, force: false })
   const [rebootExecPanel, setRebootExecPanel] = useState<{ show: boolean; logs: string[]; status: 'running' | 'done' | 'error' }>({ show: false, logs: [], status: 'running' })
-
-  // Firewall state
-  const [firewallEnabled, setFirewallEnabled] = useState<boolean | null>(null)
-  const [firewallLoading, setFirewallLoading] = useState(false)
 
   // SSH Auth mode state
   const [authMode, setAuthMode] = useState<SshAuthMode | null>(null)
@@ -87,17 +82,6 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
   // Cache management state
   const [cacheCount, setCacheCount] = useState<number>(0)
   const [cacheClearing, setCacheClearing] = useState(false)
-
-  // Fetch firewall status
-  const fetchFirewallStatus = useCallback(async () => {
-    if (!sessionId) return
-    try {
-      const info = await invoke<{ enabled: boolean; firewall_type: string }>('server_firewall_list', { sessionId })
-      setFirewallEnabled(info.firewall_type !== 'none' ? info.enabled : null)
-    } catch {
-      setFirewallEnabled(null)
-    }
-  }, [sessionId])
 
   // Uptime state
   const [bootTime, setBootTime] = useState('')
@@ -149,11 +133,10 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
   }, [])
 
   useEffect(() => {
-    fetchFirewallStatus()
     fetchAuthMode()
     fetchUptime()
     fetchCacheCount()
-  }, [fetchFirewallStatus, fetchAuthMode, fetchUptime, fetchCacheCount])
+  }, [fetchAuthMode, fetchUptime, fetchCacheCount])
 
   // Sync input values when appSettings changes
   useEffect(() => {
@@ -232,22 +215,6 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
       }
     }
     setRebootLoading(false)
-  }
-
-  // Firewall toggle
-  const handleFirewallToggle = async () => {
-    if (!sessionId || firewallEnabled === null) return
-    const enable = !firewallEnabled
-    setFirewallLoading(true)
-    try {
-      await invoke('server_firewall_toggle', { sessionId, enable })
-      setFirewallEnabled(enable)
-    } catch {
-      // revert on failure
-      await fetchFirewallStatus()
-    } finally {
-      setFirewallLoading(false)
-    }
   }
 
   // Toggle auth mode
@@ -501,38 +468,6 @@ export default function ServerSettingsPanel({ sessionId, onNavigate, appSettings
             <div className="settings-hint">
               {t('settings.rebootHint')}
             </div>
-          </div>
-        </div>
-
-        {/* Firewall */}
-        <div className="settings-card">
-          <div className="settings-card-header">{t('settings.firewall')}</div>
-          <div className="settings-card-body">
-            <div className="settings-row">
-              <span className="settings-label">{t('settings.firewallStatus')}</span>
-              {firewallEnabled !== null && (
-                <button
-                  className={`firewall-toggle ${firewallEnabled ? 'on' : 'off'} ${firewallLoading ? 'loading' : ''}`}
-                  onClick={handleFirewallToggle}
-                  disabled={firewallLoading}
-                >
-                  <span className="toggle-track">
-                    <span className="toggle-thumb" />
-                  </span>
-                  <span className="toggle-label">{firewallEnabled ? t('common.on') : t('common.off')}</span>
-                </button>
-              )}
-              {firewallEnabled === null && <span className="settings-muted">{t('settings.noFirewall')}</span>}
-            </div>
-            {onNavigate && (
-              <button
-                className="svc-cfg-btn"
-                onClick={() => onNavigate('firewall')}
-                style={{ marginTop: 8 }}
-              >
-                {t('settings.goToFirewall')}
-              </button>
-            )}
           </div>
         </div>
 

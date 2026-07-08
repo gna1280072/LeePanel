@@ -562,7 +562,8 @@
     "noRules": "No firewall rules configured.",
     "disabledHint": "Firewall is disabled. Turn it on to manage rules.",
     "enableFirewall": "Enable Firewall",
-    "disableFirewall": "Disable Firewall"
+    "disableFirewall": "Disable Firewall",
+    "sshPortAutoOpened": "SSH port {{port}} was automatically allowed to prevent lockout."
   },
   "ssl": {
     "title": "SSL Certificates",

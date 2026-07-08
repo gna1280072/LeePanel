@@ -11,6 +11,12 @@ interface FirewallRule {
   raw: string
 }
 
+interface FirewallToggleResult {
+  enabled: boolean
+  ssh_port_auto_opened: boolean
+  ssh_port: number
+}
+
 interface FirewallInfo {
   firewall_type: string
   enabled: boolean
@@ -37,6 +43,7 @@ export default function FirewallPanel({ sessionId }: FirewallPanelProps) {
   // Confirm delete
   const [confirmDelete, setConfirmDelete] = useState<FirewallRule | null>(null)
   const [toggling, setToggling] = useState(false)
+  const [sshPortNotice, setSshPortNotice] = useState<string | null>(null)
 
   const fetchRules = useCallback(async () => {
     if (!sessionId) return
@@ -100,8 +107,12 @@ export default function FirewallPanel({ sessionId }: FirewallPanelProps) {
     const enable = !info.enabled
     setToggling(true)
     setError('')
+    setSshPortNotice(null)
     try {
-      await invoke('server_firewall_toggle', { sessionId, enable })
+      const result = await invoke<FirewallToggleResult>('server_firewall_toggle', { sessionId, enable })
+      if (result.ssh_port_auto_opened) {
+        setSshPortNotice(t('firewall.sshPortAutoOpened', { port: result.ssh_port }))
+      }
       await fetchRules()
     } catch (e) {
       setError(String(e))
@@ -122,6 +133,13 @@ export default function FirewallPanel({ sessionId }: FirewallPanelProps) {
       </div>
 
       {error && <div className="firewall-error">{error}</div>}
+
+      {sshPortNotice && (
+        <div className="firewall-notice" onClick={() => setSshPortNotice(null)}>
+          <span>🛡️ {sshPortNotice}</span>
+          <button className="firewall-notice-close" onClick={(e) => { e.stopPropagation(); setSshPortNotice(null) }}>✕</button>
+        </div>
+      )}
 
       {loading && !info && <div className="sp-loading">{t('firewall.detecting')}</div>}
 

@@ -4513,6 +4513,32 @@ body.dragging-files * {
   margin-bottom: 12px;
 }
 
+.firewall-notice {
+  background: #23883522;
+  border: 1px solid #23883544;
+  color: #3fb950;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.firewall-notice-close {
+  background: none;
+  border: none;
+  color: #3fb950;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 4px;
+  opacity: 0.6;
+}
+
+.firewall-notice-close:hover { opacity: 1; }
+
 .firewall-status {
   display: flex;
   align-items: center;

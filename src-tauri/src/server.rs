@@ -3788,6 +3788,13 @@ pub struct FirewallInfo {
     pub rules: Vec<FirewallRule>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FirewallToggleResult {
+    pub enabled: bool,
+    pub ssh_port_auto_opened: bool,
+    pub ssh_port: u16,
+}
+
 pub async fn get_firewall_rules(
     ssh_mgr: &SshManager,
     session_id: &str,
@@ -4077,10 +4084,34 @@ pub async fn toggle_firewall(
     ssh_mgr: &SshManager,
     session_id: &str,
     enable: bool,
-) -> Result<bool, String> {
+) -> Result<FirewallToggleResult, String> {
     let (detect, _, _) = ssh_mgr
         .exec_with_output(session_id, "command -v ufw && echo HAS_UFW; command -v firewall-cmd && echo HAS_FIREWALLD", 10)
         .await?;
+
+    let ssh_port = ssh_mgr.get_connect_info(session_id).map(|i| i.port).unwrap_or(22);
+    let mut ssh_port_auto_opened = false;
+
+    // Safety: when enabling, pre-allow the SSH port to prevent lockout
+    if enable {
+        if detect.contains("HAS_UFW") {
+            let _ = ssh_mgr
+                .exec_with_output(session_id, &format!("ufw allow {}/tcp", ssh_port), 15)
+                .await;
+            ssh_port_auto_opened = true;
+        } else if detect.contains("HAS_FIREWALLD") {
+            // ponytail: firewalld may not be running yet; --permanent stores the rule,
+            // the reload after start will apply it
+            let _ = ssh_mgr
+                .exec_with_output(
+                    session_id,
+                    &format!("firewall-cmd --permanent --add-port={}/tcp", ssh_port),
+                    15,
+                )
+                .await;
+            ssh_port_auto_opened = true;
+        }
+    }
 
     let action = if enable { "enable" } else { "disable" };
 
@@ -4102,12 +4133,21 @@ pub async fn toggle_firewall(
         return Err("No supported firewall found".to_string());
     };
 
+    // firewalld: reload to apply the pre-added SSH port rule
+    if enable && ssh_port_auto_opened && detect.contains("HAS_FIREWALLD") {
+        let _ = ssh_mgr.exec_with_output(session_id, "firewall-cmd --reload", 15).await;
+    }
+
     let combined = format!("{} {}", stdout, stderr);
     if code != 0 && (combined.contains("ERROR") || combined.contains("failed")) {
         return Err(format!("Failed to {} firewall: {}", action, combined.trim()));
     }
 
-    Ok(enable)
+    Ok(FirewallToggleResult {
+        enabled: enable,
+        ssh_port_auto_opened,
+        ssh_port,
+    })
 }
 
 // ===== Software Repository =====

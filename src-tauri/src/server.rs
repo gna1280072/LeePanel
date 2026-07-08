@@ -5888,6 +5888,46 @@ pub async fn docker_image_remove(
     Ok(format!("Image {} removed successfully", safe_id))
 }
 
+/// Run a container from an image
+pub async fn docker_image_run(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    image_name: &str,
+    run_args: &str,
+    app_handle: &AppHandle,
+) -> Result<String, String> {
+    // Validate image name
+    if image_name.is_empty() || image_name.contains(|c: char| c.is_whitespace() || c == ';' || c == '|' || c == '&' || c == '`' || c == '$') {
+        return Err("Invalid image name".to_string());
+    }
+
+    // Validate run args - block shell injection characters
+    if run_args.contains(';') || run_args.contains('|') || run_args.contains('&') || run_args.contains('`') || run_args.contains('$') || run_args.contains('\n') {
+        return Err("Invalid arguments: dangerous characters detected".to_string());
+    }
+
+    // ponytail: auto-lowercase for consistency with pull
+    let image_lower = image_name.to_lowercase();
+    
+    // Build command: docker run {args} {image}
+    let cmd = if run_args.trim().is_empty() {
+        format!("docker run -d {}", image_lower)
+    } else {
+        format!("docker run {} {}", run_args.trim(), image_lower)
+    };
+
+    let output = docker_stream_exec(ssh_mgr, session_id, &cmd, 600, app_handle).await
+        .map_err(|e| format!("Failed to run container: {}", e))?;
+
+    let _ = app_handle.emit("docker-action-progress", serde_json::json!({
+        "sessionId": session_id,
+        "line": format!("Container started from {}!", image_lower),
+        "status": "done",
+    }));
+
+    Ok(output)
+}
+
 /// Get Docker mirror/registry configuration
 pub async fn docker_get_mirror_config(
     ssh_mgr: &SshManager,

@@ -65,6 +65,9 @@ export default function DockerPanel({ sessionId }: DockerPanelProps) {
   const [pullImageName, setPullImageName] = useState('')
   const [pulling, setPulling] = useState(false)
   const [confirmDeleteImage, setConfirmDeleteImage] = useState<DockerImage | null>(null)
+  const [runImageModal, setRunImageModal] = useState<DockerImage | null>(null)
+  const [runCommand, setRunCommand] = useState('')
+  const [runningContainer, setRunningContainer] = useState(false)
 
   // Mirror config
   const [mirrors, setMirrors] = useState<string[]>([])
@@ -295,6 +298,34 @@ export default function DockerPanel({ sessionId }: DockerPanelProps) {
     }
   }
 
+  const handleRunFromImage = (image: DockerImage) => {
+    setRunImageModal(image)
+    // ponytail: provide sensible defaults based on common patterns
+    setRunCommand(`-p 80:80 -d`)
+  }
+
+  const handleExecuteRun = async () => {
+    if (!sessionId || !runImageModal) return
+    clearMessages()
+    setRunningContainer(true)
+    const imageName = runImageModal.repository === '<none>' ? runImageModal.id : `${runImageModal.repository}:${runImageModal.tag}`
+    try {
+      await invoke('server_docker_image_run', { 
+        sessionId, 
+        imageName, 
+        runArgs: runCommand.trim() 
+      })
+      setRunImageModal(null)
+      setRunCommand('')
+      await fetchContainers()
+      await fetchImages()
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setRunningContainer(false)
+    }
+  }
+
   const getStateClass = (state: string) => {
     switch (state.toLowerCase()) {
       case 'running': return 'docker-state-running'
@@ -478,6 +509,7 @@ export default function DockerPanel({ sessionId }: DockerPanelProps) {
                       <span className="docker-col-id">{img.id.substring(0, 12)}</span>
                       <span className="docker-col-size">{img.size}</span>
                       <span className="docker-col-actions">
+                        <button className="docker-action-btn" onClick={() => handleRunFromImage(img)} title="Run Container">▶️</button>
                         <button className="docker-action-btn danger" onClick={() => setConfirmDeleteImage(img)} title="Delete">🗑</button>
                       </span>
                     </div>
@@ -644,6 +676,45 @@ export default function DockerPanel({ sessionId }: DockerPanelProps) {
             <div className="docker-confirm-actions">
               <button className="docker-btn" onClick={() => setConfirmDeleteImage(null)}>Cancel</button>
               <button className="docker-btn danger" onClick={() => handleDeleteImage(confirmDeleteImage)}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Run Container Modal */}
+      {runImageModal && (
+        <div className="docker-modal-overlay">
+          <div className="docker-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <button 
+              className="modal-close-btn"
+              onClick={() => {
+                setRunImageModal(null)
+                setRunCommand('')
+              }}
+              title="关闭"
+            >×</button>
+            <div className="docker-confirm-title">
+              Run Container: {runImageModal.repository === '<none>' ? runImageModal.id.substring(0, 12) : `${runImageModal.repository}:${runImageModal.tag}`}
+            </div>
+            <div className="docker-confirm-msg">
+              Enter docker run arguments (without 'docker run' and image name):
+            </div>
+            <textarea
+              className="docker-mirror-textarea"
+              value={runCommand}
+              onChange={(e) => setRunCommand(e.target.value)}
+              placeholder="-p 80:80 -d --name mycontainer"
+              rows={3}
+              style={{ marginTop: '12px', marginBottom: '12px' }}
+            />
+            <div className="docker-confirm-actions">
+              <button className="docker-btn" onClick={() => {
+                setRunImageModal(null)
+                setRunCommand('')
+              }}>Cancel</button>
+              <button className="docker-btn primary" onClick={handleExecuteRun} disabled={runningContainer}>
+                {runningContainer ? 'Running...' : 'Run Container'}
+              </button>
             </div>
           </div>
         </div>

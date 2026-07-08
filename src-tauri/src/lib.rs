@@ -1557,6 +1557,18 @@ async fn server_docker_image_remove(
 }
 
 #[tauri::command]
+async fn server_docker_image_run(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    app: tauri::AppHandle,
+    session_id: &str,
+    image_name: &str,
+    run_args: &str,
+) -> Result<String, String> {
+    let mgr = ssh_mgr.lock().await;
+    server::docker_image_run(&mgr, session_id, image_name, run_args, &app).await
+}
+
+#[tauri::command]
 async fn server_docker_get_mirror_config(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
     session_id: &str,
@@ -1672,7 +1684,7 @@ pub fn run() {
             server_check_docker, server_install_docker, server_uninstall_docker,
             server_docker_container_list, server_docker_container_action,
             server_docker_container_remove, server_docker_container_logs,
-            server_docker_image_list, server_docker_image_pull, server_docker_image_remove,
+            server_docker_image_list, server_docker_image_pull, server_docker_image_remove, server_docker_image_run,
             server_docker_get_mirror_config, server_docker_set_mirror_config,
             // Cache
             server_cache_invalidate,

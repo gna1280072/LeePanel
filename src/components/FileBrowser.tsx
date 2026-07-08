@@ -1688,7 +1688,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
             onCdHere?.(currentPath)
             setBgContextMenu(null)
           }}>
-             {t('files.cdHere')}
+             💻 {t('files.cdHere')}
           </div>
           <div className="fb-context-divider" />
           <div className="fb-context-item" onClick={() => {

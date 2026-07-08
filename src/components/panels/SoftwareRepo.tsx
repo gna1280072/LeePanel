@@ -47,7 +47,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
   const [configEditorPath, setConfigEditorPath] = useState('')
 
   // Options for install
-  const [phpVersion, setPhpVersion] = useState('8.2')
+  // ponytail: phpVersion removed (Install PHP Version card removed)
   const [apacheVersion, setApacheVersion] = useState('2.4')
   const [mysqlVariant, setMysqlVariant] = useState<'mysql' | 'mariadb'>('mysql')
   const [mysqlVersion, setMysqlVersion] = useState('8.0')
@@ -96,7 +96,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
     if (!sessionId) return
     let options = ''
     if (action === 'install') {
-      if (sw.name === 'php') options = phpVersion
+      // ponytail: php version selection removed
       if (sw.name === 'apache') options = apacheVersion
       if (sw.name === 'mysql') options = `${mysqlVariant}:${mysqlVersion}`
       if (sw.name === 'nodejs') options = nodeVersion
@@ -335,26 +335,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
                       </div>
                     </div>
                   ))}
-                  {/* Add "Install PHP" card for web category */}
-                  {cat.key === 'web' && (
-                    <div className="sw-card">
-                      <div className="sw-card-header">
-                        <span className="sw-card-name">{t('software.installPhpVersion')}</span>
-                      </div>
-                      <div className="sw-card-info">
-                        <span className="sw-not-installed">{t('software.addNewPhpVersion')}</span>
-                      </div>
-                      <div className="sw-card-actions">
-                        <button
-                          className="sw-action-btn small primary"
-                          onClick={() => setConfirmAction({
-                            software: { name: 'php', display_name: 'PHP', category: 'web', installed: false, version: '', service_name: '', running: false },
-                            action: 'install'
-                          })}
-                        >{t('software.installPhp')}</button>
-                      </div>
-                    </div>
-                  )}
+                  {/* ponytail: Install PHP Version card removed */}
                 </div>
               </div>
             )
@@ -370,7 +351,8 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
               {confirmAction.action === 'install' ? t('software.installTitle', { name: confirmAction.software.display_name }) : t('software.uninstallTitle', { name: confirmAction.software.display_name })}
             </div>
 
-            {confirmAction.action === 'install' && confirmAction.software.name === 'php' && (
+            {/* ponytail: PHP version selector removed */}
+            {/* {confirmAction.action === 'install' && confirmAction.software.name === 'php' && (
               <div className="sw-confirm-options">
                 <label>{t('software.phpVersionLabel')}</label>
                 <div className="sw-radio-group">
@@ -385,7 +367,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
                   })}
                 </div>
               </div>
-            )}
+            )} */}
 
             {confirmAction.action === 'install' && confirmAction.software.name === 'apache' && (
               <div className="sw-confirm-options">

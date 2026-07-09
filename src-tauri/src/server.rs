@@ -4092,28 +4092,39 @@ pub async fn toggle_firewall(
     let ssh_port = ssh_mgr.get_connect_info(session_id).map(|i| i.port).unwrap_or(22);
     let mut ssh_port_auto_opened = false;
 
+    let action = if enable { "enable" } else { "disable" };
+
+    // firewalld: must start the service BEFORE adding rules (firewall-cmd fails if not running)
+    if enable && detect.contains("HAS_FIREWALLD") && !detect.contains("HAS_UFW") {
+        let _ = ssh_mgr
+            .exec_with_output(session_id, "systemctl start firewalld", 15)
+            .await;
+    }
+
     // Safety: when enabling, pre-allow the SSH port to prevent lockout
     if enable {
         if detect.contains("HAS_UFW") {
-            let _ = ssh_mgr
+            let (out, err, code) = ssh_mgr
                 .exec_with_output(session_id, &format!("ufw allow {}/tcp", ssh_port), 15)
-                .await;
-            ssh_port_auto_opened = true;
+                .await
+                .unwrap_or_else(|_| (String::new(), String::new(), 1));
+            if code == 0 && !format!("{} {}", out, err).contains("ERROR") {
+                ssh_port_auto_opened = true;
+            }
         } else if detect.contains("HAS_FIREWALLD") {
-            // ponytail: firewalld may not be running yet; --permanent stores the rule,
-            // the reload after start will apply it
-            let _ = ssh_mgr
+            let (out, err, code) = ssh_mgr
                 .exec_with_output(
                     session_id,
                     &format!("firewall-cmd --permanent --add-port={}/tcp", ssh_port),
                     15,
                 )
-                .await;
-            ssh_port_auto_opened = true;
+                .await
+                .unwrap_or_else(|_| (String::new(), String::new(), 1));
+            if code == 0 && !format!("{} {}", out, err).contains("Error") {
+                ssh_port_auto_opened = true;
+            }
         }
     }
-
-    let action = if enable { "enable" } else { "disable" };
 
     let (stdout, stderr, code) = if detect.contains("HAS_UFW") {
         let cmd = if enable {
@@ -4124,7 +4135,8 @@ pub async fn toggle_firewall(
         ssh_mgr.exec_with_output(session_id, cmd, 15).await?
     } else if detect.contains("HAS_FIREWALLD") {
         let cmd = if enable {
-            "systemctl start firewalld && systemctl enable firewalld"
+            // firewalld was already started above; just enable for boot persistence
+            "systemctl enable firewalld"
         } else {
             "systemctl stop firewalld && systemctl disable firewalld"
         };

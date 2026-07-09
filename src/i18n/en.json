@@ -133,6 +133,9 @@
     "docker": "Docker",
     "settings": "Settings"
   },
+  "dockerPanel": {
+    "runContainer": "Run Container"
+  },
   "files": {
     "notConnected": "Not connected",
     "operationLog": "Operation Log",

@@ -133,6 +133,9 @@
     "docker": "Docker",
     "settings": "设置"
   },
+  "dockerPanel": {
+    "runContainer": "运行容器"
+  },
   "files": {
     "notConnected": "未连接",
     "operationLog": "操作日志",

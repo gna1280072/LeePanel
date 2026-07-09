@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { useTranslation } from 'react-i18next'
 
 interface DockerStatus {
   installed: boolean
@@ -34,16 +35,16 @@ interface DockerPanelProps {
 type DockerTab = 'containers' | 'images' | 'mirror'
 
 export default function DockerPanel({ sessionId }: DockerPanelProps) {
+  const { t } = useTranslation()
   const [status, setStatus] = useState<DockerStatus | null>(null)
   const [statusLoading, setStatusLoading] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [activeTab, setActiveTab] = useState<DockerTab>('containers')
 
-  // Docker install/uninstall
+  // Docker install
   const [installing, setInstalling] = useState(false)
   const [useMirror, setUseMirror] = useState(false)
-  const [confirmUninstall, setConfirmUninstall] = useState(false)
 
   // Streaming log for install/uninstall/pull
   const [streamLogs, setStreamLogs] = useState<string[]>([])
@@ -209,22 +210,6 @@ export default function DockerPanel({ sessionId }: DockerPanelProps) {
     }
   }
 
-  const handleUninstall = async () => {
-    if (!sessionId) return
-    clearMessages()
-    startStream()
-    setConfirmUninstall(false)
-    setInstalling(true)
-    try {
-      await invoke<string>('server_uninstall_docker', { sessionId })
-      await fetchStatus()
-    } catch (e) {
-      setError(String(e))
-    } finally {
-      setInstalling(false)
-    }
-  }
-
   const handleContainerAction = async (container: DockerContainer, action: string) => {
     if (!sessionId) return
     clearMessages()
@@ -380,11 +365,7 @@ export default function DockerPanel({ sessionId }: DockerPanelProps) {
                     {installing ? 'Installing...' : 'Install Docker'}
                   </button>
                 </div>
-              ) : (
-                <button className="docker-btn danger" onClick={() => setConfirmUninstall(true)} disabled={installing}>
-                  Uninstall
-                </button>
-              )}
+              ) : null}
             </div>
           </>
         ) : null}
@@ -509,7 +490,7 @@ export default function DockerPanel({ sessionId }: DockerPanelProps) {
                       <span className="docker-col-id">{img.id.substring(0, 12)}</span>
                       <span className="docker-col-size">{img.size}</span>
                       <span className="docker-col-actions">
-                        <button className="docker-action-btn" onClick={() => handleRunFromImage(img)} title="Run Container">▶️</button>
+                        <button className="docker-action-btn" onClick={() => handleRunFromImage(img)} title={t('dockerPanel.runContainer')}>▶️</button>
                         <button className="docker-action-btn danger" onClick={() => setConfirmDeleteImage(img)} title="Delete">🗑</button>
                       </span>
                     </div>
@@ -610,27 +591,6 @@ export default function DockerPanel({ sessionId }: DockerPanelProps) {
               ) : (
                 <pre className="docker-logs-content">{containerLogs || 'No logs available.'}</pre>
               )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Confirm Uninstall Dialog */}
-      {confirmUninstall && (
-        <div className="docker-modal-overlay">
-          <div className="docker-confirm-dialog" onClick={(e) => e.stopPropagation()}>
-            <button 
-              className="modal-close-btn"
-              onClick={() => setConfirmUninstall(false)}
-              title="关闭"
-            >×</button>
-            <div className="docker-confirm-title">Uninstall Docker</div>
-            <div className="docker-confirm-msg">
-              This will stop all containers and remove Docker. Images and volumes in <code>/var/lib/docker</code> will be preserved.
-            </div>
-            <div className="docker-confirm-actions">
-              <button className="docker-btn" onClick={() => setConfirmUninstall(false)}>Cancel</button>
-              <button className="docker-btn danger" onClick={handleUninstall}>Uninstall</button>
             </div>
           </div>
         </div>

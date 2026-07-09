@@ -1474,7 +1474,14 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
           if (e.target === e.currentTarget) { navigateTo(currentPath) }
         }}
         onContextMenu={(e) => {
-          if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('fb-empty')) {
+          // Check if right-click is on empty area (not on a file/folder item)
+          const target = e.target as HTMLElement
+          const isEmptyArea = 
+            e.target === e.currentTarget ||
+            target.classList.contains('fb-empty') ||
+            target.closest('.fb-empty-container') !== null
+          
+          if (isEmptyArea) {
             e.preventDefault()
             setContextMenu(null)
             setBgContextMenu({ x: e.clientX, y: e.clientY })

@@ -176,7 +176,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog | null>(null)
   const [conflictDialog, setConflictDialog] = useState<ConflictDialog | null>(null)
   const [promptDialog, setPromptDialog] = useState<{ title: string; value: string; onSubmit: (v: string) => void } | null>(null)
-  const [permissionDialog, setPermissionDialog] = useState<{ path: string; name: string; currentPerms: string; mode: string } | null>(null)
+  const [permissionDialog, setPermissionDialog] = useState<{ paths: string[]; names: string[]; currentPerms: string; mode: string } | null>(null)
   const [deleteLog, setDeleteLog] = useState<string | null>(null)
   const [archiveProgress, setArchiveProgress] = useState<{ type: string; logs: string[]; done: boolean } | null>(null)
   const [copyProgress, setCopyProgress] = useState<{ logs: string[]; done: boolean } | null>(null)
@@ -951,7 +951,43 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       setCopyProgress({ logs: [], done: false })
     }
 
-    // Execute all copy/move operations concurrently
+    // Check if we can use batch operation (no conflicts and all same type)
+    const hasConflicts = pasteConflicts.length > 0
+    const allFiles = clipboard.isDirs.every(d => !d) // all are files
+    const allDirs = clipboard.isDirs.every(d => d)   // all are directories
+    const canBatch = !hasConflicts && (allFiles || allDirs) && clipboard.paths.length > 1
+
+    if (canBatch) {
+      // Use batch API for better performance
+      try {
+        const output = await invoke<string>('ssh_copy_files_batch', {
+          sessionId,
+          sources: clipboard.paths,
+          destDir: currentPath,
+          isMove: clipboard.mode === 'cut'
+        })
+        
+        // Parse output to count successes/failures
+        const lines = output.trim().split('\n').filter(l => l.trim())
+        success = lines.length
+        fail = 0
+        
+        if (isCopy) {
+          setCopyProgress(prev => prev ? { ...prev, done: true } : prev)
+        }
+        if (clipboard.mode === 'cut') setClipboard(null)
+        showToast(t('files.pastedItems', { count: success }), 'success')
+        navigateTo(currentPath)
+        return
+      } catch (e) {
+        // Fallback to individual operations on error
+        console.error('Batch copy failed, falling back to individual:', e)
+        showToast(`Batch operation failed: ${e}`, 'error')
+        // Continue to individual processing below
+      }
+    }
+
+    // Execute all copy/move operations concurrently (fallback or when batch not applicable)
     const results = await Promise.allSettled(
       clipboard.paths.map(async (srcPath, i) => {
         let name = clipboard.names[i]
@@ -1067,16 +1103,46 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     }
   }
 
-  const handleOpenPermissions = (entry: FileEntry) => {
-    const path = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`
-    setPermissionDialog({ path, name: entry.name, currentPerms: entry.permissions || '—', mode: '' })
+  const handleOpenPermissions = (entry?: FileEntry) => {
+    // If no entry provided, use selected files
+    let paths: string[]
+    let names: string[]
+    let currentPerms: string
+
+    if (entry) {
+      // Single file from context menu
+      const path = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`
+      paths = [path]
+      names = [entry.name]
+      currentPerms = entry.permissions || '—'
+    } else if (selectedFiles.size > 0) {
+      // Multiple selected files
+      const entries = getSelectedEntries()
+      paths = entries.map(e => currentPath === '/' ? `/${e.name}` : `${currentPath}/${e.name}`)
+      names = entries.map(e => e.name)
+      currentPerms = entries[0]?.permissions || '—' // Show first file's permissions as reference
+    } else {
+      return // No files to set permissions on
+    }
+
+    setPermissionDialog({ paths, names, currentPerms, mode: '' })
   }
 
   const handleApplyPermissions = async () => {
     if (!permissionDialog || !permissionDialog.mode) return
     try {
-      await invoke('ssh_set_permissions', { sessionId, path: permissionDialog.path, mode: permissionDialog.mode })
-      showToast(t('files.permChanged', { name: permissionDialog.name, mode: permissionDialog.mode }), 'success')
+      // Use batch API if multiple files, otherwise single file API
+      if (permissionDialog.paths.length > 1) {
+        await invoke('ssh_set_permissions_batch', {
+          sessionId,
+          paths: permissionDialog.paths,
+          mode: permissionDialog.mode
+        })
+        showToast(t('files.permChangedBatch', { count: permissionDialog.paths.length, mode: permissionDialog.mode }), 'success')
+      } else {
+        await invoke('ssh_set_permissions', { sessionId, path: permissionDialog.paths[0], mode: permissionDialog.mode })
+        showToast(t('files.permChanged', { name: permissionDialog.names[0], mode: permissionDialog.mode }), 'success')
+      }
       setPermissionDialog(null)
       navigateTo(currentPath)
     } catch (e) {
@@ -1940,7 +2006,11 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
             >×</button>
             <div className="fb-dialog-title">{t('files.setPermissionsTitle')}</div>
             <div className="fb-perm-info">
-              <span className="fb-perm-name">{permissionDialog.name}</span>
+              <span className="fb-perm-name">
+                {permissionDialog.names.length === 1 
+                  ? permissionDialog.names[0]
+                  : `${t('files.selectedItems', { count: permissionDialog.names.length })}`}
+              </span>
               <span className="fb-perm-current">{t('files.current')}: {permissionDialog.currentPerms}</span>
             </div>
             <div className="fb-perm-quick">

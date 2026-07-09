@@ -545,6 +545,36 @@ impl SshManager {
         Ok(())
     }
 
+    /// Batch copy/move multiple files using cp/mv command
+    pub async fn copy_files_batch(
+        &self,
+        session_id: &str,
+        sources: &[String], // source paths
+        dest_dir: &str,     // destination directory
+        is_move: bool,      // true = mv, false = cp
+    ) -> Result<String, String> {
+        if sources.is_empty() {
+            return Ok(String::new());
+        }
+
+        let escaped_sources: Vec<String> = sources
+            .iter()
+            .map(|s| format!("'{}'", s.replace('\'', "'\\''")))
+            .collect();
+        let safe_dest = dest_dir.replace('\'', "'\\''");
+
+        let cmd = if is_move {
+            // mv -v file1 file2 ... dir/
+            format!("mv -v {} '{}'", escaped_sources.join(" "), safe_dest)
+        } else {
+            // cp -v file1 file2 ... dir/
+            format!("cp -v {} '{}'", escaped_sources.join(" "), safe_dest)
+        };
+
+        let (stdout, stderr, _) = self.exec_with_output(session_id, &cmd, 60).await?;
+        Ok(format!("{}{}", stdout, stderr))
+    }
+
     pub async fn copy_file(&self, session_id: &str, src: &str, dst: &str, app_handle: &AppHandle) -> Result<(), String> {
         let mut channel = self.open_channel(session_id).await?;
         let safe_src = src.replace('\'', "'\\''");
@@ -710,6 +740,31 @@ impl SshManager {
         } else {
             Err(format!("chmod error: {}", stderr.trim()))
         }
+    }
+
+    /// Batch set permissions for multiple files using chmod command
+    pub async fn set_permissions_batch(
+        &self,
+        session_id: &str,
+        paths: &[String],
+        mode: &str,
+    ) -> Result<(), String> {
+        if paths.is_empty() {
+            return Ok(());
+        }
+
+        let escaped_paths: Vec<String> = paths
+            .iter()
+            .map(|p| format!("'{}'", p.replace('\'', "'\\''")))
+            .collect();
+
+        let cmd = format!("chmod {} {}", mode, escaped_paths.join(" "));
+
+        let (_, stderr, exit_code) = self.exec_with_output(session_id, &cmd, 10).await?;
+        if exit_code != 0 {
+            return Err(format!("chmod error: {}", stderr.trim()));
+        }
+        Ok(())
     }
 
     /// Check disk space, write permission, and existing files in a directory

@@ -159,6 +159,29 @@ async fn ssh_rename_files_batch(
 }
 
 #[tauri::command]
+async fn ssh_copy_files_batch(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+    sources: Vec<String>,
+    dest_dir: &str,
+    is_move: bool,
+) -> Result<String, String> {
+    let mgr = ssh_mgr.lock().await;
+    mgr.copy_files_batch(session_id, &sources, dest_dir, is_move).await
+}
+
+#[tauri::command]
+async fn ssh_set_permissions_batch(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+    paths: Vec<String>,
+    mode: &str,
+) -> Result<(), String> {
+    let mgr = ssh_mgr.lock().await;
+    mgr.set_permissions_batch(session_id, &paths, mode).await
+}
+
+#[tauri::command]
 async fn ssh_copy_file(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
     app: tauri::AppHandle,
@@ -1654,7 +1677,7 @@ pub fn run() {
             ssh_connect, ssh_input, ssh_resize, ssh_disconnect,
             ssh_get_cwd, ssh_list_dir, ssh_read_file, ssh_write_file,
             ssh_delete_file, ssh_delete_files_batch, ssh_create_dir, ssh_rename_file, ssh_rename_files_batch,
-            ssh_copy_file, ssh_copy_dir, ssh_set_permissions,
+            ssh_copy_file, ssh_copy_files_batch, ssh_copy_dir, ssh_set_permissions, ssh_set_permissions_batch,
             ssh_check_space, ssh_upload, ssh_upload_chunk, ssh_download_file,
             ssh_download_to_local, ssh_save_as_local,
             ssh_compress, ssh_extract, ssh_reconnect,

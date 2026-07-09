@@ -1436,6 +1436,35 @@ body.dragging-files * {
   padding: 40px;
 }
 
+.fb-empty-container {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 40px;
+}
+
+.fb-refresh-empty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #2d3748;
+  border: 1px solid #4a5568;
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.fb-refresh-empty:hover {
+  background: #3d4a5c;
+  border-color: #6b7a90;
+}
+
 /* ===== File Preview Modal ===== */
 /* ===== Editor Modal ===== */
 .fb-editor-overlay {

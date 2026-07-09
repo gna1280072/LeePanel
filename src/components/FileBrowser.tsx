@@ -1451,7 +1451,18 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       >
         {dropActive && <div className="fb-drop-overlay"> {t('files.dropFilesHere')}</div>}
         {loading && <div className="fb-loading">{t('common.loading')}</div>}
-        {!loading && !jumpToPath && files.length === 0 && !dropActive && <div className="fb-empty">{t('files.emptyDir')}</div>}
+        {!loading && !jumpToPath && files.length === 0 && !dropActive && (
+          <div className="fb-empty-container">
+            <div className="fb-empty">{t('files.emptyDir')}</div>
+            <button
+              className="fb-btn fb-refresh-empty"
+              onClick={() => navigateTo(currentPath, true)}
+              title={t('files.refresh')}
+            >
+              <RefreshIcon /> {t('files.refresh')}
+            </button>
+          </div>
+        )}
         {!loading && files.map((entry) => (
           <div
             key={entry.name}

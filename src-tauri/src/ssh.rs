@@ -986,12 +986,14 @@ impl SshManager {
         let mut channel = self.open_channel(session_id).await?;
         let safe_dest = dest.replace('\'', "'\\''");
         let safe_url = url.replace('\'', "'\\''");
+        // Use -f to fail on HTTP errors, -S to show errors even with -s/-#
         let cmd = format!(
-            "curl -L -# -o '{}' '{}'",
+            "curl -L -f -S -# -o '{}' '{}'",
             safe_dest, safe_url
         );
         channel.exec(true, cmd).await.map_err(|e| format!("Exec failed: {}", e))?;
 
+        let mut stdout_buf = String::new();
         let mut stderr_buf = String::new();
         let mut exit_ok = true;
         let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(3600);
@@ -999,6 +1001,9 @@ impl SshManager {
             tokio::select! {
                 msg = channel.wait() => {
                     match msg {
+                        Some(ChannelMsg::Data { data }) => {
+                            stdout_buf.push_str(&String::from_utf8_lossy(&data));
+                        }
                         Some(ChannelMsg::ExtendedData { data, ext }) => {
                             if ext == 1 {
                                 let chunk = String::from_utf8_lossy(&data);
@@ -1016,7 +1021,6 @@ impl SshManager {
                                 }
                             }
                         }
-                        Some(ChannelMsg::Data { .. }) => {}
                         Some(ChannelMsg::ExitStatus { exit_status }) => {
                             exit_ok = exit_status == 0;
                         }
@@ -1037,13 +1041,15 @@ impl SshManager {
             }));
             Ok(())
         } else {
+            // Combine stdout and stderr for better error reporting
+            let full_error = format!("{}{}", stdout_buf.trim(), stderr_buf.trim());
             let _ = app_handle.emit("download-progress", serde_json::json!({
                 "sessionId": session_id,
                 "progress": 0,
                 "status": "error",
-                "error": stderr_buf.trim(),
+                "error": full_error,
             }));
-            Err(format!("Download failed: {}", stderr_buf.trim()))
+            Err(format!("Download failed: {}", full_error))
         }
     }
 

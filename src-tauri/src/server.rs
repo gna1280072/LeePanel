@@ -4363,8 +4363,8 @@ fi
             });
         }
     }
-    // Fallback: if no versioned PHP found but legacy PHP_INSTALLED=1, add generic entry
-    if list.iter().all(|s| !s.name.starts_with("php")) && get("PHP_INSTALLED") == "1" {
+    // Fallback: if no versioned PHP found, add generic entry (installed or not)
+    if list.iter().all(|s| !s.name.starts_with("php")) {
         list.push(SoftwareInfo {
             name: "php".to_string(),
             display_name: "PHP-FPM".to_string(),

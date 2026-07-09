@@ -434,7 +434,7 @@ impl SshManager {
                 "owner": meta.user.as_deref().unwrap_or(""),
             }));
         }
-        let _ = sftp.close().await;
+        // Don't close SFTP session - keep it alive for reuse via cache
         serde_json::to_string(&files).map_err(|e| format!("JSON error: {}", e))
     }
 
@@ -446,7 +446,7 @@ impl SshManager {
         let mut content = Vec::new();
         file.read_to_end(&mut content).await
             .map_err(|e| format!("Failed to read file: {}", e))?;
-        let _ = sftp.close().await;
+        // Don't close SFTP session - keep it alive for reuse via cache
         if content.len() > 1024 * 1024 {
             Ok(String::from_utf8_lossy(&content[..1024 * 1024]).to_string())
         } else {
@@ -463,7 +463,7 @@ impl SshManager {
             .map_err(|e| format!("Failed to write file: {}", e))?;
         file.shutdown().await
             .map_err(|e| format!("Failed to flush file: {}", e))?;
-        let _ = sftp.close().await;
+        // Don't close SFTP session - keep it alive for reuse via cache
         Ok(())
     }
 
@@ -508,7 +508,7 @@ impl SshManager {
         let sftp = self.open_sftp(session_id).await?;
         sftp.create_dir(path).await
             .map_err(|e| format!("Failed to create directory: {}", e))?;
-        let _ = sftp.close().await;
+        // Don't close SFTP session - keep it alive for reuse via cache
         Ok(())
     }
 
@@ -516,7 +516,7 @@ impl SshManager {
         let sftp = self.open_sftp(session_id).await?;
         sftp.rename(old_path, new_path).await
             .map_err(|e| format!("Failed to rename: {}", e))?;
-        let _ = sftp.close().await;
+        // Don't close SFTP session - keep it alive for reuse via cache
         Ok(())
     }
 
@@ -1052,7 +1052,7 @@ impl SshManager {
         file.shutdown()
             .await
             .map_err(|e| format!("Failed to finalize: {}", e))?;
-        let _ = sftp.close().await;
+        // Don't close SFTP session - keep it alive for reuse via cache
 
         Ok(())
     }
@@ -1093,7 +1093,7 @@ impl SshManager {
         file.shutdown()
             .await
             .map_err(|e| format!("Failed to finalize: {}", e))?;
-        let _ = sftp.close().await;
+        // Don't close SFTP session - keep it alive for reuse via cache
 
         Ok(())
     }
@@ -1111,7 +1111,7 @@ impl SshManager {
         let mut content = Vec::new();
         file.read_to_end(&mut content).await
             .map_err(|e| format!("Failed to read remote file: {}", e))?;
-        let _ = sftp.close().await;
+        // Don't close SFTP session - keep it alive for reuse via cache
         Ok(content)
     }
 
@@ -1129,7 +1129,7 @@ impl SshManager {
         let mut content = Vec::new();
         file.read_to_end(&mut content).await
             .map_err(|e| format!("Failed to read remote file: {}", e))?;
-        let _ = sftp.close().await;
+        // Don't close SFTP session - keep it alive for reuse via cache
 
         // Write to local temp directory
         let temp_dir = std::env::temp_dir().join("leepanel-preview");

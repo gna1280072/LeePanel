@@ -36,7 +36,6 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
   // Component selections
   const [installNginx, setInstallNginx] = useState(true)
   const [installPhp, setInstallPhp] = useState(true)
-  const [phpVersion, setPhpVersion] = useState('8.2')
   const [reinstall, setReinstall] = useState(false)
 
   // Auto-scroll log
@@ -59,14 +58,7 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
 
       // Auto-select based on what's not installed
       if (lnmp.nginx_installed) setInstallNginx(false)
-      if (lnmp.php_installed) {
-        setInstallPhp(false)
-        // Try to extract version
-        if (lnmp.php_version) {
-          const major = lnmp.php_version.split('.').slice(0, 2).join('.')
-          setPhpVersion(major)
-        }
-      }
+      if (lnmp.php_installed) setInstallPhp(false)
       setReinstall(false)
 
       setState('ready')
@@ -117,7 +109,6 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
         config: {
           install_nginx: installNginx,
           install_php: installPhp,
-          php_version: phpVersion,
         },
       })
       setState('done')
@@ -225,23 +216,6 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
               <span className="install-option-desc">{t('install.phpDesc')}</span>
             </div>
           </label>
-          {installPhp && (
-            <div className="install-sub-options">
-              <span className="install-sub-label">{t('install.phpVersion')}</span>
-              {['8.1', '8.2', '8.3', '8.4'].map((v) => (
-                <label className="install-radio" key={v}>
-                  <input
-                    type="radio"
-                    name="php-version"
-                    value={v}
-                    checked={phpVersion === v}
-                    onChange={() => setPhpVersion(v)}
-                  />
-                  {v}
-                </label>
-              ))}
-            </div>
-          )}
 
           {error && <div className="install-error">{error}</div>}
 

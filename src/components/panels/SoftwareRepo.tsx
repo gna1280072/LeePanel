@@ -46,14 +46,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
   const [configEditorMaximized, setConfigEditorMaximized] = useState(false)
   const [configEditorPath, setConfigEditorPath] = useState('')
 
-  // Options for install
-  // ponytail: phpVersion removed (Install PHP Version card removed)
-  const [apacheVersion, setApacheVersion] = useState('2.4')
-  // ponytail: mysql/mariadb functionality removed
-  // const [mysqlVariant, setMysqlVariant] = useState<'mysql' | 'mariadb'>('mysql')
-  // const [mysqlVersion, setMysqlVersion] = useState('8.0')
-  const [nodeVersion, setNodeVersion] = useState('20')
-  const [redisVersion, setRedisVersion] = useState('7')
+  // ponytail: all version selectors removed — system package manager handles versions
 
   const loadSoftware = async () => {
     if (!sessionId) return
@@ -96,14 +89,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
   const handleAction = async (sw: SoftwareInfo, action: 'install' | 'uninstall') => {
     if (!sessionId) return
     let options = ''
-    if (action === 'install') {
-      // ponytail: php version selection removed
-      if (sw.name === 'apache') options = apacheVersion
-      // ponytail: mysql/mariadb options removed
-      // if (sw.name === 'mysql') options = `${mysqlVariant}:${mysqlVersion}`
-      if (sw.name === 'nodejs') options = nodeVersion
-      if (sw.name === 'redis') options = redisVersion
-    }
+    // ponytail: options always empty — system package manager picks the version
     setState('running')
     setLogs([`${action === 'install' ? 'Installing' : 'Uninstalling'} ${sw.display_name}...`])
     setLogStatus('running')
@@ -118,7 +104,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
       })
       setLogStatus('done')
       // Disconnect after nginx install to refresh environment
-      if (action === 'install' && sw.name === 'nginx') {
+      if (action === 'install' && (sw.name === 'nginx' || sw.name === 'mysql')) {
         onDisconnect?.()
       }
     } catch (e) {
@@ -270,8 +256,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
       {(state === 'ready' || state === 'error') && software.length > 0 && (
         <div className="sw-categories">
           {categories.map(cat => {
-            // ponytail: filter out mysql since MySQL/MariaDB functionality removed
-            const items = software.filter(s => s.category === cat.key && s.name !== 'mysql')
+            const items = software.filter(s => s.category === cat.key)
             if (items.length === 0 && cat.key !== 'web') return null
             return (
               <div key={cat.key} className="sw-category">
@@ -355,102 +340,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
               {confirmAction.action === 'install' ? t('software.installTitle', { name: confirmAction.software.display_name }) : t('software.uninstallTitle', { name: confirmAction.software.display_name })}
             </div>
 
-            {/* ponytail: PHP version selector removed */}
-            {/* {confirmAction.action === 'install' && confirmAction.software.name === 'php' && (
-              <div className="sw-confirm-options">
-                <label>{t('software.phpVersionLabel')}</label>
-                <div className="sw-radio-group">
-                  {['5.6', '7.0', '7.1', '7.2', '7.3', '7.4', '8.0', '8.1', '8.2', '8.3', '8.4'].map(v => {
-                    const isInstalled = software.some(s => s.name === `php${v}` && s.installed)
-                    return (
-                      <label key={v} className="sw-radio" style={{ opacity: isInstalled ? 0.5 : 1 }}>
-                        <input type="radio" name="php-ver" value={v} checked={phpVersion === v} onChange={() => setPhpVersion(v)} disabled={isInstalled} />
-                        {v} {isInstalled ? '(installed)' : ''}
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
-            )} */}
 
-            {confirmAction.action === 'install' && confirmAction.software.name === 'apache' && (
-              <div className="sw-confirm-options">
-                <label>{t('software.apacheVersionLabel')}</label>
-                <div className="sw-radio-group">
-                  {['2.2', '2.4'].map(v => {
-                    const isInstalled = software.some(s => s.name === `apache${v}` && s.installed)
-                    return (
-                      <label key={v} className="sw-radio" style={{ opacity: isInstalled ? 0.5 : 1 }}>
-                        <input type="radio" name="apache-ver" value={v} checked={apacheVersion === v} onChange={() => setApacheVersion(v)} disabled={isInstalled} />
-                        {v} {isInstalled ? '(installed)' : ''}
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* ponytail: MySQL/MariaDB version selector removed */}
-            {/* {confirmAction.action === 'install' && confirmAction.software.name === 'mysql' && (
-              <div className="sw-confirm-options">
-                <label>{t('software.dbVariantLabel')}</label>
-                <div className="sw-radio-group">
-                  <label className="sw-radio">
-                    <input type="radio" name="mysql-var" value="mysql" checked={mysqlVariant === 'mysql'} onChange={() => { setMysqlVariant('mysql'); setMysqlVersion('8.0') }} />
-                    MySQL
-                  </label>
-                  <label className="sw-radio">
-                    <input type="radio" name="mysql-var" value="mariadb" checked={mysqlVariant === 'mariadb'} onChange={() => { setMysqlVariant('mariadb'); setMysqlVersion('10.11') }} />
-                    MariaDB
-                  </label>
-                </div>
-                <label style={{ marginTop: 8 }}>{mysqlVariant === 'mysql' ? t('software.mysqlVersionLabel') : t('software.mariadbVersionLabel')}</label>
-                <div className="sw-radio-group">
-                  {mysqlVariant === 'mysql'
-                    ? ['5.7', '8.0', '8.4', '9.x'].map(v => (
-                        <label key={v} className="sw-radio">
-                          <input type="radio" name="mysql-ver" value={v} checked={mysqlVersion === v} onChange={() => setMysqlVersion(v)} />
-                          {v}
-                        </label>
-                      ))
-                    : ['10.6', '10.11', '11.4'].map(v => (
-                        <label key={v} className="sw-radio">
-                          <input type="radio" name="mysql-ver" value={v} checked={mysqlVersion === v} onChange={() => setMysqlVersion(v)} />
-                          {v}
-                        </label>
-                      ))
-                  }
-                </div>
-              </div>
-            )} */}
-
-            {confirmAction.action === 'install' && confirmAction.software.name === 'nodejs' && (
-              <div className="sw-confirm-options">
-                <label>{t('software.nodeVersionLabel')}</label>
-                <div className="sw-radio-group">
-                  {['18', '20', '22'].map(v => (
-                    <label key={v} className="sw-radio">
-                      <input type="radio" name="node-ver" value={v} checked={nodeVersion === v} onChange={() => setNodeVersion(v)} />
-                      {v} LTS
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {confirmAction.action === 'install' && confirmAction.software.name === 'redis' && (
-              <div className="sw-confirm-options">
-                <label>{t('software.redisVersionLabel')}</label>
-                <div className="sw-radio-group">
-                  {['7', '6'].map(v => (
-                    <label key={v} className="sw-radio">
-                      <input type="radio" name="redis-ver" value={v} checked={redisVersion === v} onChange={() => setRedisVersion(v)} />
-                      {v}.x
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {confirmAction.action === 'uninstall' && (
               <div className="sw-confirm-warning">

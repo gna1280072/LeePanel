@@ -403,7 +403,7 @@ echo "PHP_VER=$(echo "$_pver" | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head 
 pub struct LnmpInstallConfig {
     pub install_nginx: bool,
     pub install_php: bool,
-    pub php_version: String,   // e.g. "8.1", "8.2", "8.3"
+    // ponytail: php_version removed — system package manager picks the version
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -493,20 +493,12 @@ fn generate_install_script(os: &OsInfo, config: &LnmpInstallConfig) -> String {
         }
 
         if config.install_php {
-            let php_ver = &config.php_version;
             script.push_str("\n# Install PHP\n");
-            script.push_str(&format!("log 'Installing PHP {}...'\n", php_ver));
-            // Add ondrej PPA for older Ubuntu/Debian
-            script.push_str("apt-get install -y software-properties-common\n");
-            script.push_str("add-apt-repository -y ppa:ondrej/php || true\n");
-            script.push_str("apt-get update -y\n");
-            script.push_str(&format!(
-                "apt-get install -y php{v}-fpm php{v}-mysql php{v}-curl php{v}-gd php{v}-mbstring php{v}-xml php{v}-zip || err 'Failed to install PHP {v}'\n",
-                v = php_ver
-            ));
-            script.push_str(&format!("systemctl enable php{v}-fpm\n", v = php_ver));
-            script.push_str(&format!("systemctl start php{v}-fpm\n", v = php_ver));
-            script.push_str(&format!("log 'PHP {} installed successfully'\n", php_ver));
+            script.push_str("log 'Installing PHP...'\n");
+            script.push_str("apt-get install -y php-fpm php-mysql php-curl php-gd php-mbstring php-xml php-zip || err 'Failed to install PHP'\n");
+            script.push_str("systemctl enable php-fpm\n");
+            script.push_str("systemctl start php-fpm\n");
+            script.push_str("log 'PHP installed successfully'\n");
         }
     } else if os.family == "rhel" {
         // CentOS / RHEL / Rocky / Alma
@@ -530,34 +522,12 @@ fn generate_install_script(os: &OsInfo, config: &LnmpInstallConfig) -> String {
         }
 
         if config.install_php {
-            let php_ver = &config.php_version;
             script.push_str("\n# Install PHP\n");
-            script.push_str(&format!("log 'Installing PHP {}...'\n", php_ver));
-            // Use remi repository for newer PHP versions
-            script.push_str("log 'Adding Remi repository...'\n");
-            if os.version.starts_with('9') {
-                script.push_str(&format!("{} install -y https://rpms.remirepo.net/enterprise/remi-release-9.rpm || true\n", pkg_mgr));
-            } else if os.version.starts_with('8') {
-                script.push_str(&format!("{} install -y https://rpms.remirepo.net/enterprise/remi-release-8.rpm || true\n", pkg_mgr));
-            } else {
-                script.push_str(&format!("{} install -y https://rpms.remirepo.net/enterprise/remi-release-7.rpm || true\n", pkg_mgr));
-            }
-            let php_pkg = if php_ver.contains('.') {
-                format!("php{}", php_ver.replace('.', ""))
-            } else {
-                "php".to_string()
-            };
-            script.push_str(&format!(
-                "{} module enable -y php:remi-{} || true\n",
-                pkg_mgr, php_ver
-            ));
-            script.push_str(&format!(
-                "{} install -y {} {}-fpm {}-mysqlnd {}-gd {}-mbstring {}-xml {}-zip || err 'Failed to install PHP {}'\n",
-                pkg_mgr, php_pkg, php_pkg, php_pkg, php_pkg, php_pkg, php_pkg, php_pkg, php_ver
-            ));
-            script.push_str(&format!("systemctl enable {}-fpm\n", php_pkg));
-            script.push_str(&format!("systemctl start {}-fpm\n", php_pkg));
-            script.push_str(&format!("log 'PHP {} installed successfully'\n", php_ver));
+            script.push_str("log 'Installing PHP...'\n");
+            script.push_str(&format!("{} install -y php-fpm php-mysqlnd php-gd php-mbstring php-xml php-zip || err 'Failed to install PHP'\n", pkg_mgr));
+            script.push_str("systemctl enable php-fpm\n");
+            script.push_str("systemctl start php-fpm\n");
+            script.push_str("log 'PHP installed successfully'\n");
         }
     } else {
         return format!("#!/bin/bash\necho 'ERROR: Unsupported OS family: {}'\nexit 1\n", os.family);
@@ -4566,7 +4536,7 @@ fn build_software_script(
     _os: &OsInfo,
     software: &str,
     action: &str,
-    options: &str,
+    _options: &str,
     is_debian: bool,
 ) -> String {
     let (pkg_mgr, pkg_install, pkg_remove) = if is_debian {
@@ -4577,7 +4547,7 @@ fn build_software_script(
 
     let (packages, service_name, post_install, post_remove) = match software {
         "redis" => {
-            let ver = if options.is_empty() { "7" } else { options };
+            // ponytail: version selection removed — system package manager picks the version
             return format!(r#"#!/bin/bash
 echo "=== {} Redis ==="
 if [ -f /etc/os-release ]; then
@@ -4589,18 +4559,12 @@ if [ "{}" = "install" ]; then
     echo "ACTION_SUCCESS"
     exit 0
   fi
-  echo "Installing Redis {}..."
+  echo "Installing Redis..."
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
-    apt-get update -qq
-    apt-get install -y curl gnupg lsb-release
-    curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg 2>/dev/null
-    chmod 644 /usr/share/keyrings/redis-archive-keyring.gpg
-    echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" > /etc/apt/sources.list.d/redis.list
     apt-get update -qq
     apt-get install -y redis-server
   else
     yum install -y epel-release
-    yum module enable -y redis:{} 2>/dev/null || true
     yum install -y redis
   fi
   systemctl enable redis-server && systemctl start redis-server 2>/dev/null || systemctl enable redis && systemctl start redis
@@ -4616,7 +4580,7 @@ else
   fi
 fi
 echo "ACTION_SUCCESS"
-"#, action, action, ver, ver);
+"#, action, action);
         }
         "memcached" => (
             "memcached",
@@ -4625,23 +4589,23 @@ echo "ACTION_SUCCESS"
             "systemctl stop memcached 2>/dev/null; systemctl disable memcached 2>/dev/null",
         ),
         "nodejs" => {
-            let node_version = if options.is_empty() { "20" } else { options };
+            // ponytail: version selection removed — system package manager picks the version
             return format!(r#"#!/bin/bash
 echo "=== {} Node.js ==="
 if [ "{}" = "install" ]; then
   if command -v node &>/dev/null; then
-    echo "Uninstalling existing Node.js $(node -v)..."
-    {}
+    echo "Node.js is already installed: $(node -v 2>/dev/null)"
+    echo "ACTION_SUCCESS"
+    exit 0
   fi
-  echo "Setting up NodeSource repository for Node.js {}..."
+  echo "Installing Node.js..."
   if [ -f /etc/os-release ]; then
     . /etc/os-release
     if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
-      curl -fsSL https://deb.nodesource.com/setup_{}.x | bash -
-      apt-get install -y nodejs
+      apt-get update -qq
+      apt-get install -y nodejs npm
     else
-      curl -fsSL https://rpm.nodesource.com/setup_{}.x | bash -
-      yum install -y nodejs
+      yum install -y nodejs npm
     fi
   fi
 else
@@ -4649,15 +4613,15 @@ else
   if [ -f /etc/os-release ]; then
     . /etc/os-release
     if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
-      apt-get purge -y nodejs 2>/dev/null || true
+      apt-get purge -y nodejs npm 2>/dev/null || true
       apt-get autoremove -y 2>/dev/null || true
     else
-      yum remove -y nodejs 2>/dev/null || true
+      yum remove -y nodejs npm 2>/dev/null || true
     fi
   fi
 fi
 echo "ACTION_SUCCESS"
-"#, action, action, pkg_remove, node_version, node_version, node_version);
+"#, action, action);
         }
         "docker" => {
             return format!(r#"#!/bin/bash
@@ -4712,41 +4676,130 @@ echo "ACTION_SUCCESS"
             "systemctl stop nginx 2>/dev/null; systemctl disable nginx 2>/dev/null",
         ),
         "mysql" => {
-            // Parse options: format "variant:version" e.g., "mysql:8.0" or "mariadb:10.11"
-            // Default to mysql:8.0 if no options provided
-            let (variant, version) = if options.contains(':') {
-                let parts: Vec<&str> = options.splitn(2, ':').collect();
-                (parts[0], parts[1])
-            } else if options == "mariadb" {
-                ("mariadb", "10.11")
-            } else {
-                ("mysql", "8.0")
-            };
-            
-            let pkg_name = if variant == "mariadb" { "mariadb-server" } else { "mysql-server" };
-            let svc_name = if variant == "mariadb" { "mariadb" } else { "mysql" };
-            
-            let script = "#!/bin/bash\necho \"=== __ACTION__ __PKG__ (__VER__) ===\"\nif [ -f /etc/os-release ]; then\n  . /etc/os-release\nfi\nif [ \"__ACTION__\" = \"install\" ]; then\n  echo \"Installing __PKG__ version __VER__...\"\n  if [ \"$ID\" = \"ubuntu\" ] || [ \"$ID\" = \"debian\" ]; then\n    # Remove broken MySQL repo from previous failed attempts\n    rm -f /etc/apt/sources.list.d/mysql.list 2>/dev/null || true\n    apt-get update -qq\n    if [ \"__VARIANT__\" = \"mysql\" ]; then\n      # Map MySQL version to APT repo component name\n      case \"__VER__\" in\n        5.7) APT_COMP=mysql-5.7 ;;\n        8.0) APT_COMP=mysql-8.0 ;;\n        8.4) APT_COMP=mysql-8.4-lts ;;\n        9.x|9.*) APT_COMP=mysql-innovation ;;\n        *) APT_COMP=mysql-__VER__ ;;\n      esac\n      # Try codenames in order: native -> jammy -> focal\n      for CODENAME in $(lsb_release -cs) jammy focal; do\n        echo \"Trying MySQL __VER__ ($APT_COMP) repo for $CODENAME...\"\n        echo \"deb [trusted=yes] http://repo.mysql.com/apt/ubuntu/ $CODENAME $APT_COMP\" > /etc/apt/sources.list.d/mysql.list\n        if apt-get update -qq 2>/dev/null && apt-cache show mysql-community-server &>/dev/null; then\n          echo \"Found MySQL __VER__ packages (using $CODENAME repo)\"\n          break\n        fi\n      done\n      apt-get install -y debconf-utils 2>/dev/null || true\n      echo \"mysql-community-server mysql-community-server/root-pass password \" | debconf-set-selections 2>/dev/null || true\n      echo \"mysql-community-server mysql-community-server/re-root-pass password \" | debconf-set-selections 2>/dev/null || true\n      DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-community-server\n    else\n      apt-get install -y software-properties-common gnupg 2>/dev/null || true\n      apt-key adv --fetch-keys 'https://mariadb.org/mariadb_release_signing_key.asc' 2>/dev/null || true\n      add-apt-repository 'deb [arch=amd64,arm64,ppc64el] https://mirror.mariadb.org/repo/__VER__/ubuntu '$(lsb_release -cs)' main' 2>/dev/null || true\n      apt-get update -qq\n      apt-get install -y mariadb-server 2>/dev/null || true\n    fi\n  else\n    if [ \"__VARIANT__\" = \"mysql\" ]; then\n      RHEL_VER=$(rpm -E %{rhel})\n      echo \"Detected RHEL/CentOS $RHEL_VER\"\n      case \"__VER__\" in\n        5.7) YUM_PKG=mysql57 ;;\n        8.0) YUM_PKG=mysql80 ;;\n        8.4) YUM_PKG=mysql84 ;;\n        9.x|9.*) YUM_PKG=mysql-innovation ;;\n        *) YUM_PKG=mysql__VER__ ;;\n      esac\n      yum install -y https://dev.mysql.com/get/$YUM_PKG-community-release-el$RHEL_VER-latest.noarch.rpm 2>/dev/null || true\n      yum install -y mysql-community-server 2>/dev/null || true\n    else\n      printf '[mariadb]\\nname = MariaDB\\nbaseurl = https://mirror.mariadb.org/yum/__VER__/centos$releasever/$basearch\\ngpgkey=https://mirror.mariadb.org/yum/RPM-GPG-KEY-MariaDB\\ngpgcheck=1\\n' > /etc/yum.repos.d/MariaDB.repo\n      yum install -y MariaDB-server 2>/dev/null || true\n    fi\n  fi\n  systemctl enable __SVC__ && systemctl start __SVC__\nelse\n  echo \"Removing __PKG__...\"\n  systemctl stop __SVC__ 2>/dev/null || true\n  systemctl disable __SVC__ 2>/dev/null || true\n  if [ \"$ID\" = \"ubuntu\" ] || [ \"$ID\" = \"debian\" ]; then\n    apt-get install -y debconf-utils 2>/dev/null || true\n    echo \"mysql-community-server mysql-community-server/remove-data-directories boolean true\" | debconf-set-selections 2>/dev/null || true\n    DEBIAN_FRONTEND=noninteractive apt-get purge -y __PKG__ mysql-community-server mysql-community-client mysql-community-server-core mysql-community-client-core mysql-common 2>/dev/null || true\n    DEBIAN_FRONTEND=noninteractive apt-get autoremove -y 2>/dev/null || true\n    rm -rf /var/lib/mysql /etc/mysql 2>/dev/null || true\n  else\n    yum remove -y __PKG__ 2>/dev/null || true\n  fi\nfi\necho \"ACTION_SUCCESS\"\n";
-            return script
-                .replace("__ACTION__", action)
-                .replace("__PKG__", pkg_name)
-                .replace("__VER__", version)
-                .replace("__VARIANT__", variant)
-                .replace("__SVC__", svc_name);
+            // ponytail: simplified MySQL/MariaDB install - uses system package manager defaults
+            // No variant/version parsing needed, options parameter is ignored
+            let script = r#"#!/bin/bash
+set -e
+echo "=== __ACTION__ MySQL/MariaDB ==="
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+fi
+
+if [ "__ACTION__" = "install" ]; then
+  echo "Installing MySQL/MariaDB from system repositories..."
+  
+  if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    apt-get update -qq
+    if apt-cache show mysql-server &>/dev/null; then
+      apt-get install -y debconf-utils
+      echo "mysql-server mysql-server/root_password password " | debconf-set-selections
+      echo "mysql-server mysql-server/root_password_again password " | debconf-set-selections
+      DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server
+      SVC_NAME="mysql"
+    else
+      apt-get install -y mariadb-server
+      SVC_NAME="mariadb"
+    fi
+  else
+    if yum list available mysql-server &>/dev/null; then
+      yum install -y mysql-server
+      SVC_NAME="mysqld"
+    else
+      yum install -y mariadb-server
+      SVC_NAME="mariadb"
+    fi
+  fi
+  
+  systemctl enable $SVC_NAME
+  systemctl start $SVC_NAME
+  
+  echo "Waiting for database to be ready..."
+  for i in $(seq 1 30); do
+    if mysqladmin ping 2>/dev/null | grep -q alive; then
+      echo "Database is ready"
+      break
+    fi
+    sleep 1
+  done
+  
+  echo "Generating random root password..."
+  ROOT_PASS=$(cat /dev/urandom | tr -dc 'A-Za-z0-9!@#$%^&*()_+' | head -c 20)
+  mysqladmin -u root password "$ROOT_PASS"
+  mysql -u root -p"$ROOT_PASS" -e "DELETE FROM mysql.user WHERE User='';"
+  mysql -u root -p"$ROOT_PASS" -e "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost','127.0.0.1','::1');"
+  mysql -u root -p"$ROOT_PASS" -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '$ROOT_PASS';"
+  mysql -u root -p"$ROOT_PASS" -e "FLUSH PRIVILEGES;"
+  echo "$ROOT_PASS" > /tmp/mysql_root_password.txt
+  chmod 600 /tmp/mysql_root_password.txt
+  echo "========================================="
+  echo "Root password: $ROOT_PASS"
+  echo "Saved to /tmp/mysql_root_password.txt"
+  echo "========================================="
+else
+  echo "Removing MySQL/MariaDB..."
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+  fi
+  if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    SVC=$(systemctl list-unit-files | grep -E '^mysql|^mariadb' | awk '{print $1}' | head -1)
+    systemctl stop $SVC 2>/dev/null || true
+    systemctl disable $SVC 2>/dev/null || true
+    apt-get install -y debconf-utils 2>/dev/null || true
+    DEBIAN_FRONTEND=noninteractive apt-get purge -y mysql-server mysql-client mysql-common mariadb-server 2>/dev/null || true
+    DEBIAN_FRONTEND=noninteractive apt-get autoremove -y 2>/dev/null || true
+    rm -rf /var/lib/mysql /etc/mysql 2>/dev/null || true
+  else
+    SVC=$(systemctl list-unit-files | grep -E '^mysql|^mariadb' | awk '{print $1}' | head -1)
+    systemctl stop $SVC 2>/dev/null || true
+    systemctl disable $SVC 2>/dev/null || true
+    yum remove -y mysql-server mariadb-server 2>/dev/null || true
+    rm -rf /var/lib/mysql /etc/my.cnf 2>/dev/null || true
+  fi
+fi
+echo "ACTION_SUCCESS"
+"#;
+            return script.replace("__ACTION__", action);
         }
-        "php" | "php5.6" | "php7.0" | "php7.1" | "php7.2" | "php7.3" | "php7.4" | "php8.0" | "php8.1" | "php8.2" | "php8.3" | "php8.4" | "php8.5" => {
-            // Extract version from software name (e.g., "php8.2" -> "8.2", "php" -> use options)
-            let php_ver = if software == "php" {
-                if options.is_empty() { "8.2" } else { options }
-            } else {
-                software.strip_prefix("php").unwrap_or("8.2")
-            };
+        "php" => {
+            // ponytail: version selection removed — system package manager picks the version
+            return format!(r#"#!/bin/bash
+set -e
+echo "=== {} PHP ==="
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+fi
+if [ "{}" = "install" ]; then
+  echo "Installing PHP..."
+  if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    apt-get update -qq
+    apt-get install -y php-fpm php-mysql php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache
+  else
+    yum install -y epel-release 2>/dev/null || true
+    yum install -y php-fpm php-mysqlnd php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache
+  fi
+  systemctl enable php-fpm && systemctl start php-fpm
+else
+  echo "Removing PHP..."
+  systemctl stop php-fpm 2>/dev/null || true
+  systemctl disable php-fpm 2>/dev/null || true
+  if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    apt-get purge -y php-fpm php-mysql php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache 2>/dev/null || true
+  else
+    yum remove -y php-fpm php-mysqlnd php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache 2>/dev/null || true
+  fi
+fi
+echo "ACTION_SUCCESS"
+"#, action, action);
+        }
+        "php5.6" | "php7.0" | "php7.1" | "php7.2" | "php7.3" | "php7.4" | "php8.0" | "php8.1" | "php8.2" | "php8.3" | "php8.4" | "php8.5" => {
+            // ponytail: versioned PHP entries kept for uninstall of detected versions
+            let php_ver = software.strip_prefix("php").unwrap_or("8.2");
             let extensions = format!(
                 "php{}-fpm php{}-mysql php{}-curl php{}-mbstring php{}-xml php{}-zip php{}-gd php{}-bcmath php{}-opcache",
                 php_ver, php_ver, php_ver, php_ver, php_ver, php_ver, php_ver, php_ver, php_ver
             );
             let svc_name = format!("php{}-fpm", php_ver);
-            let script = "#!/bin/bash\nset -e\necho \"=== __ACTION__ PHP __VER__ ===\"\nif [ -f /etc/os-release ]; then\n  . /etc/os-release\nfi\nif [ \"__ACTION__\" = \"install\" ]; then\n  echo \"Installing PHP __VER__...\"\n  if [ \"$ID\" = \"ubuntu\" ] || [ \"$ID\" = \"debian\" ]; then\n    apt-get update -qq\n    apt-get install -y software-properties-common\n    add-apt-repository -y ppa:ondrej/php 2>/dev/null || true\n    apt-get update -qq\n    apt-get install -y __EXT__\n  else\n    yum install -y epel-release 2>/dev/null || true\n    yum install -y https://rpms.remirepo.net/enterprise/remi-release-$(rpm -E %{rhel}).rpm 2>/dev/null || true\n    yum module enable -y php:remi-__VER__ 2>/dev/null || true\n    yum install -y php__VER__-fpm php__VER__-mysqlnd php__VER__-curl php__VER__-mbstring php__VER__-xml php__VER__-zip php__VER__-gd php__VER__-bcmath php__VER__-opcache\n  fi\n  # Start PHP-FPM\n  systemctl enable __SVC__ && systemctl start __SVC__\nelse\n  echo \"Removing PHP __VER__...\"\n  systemctl stop __SVC__ 2>/dev/null || true\n  systemctl disable __SVC__ 2>/dev/null || true\n  if [ \"$ID\" = \"ubuntu\" ] || [ \"$ID\" = \"debian\" ]; then\n    apt-get purge -y __EXT__ 2>/dev/null || true\n  else\n    yum remove -y php__VER__-fpm php__VER__-mysqlnd php__VER__-curl php__VER__-mbstring php__VER__-xml php__VER__-zip php__VER__-gd php__VER__-bcmath php__VER__-opcache 2>/dev/null || true\n  fi\nfi\necho \"ACTION_SUCCESS\"\n";
+            let script = "#!/bin/bash\nset -e\necho \"=== __ACTION__ PHP __VER__ ===\"\nif [ -f /etc/os-release ]; then\n  . /etc/os-release\nfi\nif [ \"__ACTION__\" = \"install\" ]; then\n  echo \"Installing PHP __VER__...\"\n  if [ \"$ID\" = \"ubuntu\" ] || [ \"$ID\" = \"debian\" ]; then\n    apt-get update -qq\n    apt-get install -y software-properties-common\n    add-apt-repository -y ppa:ondrej/php 2>/dev/null || true\n    apt-get update -qq\n    apt-get install -y __EXT__\n  else\n    yum install -y epel-release 2>/dev/null || true\n    yum install -y https://rpms.remirepo.net/enterprise/remi-release-$(rpm -E %{rhel}).rpm 2>/dev/null || true\n    yum module enable -y php:remi-__VER__ 2>/dev/null || true\n    yum install -y php__VER__-fpm php__VER__-mysqlnd php__VER__-curl php__VER__-mbstring php__VER__-xml php__VER__-zip php__VER__-gd php__VER__-bcmath php__VER__-opcache\n  fi\n  systemctl enable __SVC__ && systemctl start __SVC__\nelse\n  echo \"Removing PHP __VER__...\"\n  systemctl stop __SVC__ 2>/dev/null || true\n  systemctl disable __SVC__ 2>/dev/null || true\n  if [ \"$ID\" = \"ubuntu\" ] || [ \"$ID\" = \"debian\" ]; then\n    apt-get purge -y __EXT__ 2>/dev/null || true\n  else\n    yum remove -y php__VER__-fpm php__VER__-mysqlnd php__VER__-curl php__VER__-mbstring php__VER__-xml php__VER__-zip php__VER__-gd php__VER__-bcmath php__VER__-opcache 2>/dev/null || true\n  fi\nfi\necho \"ACTION_SUCCESS\"\n";
             return script
                 .replace("__ACTION__", action)
                 .replace("__VER__", php_ver)
@@ -4754,56 +4807,39 @@ echo "ACTION_SUCCESS"
                 .replace("__SVC__", &svc_name);
         }
         "apache" | "apache2.2" | "apache2.4" => {
-            // Extract version from software name (e.g., "apache2.4" -> "2.4", "apache" -> use options)
-            let apache_ver = if software == "apache" {
-                if options.is_empty() { "2.4" } else { options }
-            } else {
-                software.strip_prefix("apache").unwrap_or("2.4")
-            };
+            // ponytail: version selection removed — system package manager picks the version
             let svc_name = "apache2";
-            // ponytail: uninstall must handle both Ubuntu/Debian and RHEL/CentOS properly
-            // and remove ALL apache packages to prevent partial uninstall issues
             let script = r#"#!/bin/bash
 set -e
-echo "=== __ACTION__ Apache __VER__ ==="
+echo "=== __ACTION__ Apache ==="
 if [ -f /etc/os-release ]; then
   . /etc/os-release
 fi
 
 if [ "__ACTION__" = "install" ]; then
-  echo "Installing Apache __VER__..."
+  echo "Installing Apache..."
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
     apt-get update -qq
     apt-get install -y apache2 apache2-utils
   else
     yum install -y httpd httpd-tools mod_ssl
   fi
-  # Start Apache
   systemctl enable __SVC__ && systemctl start __SVC__
 else
-  echo "Removing Apache __VER__..."
-  # Stop and disable service first
+  echo "Removing Apache..."
   systemctl stop __SVC__ 2>/dev/null || true
   systemctl disable __SVC__ 2>/dev/null || true
-  
-  # Also try alternative service names (BT Panel, etc.)
   for alt_svc in apache httpd Baota-Apache; do
     systemctl stop "$alt_svc" 2>/dev/null || true
     systemctl disable "$alt_svc" 2>/dev/null || true
   done
-  
-  # Remove packages based on distro
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
-    # Remove ALL apache2 related packages to ensure clean uninstall
     DEBIAN_FRONTEND=noninteractive apt-get purge -y apache2 apache2-bin apache2-data apache2-utils libapache2-mod-* 2>/dev/null || true
     apt-get autoremove -y 2>/dev/null || true
   else
-    # RHEL/CentOS
     yum remove -y httpd httpd-tools mod_ssl httpd-manual 2>/dev/null || true
     yum autoremove -y 2>/dev/null || true
   fi
-  
-  # Clean up config directories if they exist
   rm -rf /etc/apache2 2>/dev/null || true
   rm -rf /var/www/html 2>/dev/null || true
   rm -rf /etc/httpd 2>/dev/null || true
@@ -4812,7 +4848,6 @@ echo "ACTION_SUCCESS"
 "#;
             return script
                 .replace("__ACTION__", action)
-                .replace("__VER__", apache_ver)
                 .replace("__SVC__", svc_name);
         }
         "postgresql" => {

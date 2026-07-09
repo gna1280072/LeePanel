@@ -4731,9 +4731,11 @@ if [ "__ACTION__" = "install" ]; then
   mysql -u root -p"$ROOT_PASS" -e "FLUSH PRIVILEGES;"
   echo "$ROOT_PASS" > /tmp/mysql_root_password.txt
   chmod 600 /tmp/mysql_root_password.txt
+  printf '[client]\nuser=root\npassword=%s\n' "$ROOT_PASS" > /root/.my.cnf
+  chmod 600 /root/.my.cnf
   echo "========================================="
   echo "Root password: $ROOT_PASS"
-  echo "Saved to /tmp/mysql_root_password.txt"
+  echo "Saved to /tmp/mysql_root_password.txt and /root/.my.cnf"
   echo "========================================="
 else
   echo "Removing MySQL/MariaDB..."
@@ -6028,6 +6030,16 @@ async fn get_mysql_cmd(ssh_mgr: &SshManager, session_id: &str) -> String {
         }
     }
     
+    // Method 1.5: Check /tmp/mysql_root_password.txt (written by our install script)
+    let (tmp_pw, _, _) = ssh_mgr
+        .exec_with_output(session_id, "cat /tmp/mysql_root_password.txt 2>/dev/null", 5)
+        .await
+        .unwrap_or((String::new(), String::new(), -1));
+    let pw = tmp_pw.trim().to_string();
+    if !pw.is_empty() {
+        return format!("mysql -u root -p'{}'", pw.replace('\'', "'\\''"));
+    }
+
     // Method 2: Try debian-sys-maint user (Debian/Ubuntu specific)
     let (debian_cnf, _, _) = ssh_mgr
         .exec_with_output(session_id, "cat /etc/mysql/debian.cnf 2>/dev/null", 5)
@@ -6078,9 +6090,7 @@ pub async fn list_databases(
         }
     }
 
-    // Use sudo mysql directly for faster response
-    // This is the most reliable method and avoids multiple SSH calls
-    let mysql_cmd = "sudo mysql";
+    let mysql_cmd = get_mysql_cmd(ssh_mgr, session_id).await;
 
     // Use SQL query to directly get user databases only (excludes system databases)
     // This avoids parsing issues with SHOW DATABASES output format variations

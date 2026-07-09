@@ -5,11 +5,8 @@ import { useTranslation } from 'react-i18next'
 
 interface LnmpStatus {
   nginx_installed: boolean
-  mysql_installed: boolean
-  mariadb_installed: boolean
   php_installed: boolean
   nginx_version: string
-  mysql_version: string
   php_version: string
 }
 
@@ -38,8 +35,6 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
 
   // Component selections
   const [installNginx, setInstallNginx] = useState(true)
-  const [installMysql, setInstallMysql] = useState(true)
-  const [mysqlVariant, setMysqlVariant] = useState<'mysql' | 'mariadb'>('mysql')
   const [installPhp, setInstallPhp] = useState(true)
   const [phpVersion, setPhpVersion] = useState('8.2')
   const [reinstall, setReinstall] = useState(false)
@@ -64,10 +59,6 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
 
       // Auto-select based on what's not installed
       if (lnmp.nginx_installed) setInstallNginx(false)
-      if (lnmp.mysql_installed || lnmp.mariadb_installed) {
-        setInstallMysql(false)
-        if (lnmp.mariadb_installed) setMysqlVariant('mariadb')
-      }
       if (lnmp.php_installed) {
         setInstallPhp(false)
         // Try to extract version
@@ -111,7 +102,7 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
 
   const handleInstall = async () => {
     if (!sessionId) return
-    if (!installNginx && !installMysql && !installPhp) {
+    if (!installNginx && !installPhp) {
       setError('Please select at least one component to install')
       return
     }
@@ -125,8 +116,6 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
         sessionId,
         config: {
           install_nginx: installNginx,
-          install_mysql: installMysql,
-          mysql_variant: mysqlVariant,
           install_php: installPhp,
           php_version: phpVersion,
         },
@@ -147,7 +136,6 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
 
   const allInstalled = lnmpStatus &&
     lnmpStatus.nginx_installed &&
-    (lnmpStatus.mysql_installed || lnmpStatus.mariadb_installed) &&
     lnmpStatus.php_installed
 
   return (
@@ -182,7 +170,6 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
             {lnmpStatus && (
               <>
                 <span className="install-component">Nginx {lnmpStatus.nginx_version}</span>
-                <span className="install-component">{lnmpStatus.mariadb_installed ? 'MariaDB' : 'MySQL'} {lnmpStatus.mysql_version}</span>
                 <span className="install-component">PHP {lnmpStatus.php_version}</span>
               </>
             )}
@@ -190,7 +177,6 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
           <button className="install-reinstall-btn" onClick={() => {
             setReinstall(true)
             setInstallNginx(true)
-            setInstallMysql(true)
             setInstallPhp(true)
           }}>
             {t('install.reinstallUpgrade')}
@@ -207,8 +193,6 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
               <div className="install-status-title">{t('install.currentStatus')}</div>
               <div className="install-status-grid">
                 <StatusBadge label="Nginx" installed={lnmpStatus.nginx_installed} version={lnmpStatus.nginx_version} />
-                <StatusBadge label="MySQL" installed={lnmpStatus.mysql_installed} version={lnmpStatus.mysql_version} />
-                <StatusBadge label="MariaDB" installed={lnmpStatus.mariadb_installed} version="" />
                 <StatusBadge label="PHP" installed={lnmpStatus.php_installed} version={lnmpStatus.php_version} />
               </div>
             </div>
@@ -228,43 +212,6 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
               <span className="install-option-desc">{t('install.nginxDesc')}</span>
             </div>
           </label>
-
-          {/* MySQL / MariaDB */}
-          <label className="install-option">
-            <input
-              type="checkbox"
-              checked={installMysql}
-              onChange={(e) => setInstallMysql(e.target.checked)}
-            />
-            <div className="install-option-info">
-              <span className="install-option-name">{t('install.dbServer')}</span>
-              <span className="install-option-desc">{t('install.dbDesc')}</span>
-            </div>
-          </label>
-          {installMysql && (
-            <div className="install-sub-options">
-              <label className="install-radio">
-                <input
-                  type="radio"
-                  name="mysql-variant"
-                  value="mysql"
-                  checked={mysqlVariant === 'mysql'}
-                  onChange={() => setMysqlVariant('mysql')}
-                />
-                {t('install.mysql')}
-              </label>
-              <label className="install-radio">
-                <input
-                  type="radio"
-                  name="mysql-variant"
-                  value="mariadb"
-                  checked={mysqlVariant === 'mariadb'}
-                  onChange={() => setMysqlVariant('mariadb')}
-                />
-                {t('install.mariadb')}
-              </label>
-            </div>
-          )}
 
           {/* PHP */}
           <label className="install-option">

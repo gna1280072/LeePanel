@@ -325,7 +325,7 @@ pub async fn get_service_statuses(
         .exec_with_output(
             session_id,
             r#"
-for svc in nginx mysqld mariadb mysql php-fpm; do
+for svc in nginx php-fpm; do
   ACTIVE=$(systemctl is-active $svc 2>/dev/null)
   SUBSTATE=$(systemctl show $svc --property=SubState 2>/dev/null | cut -d= -f2)
   echo "SVC=$svc|ACTIVE=$ACTIVE|SUB=$SUBSTATE"
@@ -333,8 +333,7 @@ done
 # ponytail: BT Panel installs binaries outside PATH, fallback to /www/server/ paths
 _nver=$(nginx -v 2>&1 || /www/server/nginx/sbin/nginx -v 2>&1 || echo '')
 echo "NGINX_VER=$(echo "$_nver" | grep -oP '[\d.]+' || echo '')"
-_mver=$(mysql --version 2>/dev/null || /www/server/mysql/bin/mysql --version 2>/dev/null || echo '')
-echo "MYSQL_VER=$(echo "$_mver" | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1 || echo '')"
+
 _pver=$(php -v 2>/dev/null || $(ls /www/server/php/*/bin/php 2>/dev/null | tail -1) -v 2>/dev/null || echo '')
 echo "PHP_VER=$(echo "$_pver" | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1 || echo '')"
 "#,
@@ -344,7 +343,6 @@ echo "PHP_VER=$(echo "$_pver" | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head 
 
     let mut statuses = Vec::new();
     let mut nginx_ver = String::new();
-    let mut mysql_ver = String::new();
     let mut php_ver = String::new();
 
     for line in stdout.lines() {
@@ -377,7 +375,6 @@ echo "PHP_VER=$(echo "$_pver" | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head 
             let val = val.trim().to_string();
             match key.trim() {
                 "NGINX_VER" => nginx_ver = val,
-                "MYSQL_VER" => mysql_ver = val,
                 "PHP_VER" => php_ver = val,
                 _ => {}
             }
@@ -388,7 +385,6 @@ echo "PHP_VER=$(echo "$_pver" | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head 
     for s in &mut statuses {
         s.version = match s.name.as_str() {
             "nginx" => nginx_ver.clone(),
-            "mysqld" | "mysql" | "mariadb" => mysql_ver.clone(),
             "php-fpm" => php_ver.clone(),
             _ => String::new(),
         };
@@ -406,8 +402,6 @@ echo "PHP_VER=$(echo "$_pver" | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct LnmpInstallConfig {
     pub install_nginx: bool,
-    pub install_mysql: bool,
-    pub mysql_variant: String, // "mysql" or "mariadb"
     pub install_php: bool,
     pub php_version: String,   // e.g. "8.1", "8.2", "8.3"
 }
@@ -415,11 +409,8 @@ pub struct LnmpInstallConfig {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct LnmpStatus {
     pub nginx_installed: bool,
-    pub mysql_installed: bool,
-    pub mariadb_installed: bool,
     pub php_installed: bool,
     pub nginx_version: String,
-    pub mysql_version: String,
     pub php_version: String,
 }
 
@@ -439,11 +430,8 @@ pub async fn check_lnmp_status(
             session_id,
             r#"
 echo "NGINX=$(( command -v nginx || [ -x /www/server/nginx/sbin/nginx ] ) >/dev/null 2>&1 && echo yes || echo no)"
-echo "MYSQL=$(( command -v mysql || [ -x /www/server/mysql/bin/mysql ] ) >/dev/null 2>&1 && echo yes || echo no)"
-echo "MARIADB=$(dpkg -l mariadb-server 2>/dev/null | grep -q '^ii' && echo yes || (rpm -q mariadb-server >/dev/null 2>&1 && echo yes || echo no))"
 echo "PHP=$(( command -v php || ls /www/server/php/*/bin/php >/dev/null 2>&1 ) >/dev/null 2>&1 && echo yes || echo no)"
 echo "NGINX_VER=$(nginx -v 2>&1 || /www/server/nginx/sbin/nginx -v 2>&1 | grep -oP '[\d.]+' || echo '')"
-echo "MYSQL_VER=$(mysql --version 2>/dev/null || /www/server/mysql/bin/mysql --version 2>/dev/null | head -1 || echo '')"
 echo "PHP_VER=$(php -v 2>/dev/null || $(ls /www/server/php/*/bin/php 2>/dev/null | tail -1) -v 2>/dev/null | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1 || echo '')"
 "#,
             15,
@@ -452,11 +440,8 @@ echo "PHP_VER=$(php -v 2>/dev/null || $(ls /www/server/php/*/bin/php 2>/dev/null
 
     let mut status = LnmpStatus {
         nginx_installed: false,
-        mysql_installed: false,
-        mariadb_installed: false,
         php_installed: false,
         nginx_version: String::new(),
-        mysql_version: String::new(),
         php_version: String::new(),
     };
 
@@ -464,11 +449,8 @@ echo "PHP_VER=$(php -v 2>/dev/null || $(ls /www/server/php/*/bin/php 2>/dev/null
         if let Some((key, val)) = line.split_once('=') {
             match key.trim() {
                 "NGINX" => status.nginx_installed = val.trim() == "yes",
-                "MYSQL" => status.mysql_installed = val.trim() == "yes",
-                "MARIADB" => status.mariadb_installed = val.trim() == "yes",
                 "PHP" => status.php_installed = val.trim() == "yes",
                 "NGINX_VER" => status.nginx_version = val.trim().to_string(),
-                "MYSQL_VER" => status.mysql_version = val.trim().to_string(),
                 "PHP_VER" => status.php_version = val.trim().to_string(),
                 _ => {}
             }
@@ -510,35 +492,6 @@ fn generate_install_script(os: &OsInfo, config: &LnmpInstallConfig) -> String {
             script.push_str("log 'Nginx installed successfully'\n");
         }
 
-        if config.install_mysql {
-            script.push_str("\n# Install MySQL/MariaDB\n");
-            if config.mysql_variant == "mariadb" {
-                script.push_str("log 'Installing MariaDB...'\n");
-                // Clean up any conflicting MySQL repos first
-                script.push_str("rm -f /etc/apt/sources.list.d/mysql*.list 2>/dev/null || true\n");
-                script.push_str("apt-get update -qq 2>/dev/null || true\n");
-                script.push_str("apt-get install -y mariadb-server mariadb-client || err 'Failed to install MariaDB'\n");
-                script.push_str("systemctl enable mariadb\n");
-                script.push_str("systemctl start mariadb\n");
-                script.push_str("log 'MariaDB installed successfully'\n");
-            } else {
-                script.push_str("log 'Installing MySQL...'\n");
-                // Clean up any conflicting MySQL repos first (use system default mysql-server)
-                script.push_str("rm -f /etc/apt/sources.list.d/mysql*.list 2>/dev/null || true\n");
-                script.push_str("apt-get update -qq 2>/dev/null || true\n");
-                // Try default mysql-server first, fallback to mariadb if not available
-                script.push_str("if apt-cache show mysql-server >/dev/null 2>&1; then\n");
-                script.push_str("  apt-get install -y mysql-server mysql-client || { log 'MySQL not available, trying MariaDB...'; apt-get install -y mariadb-server mariadb-client || err 'Failed to install database server'; }\n");
-                script.push_str("  systemctl enable mysql 2>/dev/null || systemctl enable mariadb\n");
-                script.push_str("else\n");
-                script.push_str("  apt-get install -y mariadb-server mariadb-client || err 'Failed to install MariaDB'\n");
-                script.push_str("  systemctl enable mariadb\n");
-                script.push_str("fi\n");
-                script.push_str("systemctl start mysql 2>/dev/null || systemctl start mariadb\n");
-                script.push_str("log 'MySQL/MariaDB installed successfully'\n");
-            }
-        }
-
         if config.install_php {
             let php_ver = &config.php_version;
             script.push_str("\n# Install PHP\n");
@@ -574,28 +527,6 @@ fn generate_install_script(os: &OsInfo, config: &LnmpInstallConfig) -> String {
             script.push_str("systemctl enable nginx\n");
             script.push_str("systemctl start nginx\n");
             script.push_str("log 'Nginx installed successfully'\n");
-        }
-
-        if config.install_mysql {
-            script.push_str("\n# Install MySQL/MariaDB\n");
-            if config.mysql_variant == "mariadb" {
-                script.push_str("log 'Installing MariaDB...'\n");
-                script.push_str(&format!("{} install -y mariadb-server mariadb || err 'Failed to install MariaDB'\n", pkg_mgr));
-                script.push_str("systemctl enable mariadb\n");
-                script.push_str("systemctl start mariadb\n");
-                script.push_str("log 'MariaDB installed successfully'\n");
-            } else {
-                script.push_str("log 'Installing MySQL...'\n");
-                // For CentOS 8/9, use mysql-server from appstream
-                script.push_str(&format!("{} install -y mysql-server mysql\n", pkg_mgr));
-                script.push_str("if [ $? -ne 0 ]; then\n");
-                script.push_str("  log 'MySQL not available, trying MariaDB...'\n");
-                script.push_str(&format!("  {} install -y mariadb-server mariadb || err 'Failed to install database server'\n", pkg_mgr));
-                script.push_str("fi\n");
-                script.push_str("systemctl enable mysqld 2>/dev/null || systemctl enable mariadb\n");
-                script.push_str("systemctl start mysqld 2>/dev/null || systemctl start mariadb\n");
-                script.push_str("log 'MySQL/MariaDB installed successfully'\n");
-            }
         }
 
         if config.install_php {

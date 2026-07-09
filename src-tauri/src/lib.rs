@@ -117,6 +117,17 @@ async fn ssh_delete_file(
 }
 
 #[tauri::command]
+async fn ssh_delete_files_batch(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+    paths: Vec<String>,
+    is_dir: bool,
+) -> Result<String, String> {
+    let mgr = ssh_mgr.lock().await;
+    mgr.delete_files_batch(session_id, &paths, is_dir).await
+}
+
+#[tauri::command]
 async fn ssh_create_dir(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
     session_id: &str,
@@ -135,6 +146,16 @@ async fn ssh_rename_file(
 ) -> Result<(), String> {
     let mgr = ssh_mgr.lock().await;
     mgr.rename_file(session_id, old_path, new_path).await
+}
+
+#[tauri::command]
+async fn ssh_rename_files_batch(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+    renames: Vec<(String, String)>, // (old_path, new_path)
+) -> Result<(), String> {
+    let mgr = ssh_mgr.lock().await;
+    mgr.rename_files_batch(session_id, &renames).await
 }
 
 #[tauri::command]
@@ -1632,7 +1653,7 @@ pub fn run() {
             // SSH
             ssh_connect, ssh_input, ssh_resize, ssh_disconnect,
             ssh_get_cwd, ssh_list_dir, ssh_read_file, ssh_write_file,
-            ssh_delete_file, ssh_create_dir, ssh_rename_file,
+            ssh_delete_file, ssh_delete_files_batch, ssh_create_dir, ssh_rename_file, ssh_rename_files_batch,
             ssh_copy_file, ssh_copy_dir, ssh_set_permissions,
             ssh_check_space, ssh_upload, ssh_upload_chunk, ssh_download_file,
             ssh_download_to_local, ssh_save_as_local,

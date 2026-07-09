@@ -97,6 +97,7 @@ struct SshSession {
     resize_tx: mpsc::Sender<(u32, u32)>,
     channel_open_tx: mpsc::Sender<ChannelOpen>,
     connect_info: ConnectInfo,
+    sftp_cache: tokio::sync::Mutex<Option<(Arc<russh_sftp::client::SftpSession>, tokio::time::Instant)>>, // SFTP session cache
 }
 
 pub struct SshManager {
@@ -243,6 +244,7 @@ impl SshManager {
             resize_tx,
             channel_open_tx,
             connect_info,
+            sftp_cache: tokio::sync::Mutex::new(None), // Initialize empty cache
         };
         self.sessions.insert(session_id, session);
         self.app_handle = Some(app_handle);
@@ -376,7 +378,21 @@ impl SshManager {
         Ok((stdout, stderr, exit_code))
     }
 
-    async fn open_sftp(&self, session_id: &str) -> Result<russh_sftp::client::SftpSession, String> {
+    async fn open_sftp(&self, session_id: &str) -> Result<Arc<russh_sftp::client::SftpSession>, String> {
+        let session = self.sessions.get(session_id).ok_or("Session not found")?;
+
+        // Check cache
+        {
+            let cache = session.sftp_cache.lock().await;
+            if let Some((sftp, created_at)) = cache.as_ref() {
+                // Cache valid for 30 seconds
+                if created_at.elapsed().as_secs() < 30 {
+                    return Ok(sftp.clone());
+                }
+            }
+        }
+
+        // Create new SFTP session
         let channel = self.open_channel(session_id).await?;
         channel.request_subsystem(true, "sftp").await
             .map_err(|e| format!("SFTP subsystem request failed: {}", e))?;
@@ -389,7 +405,16 @@ impl SshManager {
         let sftp = russh_sftp::client::SftpSession::new_with_config(stream, config).await
             .map_err(|e| format!("SFTP init failed: {}", e))?;
         sftp.set_timeout(60);
-        Ok(sftp)
+
+        // Update cache
+        {
+            let mut cache = session.sftp_cache.lock().await;
+            *cache = Some((Arc::new(sftp), tokio::time::Instant::now()));
+        }
+
+        // Return cloned Arc
+        let cache = session.sftp_cache.lock().await;
+        Ok(cache.as_ref().unwrap().0.clone())
     }
 
     pub async fn list_dir(&self, session_id: &str, path: &str) -> Result<String, String> {
@@ -452,6 +477,33 @@ impl SshManager {
         Ok(format!("{}{}", stdout, stderr))
     }
 
+    /// Batch delete multiple files/directories in a single command
+    pub async fn delete_files_batch(
+        &self,
+        session_id: &str,
+        paths: &[String],
+        is_dir: bool,
+    ) -> Result<String, String> {
+        if paths.is_empty() {
+            return Ok(String::new());
+        }
+
+        // Build rm command: rm -rfv file1 file2 file3 ...
+        let escaped_paths: Vec<String> = paths
+            .iter()
+            .map(|p| p.replace('\'', "'\\''"))
+            .collect();
+
+        let cmd = if is_dir {
+            format!("rm -rfv {}", escaped_paths.join(" "))
+        } else {
+            format!("rm -fv {}", escaped_paths.join(" "))
+        };
+
+        let (stdout, stderr, _) = self.exec_with_output(session_id, &cmd, 60).await?;
+        Ok(format!("{}{}", stdout, stderr))
+    }
+
     pub async fn create_dir(&self, session_id: &str, path: &str) -> Result<(), String> {
         let sftp = self.open_sftp(session_id).await?;
         sftp.create_dir(path).await
@@ -465,6 +517,31 @@ impl SshManager {
         sftp.rename(old_path, new_path).await
             .map_err(|e| format!("Failed to rename: {}", e))?;
         let _ = sftp.close().await;
+        Ok(())
+    }
+
+    /// Batch rename multiple files using mv command
+    pub async fn rename_files_batch(
+        &self,
+        session_id: &str,
+        renames: &[(String, String)], // (old_path, new_path)
+    ) -> Result<(), String> {
+        if renames.is_empty() {
+            return Ok(());
+        }
+
+        // Use mv command for each rename (SFTP rename doesn't support batch)
+        for (old_path, new_path) in renames {
+            let safe_old = old_path.replace('\'', "'\\''");
+            let safe_new = new_path.replace('\'', "'\\''");
+            let cmd = format!("mv '{}' '{}'", safe_old, safe_new);
+
+            let (_, stderr, exit_code) = self.exec_with_output(session_id, &cmd, 10).await?;
+            if exit_code != 0 {
+                return Err(format!("Rename failed for {}: {}", old_path, stderr));
+            }
+        }
+
         Ok(())
     }
 

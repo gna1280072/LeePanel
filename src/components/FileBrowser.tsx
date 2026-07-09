@@ -823,26 +823,44 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       ? t('files.deleteFileMsg', { type: entries[0].isDir ? t('files.folder') : t('files.file'), name: entries[0].name })
       : t('files.deleteItemsMsg', { count: entries.length })
     showConfirm(msg, async () => {
-      let ok = 0, fail = 0
-      const logs: string[] = []
-      for (const entry of entries) {
-        try {
-          const output = await invoke<string>('ssh_delete_file', { sessionId, path: resolvePath(entry), isDir: entry.isDir })
-          ok++
+      try {
+        // Separate files and directories
+        const files = entries.filter(e => !e.isDir).map(e => resolvePath(e))
+        const dirs = entries.filter(e => e.isDir).map(e => resolvePath(e))
+
+        const logs: string[] = []
+
+        // Delete files first (single command)
+        if (files.length > 0) {
+          const output = await invoke<string>('ssh_delete_files_batch', {
+            sessionId,
+            paths: files,
+            isDir: false,
+          })
           if (output) logs.push(output.trim())
-        } catch (e) {
-          fail++
-          showToast(`Delete failed: ${entry.name} — ${e}`, 'error')
         }
+
+        // Then delete directories (single command)
+        if (dirs.length > 0) {
+          const output = await invoke<string>('ssh_delete_files_batch', {
+            sessionId,
+            paths: dirs,
+            isDir: true,
+          })
+          if (output) logs.push(output.trim())
+        }
+
+        if (logs.length > 0) {
+          setDeleteLog(logs.join('\n'))
+          setTimeout(() => setDeleteLog(null), 5000)
+        }
+
+        showToast(t('files.deletedItems', { count: entries.length }), 'success')
+        setSelectedFiles(new Set())
+        navigateTo(currentPath)
+      } catch (e) {
+        showToast(`Delete failed: ${e}`, 'error')
       }
-      if (logs.length > 0) {
-        setDeleteLog(logs.join('\n'))
-        setTimeout(() => setDeleteLog(null), 5000)
-      }
-      if (fail === 0) showToast(t('files.deletedItems', { count: ok }), 'success')
-      else showToast(t('files.deleteFailed', { ok, fail }), 'error')
-      setSelectedFiles(new Set())
-      navigateTo(currentPath)
     })
   }
 
@@ -932,39 +950,54 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     if (isCopy) {
       setCopyProgress({ logs: [], done: false })
     }
-    for (let i = 0; i < clipboard.paths.length; i++) {
-      const srcPath = clipboard.paths[i]
-      let name = clipboard.names[i]
-      const resolution = pasteResolutions.get(name)
-      if (resolution === 'skip') { fail++; continue }
-      if (resolution === 'rename') {
-        name = getUniqueName(name)
-      }
-      const dstPath = currentPath === '/' ? `/${name}` : `${currentPath}/${name}`
-      if (srcPath === dstPath && clipboard.mode === 'cut') { fail++; continue }
-      try {
-        if (clipboard.mode === 'copy') {
-          if (clipboard.isDirs[i]) {
-            await invoke('ssh_copy_dir', { sessionId, src: srcPath, dst: dstPath })
+
+    // Execute all copy/move operations concurrently
+    const results = await Promise.allSettled(
+      clipboard.paths.map(async (srcPath, i) => {
+        let name = clipboard.names[i]
+        const resolution = pasteResolutions.get(name)
+        if (resolution === 'skip') {
+          return { status: 'skipped' as const }
+        }
+        if (resolution === 'rename') {
+          name = getUniqueName(name)
+        }
+        const dstPath = currentPath === '/' ? `/${name}` : `${currentPath}/${name}`
+        if (srcPath === dstPath && clipboard.mode === 'cut') {
+          return { status: 'skipped' as const }
+        }
+
+        try {
+          if (clipboard.mode === 'copy') {
+            if (clipboard.isDirs[i]) {
+              await invoke('ssh_copy_dir', { sessionId, src: srcPath, dst: dstPath })
+            } else {
+              await invoke('ssh_copy_file', { sessionId, src: srcPath, dst: dstPath })
+            }
           } else {
-            await invoke('ssh_copy_file', { sessionId, src: srcPath, dst: dstPath })
+            await invoke('ssh_rename_file', { sessionId, oldPath: srcPath, newPath: dstPath })
           }
-        } else {
-          await invoke('ssh_rename_file', { sessionId, oldPath: srcPath, newPath: dstPath })
+          return { status: 'success' as const }
+        } catch (e) {
+          return { status: 'failed' as const, error: e, name: clipboard.names[i] }
         }
-        success++
-      } catch (e) {
-        if (isCopy) {
-          setCopyProgress(prev => prev ? {
-            ...prev,
-            logs: [...prev.logs, `Error: ${e}`],
-            done: true,
-          } : prev)
+      })
+    )
+
+    // Count results
+    results.forEach(result => {
+      if (result.status === 'fulfilled') {
+        if (result.value.status === 'success') {
+          success++
+        } else if (result.value.status === 'failed') {
+          fail++
+          showToast(`Copy failed: ${result.value.name} — ${result.value.error}`, 'error')
         }
-        showToast(`Copy failed: ${clipboard.names[i]} — ${e}`, 'error')
+      } else {
         fail++
       }
-    }
+    })
+
     if (isCopy) {
       setCopyProgress(prev => prev ? { ...prev, done: true } : prev)
     }

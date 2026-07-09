@@ -1097,6 +1097,11 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
 
     try {
       await invoke('ssh_download_file', { sessionId, url, dest: destPath })
+      showToast(t('files.downloadedFile', { name: fileName }), 'success')
+      setDownloadProgress(null)
+      setDownloadDialog(null)
+      // Refresh directory to show the downloaded file
+      navigateTo(currentPath)
     } catch (e) {
       showToast(t('files.downloadError', { error: e }), 'error')
       setDownloadProgress(null)

@@ -55,6 +55,7 @@ const NAV_ITEMS: { key: PanelSection; labelKey: string; icon: string }[] = [
   { key: 'software', labelKey: 'nav.software', icon: '🧩' },
   // { key: 'nginx', labelKey: 'Nginx', icon: '' },
   { key: 'sites', labelKey: 'nav.sites', icon: '🌐' },
+  { key: 'docker', labelKey: 'nav.docker', icon: '🐳' },
   { key: 'database', labelKey: 'nav.database', icon: '🗄' },
   { key: 'redis', labelKey: 'nav.redis', icon: '⚡' },
   // { key: 'php', labelKey: 'PHP', icon: '' },
@@ -63,7 +64,6 @@ const NAV_ITEMS: { key: PanelSection; labelKey: string; icon: string }[] = [
   { key: 'monitor', labelKey: 'nav.monitor', icon: '📈' },
   { key: 'firewall', labelKey: 'nav.firewall', icon: '🧱' },
   { key: 'bbr', labelKey: 'nav.bbr', icon: '🚀' },
-    { key: 'docker', labelKey: 'nav.docker', icon: '' },
   { key: 'settings', labelKey: 'nav.settings', icon: '⚙' },
 ]
 

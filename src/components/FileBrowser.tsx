@@ -355,26 +355,36 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
   }, [files])
 
   // Check disk space and write permission before paste/download
-  const checkDirReady = useCallback(async (): Promise<{ ok: boolean; existingFiles: Set<string> }> => {
-    if (!sessionId) return { ok: false, existingFiles: new Set() }
+  const checkDirReady = useCallback(async (): Promise<{ ok: boolean; existingFiles: Map<string, 'file' | 'dir'> }> => {
+    if (!sessionId) return { ok: false, existingFiles: new Map() }
     try {
       const raw = await invoke<string>('ssh_check_space', { sessionId, path: currentPath })
       const parts = raw.split('---').map(s => s.trim())
       const availBytes = parseInt(parts[0]) || 0
       const writeOk = parts[1] === 'OK'
-      const fileList = new Set((parts[2] || '').split('\n').filter(Boolean))
+      // Parse file list with type: "name|file" or "name|dir"
+      const fileMap = new Map<string, 'file' | 'dir'>()
+      ;(parts[2] || '').split('\n').filter(Boolean).forEach(line => {
+        const [name, type] = line.split('|')
+        if (name && type) {
+          fileMap.set(name, type as 'file' | 'dir')
+        }
+      })
 
       if (!writeOk) {
         showToast(t('files.noWritePerm'), 'error')
-        return { ok: false, existingFiles: fileList }
+        return { ok: false, existingFiles: fileMap }
       }
       if (availBytes < 1024) {
         showToast(t('files.insufficientSpace'), 'error')
-        return { ok: false, existingFiles: fileList }
+        return { ok: false, existingFiles: fileMap }
       }
-      return { ok: true, existingFiles: fileList }
+      return { ok: true, existingFiles: fileMap }
     } catch {
-      return { ok: true, existingFiles: new Set(files.map(f => f.name)) }
+      // Fallback to current files array (without type info)
+      const fallbackMap = new Map<string, 'file' | 'dir'>()
+      files.forEach(f => fallbackMap.set(f.name, f.isDir ? 'dir' : 'file'))
+      return { ok: true, existingFiles: fallbackMap }
     }
   }, [sessionId, currentPath, files, showToast])
 
@@ -519,9 +529,10 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
           // Apply the global action chosen by user
           resolutions.set(name, globalAction)
         } else {
-          const existing = files.find(f => f.name === name)
+          const fileType = existingFiles.get(name)
+          const isDir = fileType === 'dir'
           const remaining = conflictNames.length - i - 1
-          const result = await showConflict({ name, isDir: existing?.isDir ?? false }, remaining)
+          const result = await showConflict({ name, isDir }, remaining)
           resolutions.set(name, result.action)
           if (result.applyToAll) {
             globalAction = result.action
@@ -547,7 +558,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     if (uploadFiles.length === 0) return
     onStartUpload?.(uploadFiles)
     navigateTo(currentPath)
-  }, [sessionId, currentPath, checkDirReady, getUniqueName, navigateTo, showToast, showConflict, files, onStartUpload])
+  }, [sessionId, currentPath, checkDirReady, getUniqueName, navigateTo, showToast, showConflict, onStartUpload])
 
   // Track drag-enter/leave with a counter to avoid flicker on child elements
   const dragCounterRef = useRef(0)
@@ -935,9 +946,11 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
         if (globalAction) {
           pasteResolutions.set(name, globalAction)
         } else {
-          const existing = files.find(f => f.name === name)
+          // Use file type from existingFiles map instead of searching in files array
+          const fileType = existingFiles.get(name)
+          const isDir = fileType === 'dir'
           const remaining = pasteConflicts.length - i - 1
-          const result = await showConflict({ name, isDir: existing?.isDir ?? false }, remaining)
+          const result = await showConflict({ name, isDir }, remaining)
           pasteResolutions.set(name, result.action)
           if (result.applyToAll) {
             globalAction = result.action
@@ -1081,8 +1094,9 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     } catch { /* use default */ }
 
     if (existingFiles.has(fileName)) {
-      const existing = files.find(f => f.name === fileName)
-      const result = await showConflict({ name: fileName, isDir: existing?.isDir ?? false }, 0)
+      const fileType = existingFiles.get(fileName)
+      const isDir = fileType === 'dir'
+      const result = await showConflict({ name: fileName, isDir }, 0)
       if (result.action === 'skip') {
         return
       }

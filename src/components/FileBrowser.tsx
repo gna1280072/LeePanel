@@ -1207,18 +1207,20 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
 
       const targetPath = destDir === '/' ? `/${extractName}` : `${destDir}/${extractName}`
 
-      // Check if target already exists
+      // Check if target already exists and determine its type (file or dir)
       let conflict = false
+      let isTargetDir = true
       try {
-        await invoke<string>('ssh_list_dir', { sessionId, path: targetPath })
-        conflict = true
+        const stat = await invoke<any>('ssh_stat_file', { sessionId, path: targetPath })
+        conflict = stat.exists
+        isTargetDir = stat.isDir
       } catch {
-        // Directory doesn't exist — no conflict
+        // Path doesn't exist — no conflict
       }
 
       let finalName = extractName
       if (conflict) {
-        const result = await showConflict({ name: extractName, isDir: true }, 0)
+        const result = await showConflict({ name: extractName, isDir: isTargetDir }, 0)
         if (result.action === 'skip') {
           showToast(t('files.skipped', { name: entry.name }), 'info')
           return
@@ -1241,7 +1243,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       try {
         // If conflict and user chose replace, delete existing first
         if (conflict && finalName === extractName) {
-          await invoke('ssh_delete_file', { sessionId, path: extractDestPath, isDir: true })
+          await invoke('ssh_delete_file', { sessionId, path: extractDestPath, isDir: isTargetDir })
         }
 
         // Extract directly to destination directory with the chosen name

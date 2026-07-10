@@ -85,6 +85,16 @@ async fn ssh_list_dir(
 }
 
 #[tauri::command]
+async fn ssh_stat_file(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+    path: &str,
+) -> Result<serde_json::Value, String> {
+    let mgr = ssh_mgr.lock().await;
+    mgr.stat_file(session_id, path).await
+}
+
+#[tauri::command]
 async fn ssh_read_file(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
     session_id: &str,
@@ -1675,7 +1685,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // SSH
             ssh_connect, ssh_input, ssh_resize, ssh_disconnect,
-            ssh_get_cwd, ssh_list_dir, ssh_read_file, ssh_write_file,
+            ssh_get_cwd, ssh_list_dir, ssh_stat_file, ssh_read_file, ssh_write_file,
             ssh_delete_file, ssh_delete_files_batch, ssh_create_dir, ssh_rename_file, ssh_rename_files_batch,
             ssh_copy_file, ssh_copy_files_batch, ssh_copy_dir, ssh_set_permissions, ssh_set_permissions_batch,
             ssh_check_space, ssh_upload, ssh_upload_chunk, ssh_download_file,

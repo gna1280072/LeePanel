@@ -438,6 +438,24 @@ impl SshManager {
         serde_json::to_string(&files).map_err(|e| format!("JSON error: {}", e))
     }
 
+    /// Check if a path exists and return its type (file/dir)
+    pub async fn stat_file(&self, session_id: &str, path: &str) -> Result<serde_json::Value, String> {
+        let sftp = self.open_sftp(session_id).await?;
+        let meta = sftp.metadata(path).await
+            .map_err(|e| format!("Path does not exist: {}", e))?;
+        let is_dir = meta.is_dir();
+        let is_symlink = meta.is_symlink();
+        // If not dir and not symlink, it's a file
+        let is_file = !is_dir && !is_symlink;
+        Ok(serde_json::json!({
+            "exists": true,
+            "isDir": is_dir,
+            "isFile": is_file,
+            "isSymlink": is_symlink,
+            "size": meta.len(),
+        }))
+    }
+
     pub async fn read_file(&self, session_id: &str, path: &str) -> Result<String, String> {
         let sftp = self.open_sftp(session_id).await?;
         use tokio::io::AsyncReadExt;

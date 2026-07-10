@@ -1234,17 +1234,18 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       }
 
       const archivePath = resolvePath(entry)
+      // Build final extraction path with user-specified name
+      const extractDestPath = destDir === '/' ? `/${finalName}` : `${destDir}/${finalName}`
       setArchiveProgress({ type: 'extract', logs: [t('files.extractingFile', { name: entry.name })], done: false })
 
       try {
         // If conflict and user chose replace, delete existing first
         if (conflict && finalName === extractName) {
-          const targetPath = destDir === '/' ? `/${finalName}` : `${destDir}/${finalName}`
-          await invoke('ssh_delete_file', { sessionId, path: targetPath, isDir: true })
+          await invoke('ssh_delete_file', { sessionId, path: extractDestPath, isDir: true })
         }
 
-        // Extract directly to destination directory
-        await invoke('ssh_extract', { sessionId, archivePath, destDir: currentPath })
+        // Extract directly to destination directory with the chosen name
+        await invoke('ssh_extract', { sessionId, archivePath, destDir: extractDestPath })
 
         showToast(t('files.extracted', { name: entry.name, dest: finalName }), 'success')
         navigateTo(currentPath)

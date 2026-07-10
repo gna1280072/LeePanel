@@ -506,10 +506,10 @@ impl SshManager {
             return Ok(String::new());
         }
 
-        // Build rm command: rm -rfv file1 file2 file3 ...
+        // Build rm command: rm -rfv 'file1' 'file2' 'file3' ...
         let escaped_paths: Vec<String> = paths
             .iter()
-            .map(|p| p.replace('\'', "'\\''"))
+            .map(|p| format!("'{}'", p.replace('\'', "'\\''")))
             .collect();
 
         let cmd = if is_dir {

@@ -4213,6 +4213,21 @@ for phpver in 5.6 7.0 7.1 7.2 7.3 7.4 8.0 8.1 8.2 8.3 8.4 8.5; do
   fi
 done
 
+# Generic PHP detection (for always-visible install card)
+if command -v php &>/dev/null; then
+  echo "PHP_GENERIC_INSTALLED=1"
+  echo "PHP_GENERIC_VERSION=$(php -v 2>/dev/null | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' || echo '')"
+  PHP_GENERIC_SVC=$(systemctl list-units --type=service 2>/dev/null | grep -E 'php[0-9.]*-fpm' | awk '{print $1}' | head -1 | sed 's/.service//')
+  echo "PHP_GENERIC_SERVICE=$PHP_GENERIC_SVC"
+  if [ -n "$PHP_GENERIC_SVC" ] && systemctl is-active "$PHP_GENERIC_SVC" &>/dev/null; then
+    echo "PHP_GENERIC_RUNNING=active"
+  else
+    echo "PHP_GENERIC_RUNNING=inactive"
+  fi
+else
+  echo "PHP_GENERIC_INSTALLED=0"
+fi
+
 # Check Redis
 if command -v redis-server &>/dev/null; then
   echo "REDIS_INSTALLED=1"
@@ -4347,6 +4362,17 @@ fi
             });
         }
     }
+
+    // Generic PHP entry (always shown for install card)
+    list.push(SoftwareInfo {
+        name: "php".to_string(),
+        display_name: "PHP-FPM".to_string(),
+        category: "web".to_string(),
+        installed: get("PHP_GENERIC_INSTALLED") == "1",
+        version: get("PHP_GENERIC_VERSION"),
+        service_name: get("PHP_GENERIC_SERVICE"),
+        running: get("PHP_GENERIC_RUNNING") == "active",
+    });
 
     // Redis
     list.push(SoftwareInfo {
@@ -4728,6 +4754,45 @@ else
     systemctl disable $SVC 2>/dev/null || true
     yum remove -y mysql-server mariadb-server 2>/dev/null || true
     rm -rf /var/lib/mysql /etc/my.cnf 2>/dev/null || true
+  fi
+fi
+echo "ACTION_SUCCESS"
+"#;
+            return script.replace("__ACTION__", action);
+        }
+        "php" => {
+            // ponytail: generic PHP — system package manager picks the version
+            let script = r#"#!/bin/bash
+set -e
+echo "=== __ACTION__ PHP ==="
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+fi
+if [ "__ACTION__" = "install" ]; then
+  echo "Installing PHP..."
+  if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    apt-get update -qq
+    apt-get install -y php-fpm php-mysql php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache
+    SVC=$(systemctl list-units --type=service | grep -E 'php[0-9.]*-fpm' | awk '{print $1}' | head -1 | sed 's/.service//')
+  else
+    yum install -y epel-release 2>/dev/null || true
+    yum install -y php-fpm php-mysqlnd php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache
+    SVC=$(systemctl list-units --type=service | grep -E 'php-fpm' | awk '{print $1}' | head -1 | sed 's/.service//')
+  fi
+  if [ -n "$SVC" ]; then
+    systemctl enable "$SVC" && systemctl start "$SVC"
+  fi
+else
+  echo "Removing PHP..."
+  if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    systemctl list-units --type=service | grep -E 'php[0-9.]*-fpm' | awk '{print $1}' | xargs -r systemctl stop 2>/dev/null || true
+    systemctl list-units --type=service | grep -E 'php[0-9.]*-fpm' | awk '{print $1}' | xargs -r systemctl disable 2>/dev/null || true
+    apt-get purge -y 'php*' 2>/dev/null || true
+    apt-get autoremove -y 2>/dev/null || true
+  else
+    systemctl list-units --type=service | grep -E 'php' | awk '{print $1}' | xargs -r systemctl stop 2>/dev/null || true
+    systemctl list-units --type=service | grep -E 'php' | awk '{print $1}' | xargs -r systemctl disable 2>/dev/null || true
+    yum remove -y 'php*' 2>/dev/null || true
   fi
 fi
 echo "ACTION_SUCCESS"

@@ -4879,6 +4879,26 @@ body.dragging-files * {
   color: #c9d1d9;
 }
 
+.sw-sources-card {
+  background: var(--bg-secondary, #fff);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border-color, #e1e4e8);
+}
+
+.sw-sources-header h3 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #24292e);
+}
+
+.sw-sources-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .sw-categories {
   display: flex;
   flex-direction: column;

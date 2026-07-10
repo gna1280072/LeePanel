@@ -48,6 +48,23 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
 
   // ponytail: all version selectors removed — system package manager handles versions
 
+  // PHP version selection modal state
+  const [phpVersionModalOpen, setPhpVersionModalOpen] = useState(false)
+  const [availableVersions, setAvailableVersions] = useState<string[]>([])
+  const [selectedVersion, setSelectedVersion] = useState('')
+  const [versionsLoading, setVersionsLoading] = useState(false)
+  const [versionsError, setVersionsError] = useState('')
+
+  // Package sources management state
+  const [sourcesModalOpen, setSourcesModalOpen] = useState(false)
+  const [removableSources, setRemovableSources] = useState<string[]>([])
+  const [selectedSources, setSelectedSources] = useState<string[]>([])
+  const [sourcesLoading, setSourcesLoading] = useState(false)
+  const [sourcesError, setSourcesError] = useState('')
+  const [cleaningSources, setCleaningSources] = useState(false)
+  const [cleanLogs, setCleanLogs] = useState<string[]>([])
+  const [cleanLogStatus, setCleanLogStatus] = useState<'running' | 'done' | 'error' | null>(null)
+
   const loadSoftware = async () => {
     if (!sessionId) return
     setState('loading')
@@ -76,6 +93,24 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
           setLogStatus('done')
         } else if (event.payload.status === 'error') {
           setLogStatus('error')
+        }
+      }
+    )
+    return () => { unlisten.then(fn => fn()) }
+  }, [sessionId])
+
+  // Listen for sources action progress events
+  useEffect(() => {
+    if (!sessionId) return
+    const unlisten = listen<{ sessionId: string; line: string; status: string }>(
+      'sources-action-progress',
+      (event) => {
+        if (event.payload.sessionId !== sessionId) return
+        setCleanLogs(prev => [...prev, event.payload.line])
+        if (event.payload.status === 'done') {
+          setCleanLogStatus('done')
+        } else if (event.payload.status === 'error') {
+          setCleanLogStatus('error')
         }
       }
     )
@@ -121,6 +156,96 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
       setTimeout(loadSoftware, 1000)
     } catch (e) {
       setError(`${action} failed: ${e}`)
+    }
+  }
+
+  const handlePHPInstallClick = async () => {
+    if (!sessionId) return
+    setVersionsLoading(true)
+    setVersionsError('')
+    setPhpVersionModalOpen(true)
+    try {
+      const versions = await invoke<string[]>('server_get_available_php_versions', { sessionId })
+      setAvailableVersions(versions)
+      if (versions.length === 0) {
+        setVersionsError(t('software.noVersionsAvailable'))
+      } else {
+        setSelectedVersion(versions[versions.length - 1]) // default to latest
+      }
+    } catch (e) {
+      setVersionsError(`${t('software.queryFailed')}: ${String(e)}`)
+    } finally {
+      setVersionsLoading(false)
+    }
+  }
+
+  // Load removable sources
+  const handleManageSourcesClick = async () => {
+    if (!sessionId) return
+    setSourcesLoading(true)
+    setSourcesError('')
+    setSourcesModalOpen(true)
+    try {
+      const sources = await invoke<string[]>('server_get_removable_sources', { sessionId })
+      setRemovableSources(sources)
+      setSelectedSources([])
+    } catch (e) {
+      setSourcesError(`${t('software.queryFailed')}: ${String(e)}`)
+    } finally {
+      setSourcesLoading(false)
+    }
+  }
+
+  // Remove selected sources
+  const handleRemoveSelectedSources = async () => {
+    if (!sessionId || selectedSources.length === 0) return
+    try {
+      await invoke<string>('server_remove_sources', {
+        sessionId,
+        sourceNames: selectedSources,
+      })
+      setSourcesModalOpen(false)
+      setTimeout(() => handleManageSourcesClick(), 500)
+    } catch (e) {
+      setSourcesError(`${t('software.queryFailed')}: ${String(e)}`)
+    }
+  }
+
+  // Clean and update sources
+  const handleCleanAndUpdateSources = async () => {
+    if (!sessionId) return
+    setCleaningSources(true)
+    setCleanLogs([t('software.cleaningSources')])
+    setCleanLogStatus('running')
+    try {
+      await invoke('server_clean_and_update_sources', { sessionId })
+      setCleanLogStatus('done')
+    } catch (e) {
+      const msg = String(e)
+      setCleanLogs(prev => [...prev, msg.length > 300 ? msg.slice(0, 300) + '...' : msg])
+      setCleanLogStatus('error')
+    }
+  }
+
+  const handleConfirmPHPInstall = async () => {
+    if (!sessionId || !selectedVersion) return
+    setPhpVersionModalOpen(false)
+    setState('running')
+    setLogs([`${t('software.installingPHPVersion', { version: selectedVersion })}`])
+    setLogStatus('running')
+    setActionLabel(`${t('software.installingPHPVersion', { version: selectedVersion })}`)
+    try {
+      await invoke('server_software_action', {
+        sessionId,
+        software: 'php',
+        action: 'install',
+        options: selectedVersion,
+      })
+      setLogStatus('done')
+    } catch (e) {
+      const msg = String(e)
+      setLogs(prev => [...prev, msg.length > 300 ? msg.slice(0, 300) + '...' : msg])
+      setLogStatus('error')
     }
   }
 
@@ -252,6 +377,61 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
         </div>
       )}
 
+      {/* Package Sources Management Card */}
+      {(state === 'ready' || state === 'error') && (
+        <div className="sw-sources-card">
+          <div className="sw-sources-header">
+            <h3>{t('software.packageSourcesTitle')}</h3>
+          </div>
+          <div className="sw-sources-actions">
+            <button
+              className="sw-action-btn small"
+              onClick={handleManageSourcesClick}
+              disabled={cleaningSources}
+            >
+              {t('software.manageSources')}
+            </button>
+            <button
+              className="sw-action-btn small primary"
+              onClick={handleCleanAndUpdateSources}
+              disabled={cleaningSources}
+            >
+              {cleaningSources ? t('software.updatingSources') : t('software.cleanSources')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Cleaning Sources Progress */}
+      {cleaningSources && (
+        <div className="sw-running" style={{ marginTop: '16px', marginBottom: '16px' }}>
+          <div className="sw-running-header">
+            <div className={`sw-running-status ${cleanLogStatus}`}>
+              {cleanLogStatus === 'running' && <div className="sw-spinner" />}
+              {cleanLogStatus === 'done' && <span className="sw-done-icon">✓</span>}
+              {cleanLogStatus === 'error' && <span className="sw-error-icon">✗</span>}
+              <span>{t('software.cleaningSources')}</span>
+            </div>
+          </div>
+          <div className="sw-log-box">
+            {cleanLogs.map((line, i) => (
+              <div key={i} className={`sw-log-line ${line.includes('ERROR') || line.includes('failed') ? 'error' : ''}`}>
+                {line}
+              </div>
+            ))}
+            <div ref={logEndRef} />
+          </div>
+          {(cleanLogStatus === 'done' || cleanLogStatus === 'error') && (
+            <button
+              className="sw-action-btn"
+              onClick={() => { setCleaningSources(false); setCleanLogs([]); setCleanLogStatus(null); }}
+            >
+              {t('common.close')}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Software grid */}
       {(state === 'ready' || state === 'error') && software.length > 0 && (
         <div className="sw-categories">
@@ -316,10 +496,18 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
                             >{t('common.uninstall')}</button>
                           </>
                         ) : (
-                          <button
-                            className="sw-action-btn small primary"
-                            onClick={() => setConfirmAction({ software: sw, action: 'install' })}
-                          >{t('common.install')}</button>
+                          sw.name === 'php' ? (
+                            <button
+                              className="sw-action-btn small primary"
+                              onClick={() => handlePHPInstallClick()}
+                              disabled={versionsLoading}
+                            >{versionsLoading && phpVersionModalOpen ? t('software.queryingVersions') : t('common.install')}</button>
+                          ) : (
+                            <button
+                              className="sw-action-btn small primary"
+                              onClick={() => setConfirmAction({ software: sw, action: 'install' })}
+                            >{t('common.install')}</button>
+                          )
                         )}
                       </div>
                     </div>
@@ -358,6 +546,133 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
                 }}
               >
                 {confirmAction.action === 'install' ? t('common.install') : t('common.uninstall')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PHP Version Selection Modal */}
+      {phpVersionModalOpen && (
+        <div className="sw-confirm-overlay" onClick={() => setPhpVersionModalOpen(false)}>
+          <div className="sw-confirm-dialog" onClick={e => e.stopPropagation()}>
+            <div className="sw-confirm-title">{t('software.selectPHPVersion')}</div>
+
+            {versionsLoading ? (
+              <div style={{ padding: '16px', textAlign: 'center' }}>{t('software.queryingVersions')}</div>
+            ) : versionsError ? (
+              <div className="sw-confirm-warning" style={{ color: '#e74c3c' }}>{versionsError}</div>
+            ) : (
+              <>
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
+                    {t('software.availableVersionsLabel')}:
+                  </label>
+                  <select
+                    value={selectedVersion}
+                    onChange={(e) => setSelectedVersion(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      borderRadius: '4px',
+                      border: '1px solid #ccc',
+                      fontSize: '14px',
+                      background: 'var(--bg-secondary, #fff)',
+                      color: 'var(--text-primary, #000)',
+                    }}
+                  >
+                    {availableVersions.map(ver => (
+                      <option key={ver} value={ver}>
+                        PHP {ver}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="sw-confirm-warning">
+                  {t('software.installPHPVersionWarning', { version: selectedVersion })}
+                </div>
+              </>
+            )}
+
+            <div className="sw-confirm-actions">
+              <button
+                className="sw-action-btn"
+                onClick={() => setPhpVersionModalOpen(false)}
+                disabled={versionsLoading}
+              >{t('common.cancel')}</button>
+              <button
+                className="sw-action-btn primary"
+                onClick={handleConfirmPHPInstall}
+                disabled={versionsLoading || !!versionsError || !selectedVersion}
+              >{t('software.installPHPVersion', { version: selectedVersion })}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manage Sources Modal */}
+      {sourcesModalOpen && (
+        <div className="sw-confirm-overlay" onClick={() => setSourcesModalOpen(false)}>
+          <div className="sw-confirm-dialog" onClick={e => e.stopPropagation()}>
+            <div className="sw-confirm-title">{t('software.removableSources')}</div>
+
+            {sourcesLoading ? (
+              <div style={{ padding: '16px', textAlign: 'center' }}>{t('software.loadingSources')}</div>
+            ) : sourcesError ? (
+              <div className="sw-confirm-warning" style={{ color: '#e74c3c' }}>{sourcesError}</div>
+            ) : removableSources.length === 0 ? (
+              <div style={{ padding: '16px', textAlign: 'center' }}>{t('software.noOldSources')}</div>
+            ) : (
+              <>
+                <div style={{ marginBottom: '16px', maxHeight: '300px', overflowY: 'auto' }}>
+                  {removableSources.map(source => (
+                    <label
+                      key={source}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '8px',
+                        borderBottom: '1px solid #eee',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedSources.includes(source)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedSources([...selectedSources, source])
+                          } else {
+                            setSelectedSources(selectedSources.filter(s => s !== source))
+                          }
+                        }}
+                        style={{ marginRight: '8px' }}
+                      />
+                      <code style={{ fontSize: '13px' }}>{source}</code>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="sw-confirm-warning">
+                  {t('software.removeSourcesWarning')}
+                </div>
+              </>
+            )}
+
+            <div className="sw-confirm-actions">
+              <button
+                className="sw-action-btn"
+                onClick={() => setSourcesModalOpen(false)}
+                disabled={sourcesLoading}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                className="sw-action-btn danger"
+                onClick={handleRemoveSelectedSources}
+                disabled={sourcesLoading || selectedSources.length === 0}
+              >
+                {t('software.removeSelected')} ({selectedSources.length})
               </button>
             </div>
           </div>

@@ -1387,6 +1387,44 @@ async fn server_get_software_list(
 }
 
 #[tauri::command]
+async fn server_get_available_php_versions(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+) -> Result<Vec<String>, String> {
+    let mgr = ssh_mgr.lock().await;
+    server::get_available_php_versions(&mgr, session_id).await
+}
+
+#[tauri::command]
+async fn server_get_removable_sources(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+) -> Result<Vec<String>, String> {
+    let mgr = ssh_mgr.lock().await;
+    server::get_removable_sources(&mgr, session_id).await
+}
+
+#[tauri::command]
+async fn server_remove_sources(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+    source_names: Vec<String>,
+) -> Result<String, String> {
+    let mgr = ssh_mgr.lock().await;
+    server::remove_sources(&mgr, session_id, source_names).await
+}
+
+#[tauri::command]
+async fn server_clean_and_update_sources(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    app: tauri::AppHandle,
+    session_id: &str,
+) -> Result<String, String> {
+    let mgr = ssh_mgr.lock().await;
+    server::clean_and_update_sources(&mgr, session_id, &app).await
+}
+
+#[tauri::command]
 async fn server_software_action(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
     app: tauri::AppHandle,
@@ -1724,7 +1762,8 @@ pub fn run() {
             server_setup_ssl, server_get_monitor_data,
             server_firewall_list, server_firewall_add,
             server_firewall_remove, server_firewall_toggle,
-            server_get_software_list, server_software_action,
+            server_get_software_list, server_get_available_php_versions, server_software_action,
+            server_get_removable_sources, server_remove_sources, server_clean_and_update_sources,
             server_reboot, server_get_uptime,
             server_deploy_pubkey, server_get_ssh_auth_mode,
             server_set_ssh_auth_mode, server_get_bbr_status,

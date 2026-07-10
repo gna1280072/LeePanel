@@ -4436,6 +4436,210 @@ fi
     Ok(list)
 }
 
+/// Query available PHP versions from system package manager
+pub async fn get_available_php_versions(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<Vec<String>, String> {
+    let cmd = r#"
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+fi
+
+if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+  # Ubuntu/Debian: query apt-cache for php*-fpm packages
+  apt-cache search --names-only '^php[0-9]+\.[0-9]+-fpm$' 2>/dev/null | \
+    awk '{print $1}' | sed 's/^php//; s/-fpm$//' | sort -V | uniq
+else
+  # CentOS/RHEL: query yum/dnf for php*-fpm packages
+  if command -v dnf &>/dev/null; then
+    dnf list available 'php*-fpm' 2>/dev/null | grep -oP 'php\K[0-9.]+' | sort -V | uniq
+  else
+    yum list available 'php*-fpm' 2>/dev/null | grep -oP 'php\K[0-9.]+' | sort -V | uniq
+  fi
+fi
+"#;
+
+    let (stdout, _stderr, _exit_code) = ssh_mgr.exec_with_output(session_id, cmd, 30).await?;
+
+    let mut versions: Vec<String> = stdout
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.trim().to_string())
+        .collect();
+
+    versions.sort();
+    versions.dedup();
+
+    Ok(versions)
+}
+
+/// Get list of removable package sources (third-party repos)
+pub async fn get_removable_sources(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+) -> Result<Vec<String>, String> {
+    let cmd = r#"
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+fi
+
+if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+  # Ubuntu/Debian: list third-party sources in sources.list.d/
+  ls /etc/apt/sources.list.d/*.list 2>/dev/null | xargs -n1 basename | sed 's/.list$//' | sort
+else
+  # CentOS/RHEL: list repo files (exclude system repos)
+  ls /etc/yum.repos.d/*.repo 2>/dev/null | xargs -n1 basename | sed 's/.repo$//' | grep -vE '^epel$|^base$|^extras$|^updates$' | sort
+fi
+"#;
+
+    let (stdout, _stderr, _exit_code) = ssh_mgr.exec_with_output(session_id, cmd, 10).await?;
+    
+    let mut sources: Vec<String> = stdout
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.trim().to_string())
+        .collect();
+    
+    sources.sort();
+    Ok(sources)
+}
+
+/// Remove specified package sources
+pub async fn remove_sources(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    source_names: Vec<String>,
+) -> Result<String, String> {
+    if source_names.is_empty() {
+        return Err("No sources selected for removal".to_string());
+    }
+    
+    let cmd = format!(r#"
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+fi
+
+for src in {}; do
+  if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    rm -f "/etc/apt/sources.list.d/${{src}}.list"
+  else
+    rm -f "/etc/yum.repos.d/${{src}}.repo"
+  fi
+done
+echo "Sources removed successfully"
+"#, source_names.iter().map(|s| format!("\"{}\"", s)).collect::<Vec<_>>().join(" "));
+
+    let (_stdout, _stderr, _exit_code) = ssh_mgr.exec_with_output(session_id, &cmd, 10).await?;
+    Ok(format!("Removed {} source(s)", source_names.len()))
+}
+
+/// Clean and update package sources with streaming output
+pub async fn clean_and_update_sources(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    app_handle: &AppHandle,
+) -> Result<String, String> {
+    let cmd = r#"
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+fi
+
+echo "=== Cleaning package source cache ==="
+if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+  rm -rf /var/lib/apt/lists/*
+  echo "Cache cleared"
+  
+  echo "=== Updating package sources ==="
+  apt-get update 2>&1 | tee /tmp/apt-update.log
+  
+  if [ $? -eq 0 ]; then
+    echo "ACTION_SUCCESS"
+  else
+    echo "ERROR: Failed to update package sources"
+    exit 1
+  fi
+else
+  yum clean all 2>&1 || dnf clean all 2>&1
+  echo "Cache cleared"
+  
+  echo "=== Updating package sources ==="
+  yum makecache 2>&1 || dnf makecache 2>&1 | tee /tmp/yum-makecache.log
+  
+  if [ $? -eq 0 ]; then
+    echo "ACTION_SUCCESS"
+  else
+    echo "ERROR: Failed to update package sources"
+    exit 1
+  fi
+fi
+"#;
+
+    // Write script to remote server
+    ssh_mgr.write_file(session_id, "/tmp/clean-sources.sh", cmd).await?;
+    
+    // Execute with streaming output
+    let mut channel = ssh_mgr.open_channel(session_id).await?;
+    channel
+        .exec(true, "bash /tmp/clean-sources.sh")
+        .await
+        .map_err(|e| format!("Failed to start script: {}", e))?;
+    
+    let event_name = "sources-action-progress";
+    let mut full_output = String::new();
+    let mut exit_code: i32 = -1;
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(60);
+    
+    loop {
+        tokio::select! {
+            msg = channel.wait() => {
+                match msg {
+                    Some(russh::ChannelMsg::Data { data }) | Some(russh::ChannelMsg::ExtendedData { data, .. }) => {
+                        let text = String::from_utf8_lossy(&data);
+                        for line in text.lines() {
+                            if !line.trim().is_empty() {
+                                full_output.push_str(line);
+                                full_output.push('\n');
+                                let _ = app_handle.emit(event_name, serde_json::json!({
+                                    "sessionId": session_id,
+                                    "line": line,
+                                    "status": "running",
+                                }));
+                            }
+                        }
+                    }
+                    Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
+                        exit_code = exit_status as i32;
+                    }
+                    Some(russh::ChannelMsg::Eof) | Some(russh::ChannelMsg::Close) | None => break,
+                    _ => {}
+                }
+            }
+            _ = tokio::time::sleep_until(deadline) => {
+                return Err("Operation timed out (60 seconds)".to_string());
+            }
+        }
+    }
+    
+    let success = full_output.contains("ACTION_SUCCESS");
+    
+    if exit_code == 0 || success {
+        let _ = app_handle.emit(event_name, serde_json::json!({
+            "sessionId": session_id,
+            "line": "Package sources updated successfully!",
+            "status": "done",
+        }));
+        Ok(full_output)
+    } else {
+        let _ = app_handle.emit(event_name, serde_json::json!({
+            "sessionId": session_id,
+            "line": "Failed to update package sources",
+            "status": "error",
+        }));
+        Err(format!("Operation failed (exit code {}):\n{}", exit_code, full_output))
+    }
+}
+
 /// Install or uninstall software via SSH with real-time output
 pub async fn software_action(
     ssh_mgr: &SshManager,
@@ -4534,7 +4738,7 @@ fn build_software_script(
     _os: &OsInfo,
     software: &str,
     action: &str,
-    _options: &str,
+    options: &str,
     is_debian: bool,
 ) -> String {
     let (pkg_mgr, pkg_install, pkg_remove) = if is_debian {
@@ -4761,10 +4965,16 @@ echo "ACTION_SUCCESS"
             return script.replace("__ACTION__", action);
         }
         "php" => {
-            // ponytail: generic PHP — system package manager picks the version
+            // ponytail: generic PHP — options contains version (e.g. "8.2"), empty means default
+            let version = if options.is_empty() {
+                "".to_string()
+            } else {
+                options.to_string()
+            };
+
             let script = r#"#!/bin/bash
 set -e
-echo "=== __ACTION__ PHP ==="
+echo "=== __ACTION__ PHP __VERSION__ ==="
 if [ -f /etc/os-release ]; then
   . /etc/os-release
 fi
@@ -4772,12 +4982,25 @@ if [ "__ACTION__" = "install" ]; then
   echo "Installing PHP..."
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
     apt-get update -qq
-    apt-get install -y php-fpm php-mysql php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache
+    if [ -n "__VERSION__" ]; then
+      # Install specific version
+      apt-get install -y php__VERSION__-fpm php__VERSION__-mysql php__VERSION__-curl php__VERSION__-mbstring php__VERSION__-xml php__VERSION__-zip php__VERSION__-gd php__VERSION__-bcmath php__VERSION__-opcache
+    else
+      # Install default version
+      apt-get install -y php-fpm php-mysql php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache
+    fi
     SVC=$(systemctl list-units --type=service | grep -E 'php[0-9.]*-fpm' | awk '{print $1}' | head -1 | sed 's/.service//')
   else
     yum install -y epel-release 2>/dev/null || true
-    yum install -y php-fpm php-mysqlnd php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache
-    SVC=$(systemctl list-units --type=service | grep -E 'php-fpm' | awk '{print $1}' | head -1 | sed 's/.service//')
+    if [ -n "__VERSION__" ]; then
+      # Install specific version (CentOS+Remi naming: php82-php-fpm)
+      VER_NODOT=$(echo "__VERSION__" | tr -d '.')
+      yum install -y php${VER_NODOT}-php-fpm php${VER_NODOT}-php-mysqlnd php${VER_NODOT}-php-curl php${VER_NODOT}-php-mbstring php${VER_NODOT}-php-xml php${VER_NODOT}-php-zip php${VER_NODOT}-php-gd php${VER_NODOT}-php-bcmath php${VER_NODOT}-php-opcache
+    else
+      # Install default version
+      yum install -y php-fpm php-mysqlnd php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache
+    fi
+    SVC=$(systemctl list-units --type=service | grep -E 'php' | awk '{print $1}' | head -1 | sed 's/.service//')
   fi
   if [ -n "$SVC" ]; then
     systemctl enable "$SVC" && systemctl start "$SVC"
@@ -4797,7 +5020,9 @@ else
 fi
 echo "ACTION_SUCCESS"
 "#;
-            return script.replace("__ACTION__", action);
+            return script
+                .replace("__ACTION__", action)
+                .replace("__VERSION__", &version);
         }
         "php5.6" | "php7.0" | "php7.1" | "php7.2" | "php7.3" | "php7.4" | "php8.0" | "php8.1" | "php8.2" | "php8.3" | "php8.4" | "php8.5" => {
             // ponytail: versioned PHP entries kept for uninstall of detected versions

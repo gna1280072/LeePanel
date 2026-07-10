@@ -993,6 +993,11 @@ impl SshManager {
             return Err(format!("Extraction failed: {}", stderr.trim()));
         }
 
+        // Log any output for debugging (tar -v outputs to stderr)
+        if !stderr.trim().is_empty() {
+            eprintln!("Extract output: {}", stderr.trim());
+        }
+
         // Emit completion
         let _ = app_handle.emit("archive-progress", serde_json::json!({
             "sessionId": session_id,

@@ -156,7 +156,7 @@ export default function ServerPanel({ sessionId, connHost, jumpToPath, setJumpTo
       case 'redis':
         return <RedisPanel sessionId={sessionId} onNavigateToSoftware={() => setActiveSection('software')} />
       case 'docker':
-        return <DockerPanel sessionId={sessionId} />
+        return <DockerPanel sessionId={sessionId} onNavigateToSoftware={() => setActiveSection('software')} />
       case 'settings':
         return <ServerSettingsPanel sessionId={sessionId} appSettings={appSettings} onToggleAutoReconnect={onToggleAutoReconnect} onUpdateSettings={onUpdateSettings} />
       default:

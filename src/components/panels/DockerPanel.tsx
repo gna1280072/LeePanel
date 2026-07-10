@@ -30,11 +30,12 @@ interface DockerImage {
 
 interface DockerPanelProps {
   sessionId: string | null
+  onNavigateToSoftware?: () => void
 }
 
 type DockerTab = 'containers' | 'images' | 'mirror'
 
-export default function DockerPanel({ sessionId }: DockerPanelProps) {
+export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerPanelProps) {
   const { t } = useTranslation()
   const [status, setStatus] = useState<DockerStatus | null>(null)
   const [statusLoading, setStatusLoading] = useState(true)
@@ -42,11 +43,9 @@ export default function DockerPanel({ sessionId }: DockerPanelProps) {
   const [success, setSuccess] = useState('')
   const [activeTab, setActiveTab] = useState<DockerTab>('containers')
 
-  // Docker install
-  const [installing, setInstalling] = useState(false)
-  const [useMirror, setUseMirror] = useState(false)
+  // Docker install — ponytail: install moved to Software Repository
 
-  // Streaming log for install/uninstall/pull
+  // Streaming log for pull
   const [streamLogs, setStreamLogs] = useState<string[]>([])
   const [streamActive, setStreamActive] = useState(false)
   const streamEndRef = useRef<HTMLDivElement>(null)
@@ -195,21 +194,6 @@ export default function DockerPanel({ sessionId }: DockerPanelProps) {
     setStreamActive(true)
   }
 
-  const handleInstall = async () => {
-    if (!sessionId) return
-    clearMessages()
-    startStream()
-    setInstalling(true)
-    try {
-      await invoke<string>('server_install_docker', { sessionId, useMirror })
-      await fetchStatus()
-    } catch (e) {
-      setError(String(e))
-    } finally {
-      setInstalling(false)
-    }
-  }
-
   const handleContainerAction = async (container: DockerContainer, action: string) => {
     if (!sessionId) return
     clearMessages()
@@ -356,14 +340,15 @@ export default function DockerPanel({ sessionId }: DockerPanelProps) {
             </div>
             <div className="docker-status-actions">
               {!status.installed ? (
-                <div className="docker-install-section">
-                  <label className="docker-mirror-checkbox">
-                    <input type="checkbox" checked={useMirror} onChange={(e) => setUseMirror(e.target.checked)} />
-                    Use China Mirror (Aliyun)
-                  </label>
-                  <button className="docker-btn primary" onClick={handleInstall} disabled={installing}>
-                    {installing ? 'Installing...' : 'Install Docker'}
-                  </button>
+                <div className="docker-install-section" style={{ textAlign: 'center', padding: '24px 0' }}>
+                  <div style={{ marginBottom: '12px', fontSize: '14px' }}>
+                    {t('dockerPanel.notInstalled')}
+                  </div>
+                  {onNavigateToSoftware && (
+                    <button className="docker-btn primary" onClick={onNavigateToSoftware}>
+                      {t('dockerPanel.goToSoftware')}
+                    </button>
+                  )}
                 </div>
               ) : null}
             </div>

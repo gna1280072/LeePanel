@@ -134,7 +134,9 @@
     "settings": "Settings"
   },
   "dockerPanel": {
-    "runContainer": "Run Container"
+    "runContainer": "Run Container",
+    "notInstalled": "Docker is not installed. Please go to Software Repository to install it.",
+    "goToSoftware": "Go to Software Repository"
   },
   "files": {
     "notConnected": "Not connected",

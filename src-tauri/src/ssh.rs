@@ -798,20 +798,30 @@ impl SshManager {
         channel.exec(true, cmd).await.map_err(|e| format!("Exec failed: {}", e))?;
 
         let mut output = String::new();
+        let mut stderr = String::new();
+        let mut exit_code: Option<u32> = None;
         let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(10);
         loop {
             tokio::select! {
                 msg = channel.wait() => {
                     match msg {
-                        Some(ChannelMsg::Data { data }) => output.push_str(&String::from_utf8_lossy(&data)),
-                        Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => break,
+                        Some(ChannelMsg::Data { data }) => {
+                            output.push_str(&String::from_utf8_lossy(&data));
+                        }
+                        Some(ChannelMsg::ExtendedData { data, .. }) => {
+                            stderr.push_str(&String::from_utf8_lossy(&data));
+                        }
+                        Some(ChannelMsg::ExitStatus { exit_status }) => {
+                            exit_code = Some(exit_status);
+                        }
+                        Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) => break,
+                        None => break,
                         _ => {}
                     }
                 }
                 _ = tokio::time::sleep_until(deadline) => break,
             }
         }
-
         Ok(output.trim().to_string())
     }
 

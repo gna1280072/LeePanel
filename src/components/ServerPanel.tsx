@@ -44,7 +44,6 @@ interface ServerPanelProps {
   appSettings?: AppSettings
   onToggleAutoReconnect?: () => void
   onUpdateSettings?: (settings: Partial<AppSettings>) => Promise<void>
-  onReconnect?: () => void
 }
 
 const NAV_ITEMS: { key: PanelSection; labelKey: string; icon: string }[] = [
@@ -67,7 +66,7 @@ const NAV_ITEMS: { key: PanelSection; labelKey: string; icon: string }[] = [
   { key: 'settings', labelKey: 'nav.settings', icon: '⚙' },
 ]
 
-export default function ServerPanel({ sessionId, connHost, jumpToPath, setJumpToPath, termRef, onStartUpload, onUploadComplete, appSettings, onToggleAutoReconnect, onUpdateSettings, onReconnect }: ServerPanelProps) {
+export default function ServerPanel({ sessionId, connHost, jumpToPath, setJumpToPath, termRef, onStartUpload, onUploadComplete, appSettings, onToggleAutoReconnect, onUpdateSettings }: ServerPanelProps) {
   const { t } = useTranslation()
   const [activeSection, setActiveSectionRaw] = useState<PanelSection>('dashboard')
   const cdHereRef = useRef<string | null>(null)
@@ -148,7 +147,7 @@ export default function ServerPanel({ sessionId, connHost, jumpToPath, setJumpTo
       case 'firewall':
         return <FirewallPanel sessionId={sessionId} />
       case 'software':
-        return <SoftwareRepo sessionId={sessionId} onDisconnect={onReconnect} />
+        return <SoftwareRepo sessionId={sessionId} />
       case 'bbr':
         return <BbrPanel sessionId={sessionId} />
       case 'database':

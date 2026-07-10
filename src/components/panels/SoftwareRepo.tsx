@@ -15,7 +15,6 @@ interface SoftwareInfo {
 
 interface SoftwareRepoProps {
   sessionId: string | null
-  onDisconnect?: () => void
 }
 
 type PanelState = 'loading' | 'ready' | 'error' | 'running'
@@ -26,7 +25,7 @@ interface ConfirmAction {
   action: 'install' | 'uninstall'
 }
 
-export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoProps) {
+export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
   const { t } = useTranslation()
   const [state, setState] = useState<PanelState>('loading')
   const [software, setSoftware] = useState<SoftwareInfo[]>([])
@@ -138,10 +137,6 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
         options,
       })
       setLogStatus('done')
-      // Disconnect after nginx install to refresh environment
-      if (action === 'install' && (sw.name === 'nginx' || sw.name === 'mysql')) {
-        onDisconnect?.()
-      }
     } catch (e) {
       const msg = String(e)
       setLogs(prev => [...prev, msg.length > 300 ? msg.slice(0, 300) + '...' : msg])

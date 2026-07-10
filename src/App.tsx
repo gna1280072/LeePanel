@@ -347,19 +347,6 @@ function App() {
   }
 
   // Disconnect SSH session after LNMP installation (environment changes require fresh session)
-  const handleDisconnectAfterInstall = async () => {
-    if (!sessionId) return
-    try {
-      showToast('✓ Installation complete. Disconnecting to refresh environment...')
-      manualDisconnectRef.current = true
-      await invoke('ssh_disconnect', { sessionId })
-      clearSession()
-      termRef.current?.clear()
-    } catch (e) {
-      console.error('Disconnect failed:', e)
-      showToast(`⚠️ Disconnect failed: ${String(e).slice(0, 100)}`)
-    }
-  }
 
   const classifyError = (errorMsg: string): { type: 'auth' | 'network' | 'connection' | 'other'; message: string } => {
     const s = errorMsg.toLowerCase()
@@ -520,7 +507,7 @@ function App() {
         )}
         <div className="split-container" ref={splitContainerRef}>
           <div className="split-full">
-            <ServerPanel sessionId={sessionId} connHost={connHost} jumpToPath={jumpToPath} setJumpToPath={setJumpToPath} termRef={termRef} onStartUpload={handleStartUpload} onUploadComplete={uploadCompleteRef} appSettings={settings} onToggleAutoReconnect={toggleAutoReconnect} onUpdateSettings={handleUpdateSettings} onReconnect={handleDisconnectAfterInstall} />
+            <ServerPanel sessionId={sessionId} connHost={connHost} jumpToPath={jumpToPath} setJumpToPath={setJumpToPath} termRef={termRef} onStartUpload={handleStartUpload} onUploadComplete={uploadCompleteRef} appSettings={settings} onToggleAutoReconnect={toggleAutoReconnect} onUpdateSettings={handleUpdateSettings} />
           </div>
         </div>
       </div>

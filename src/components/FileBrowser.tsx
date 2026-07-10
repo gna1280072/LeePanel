@@ -1234,31 +1234,21 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       }
 
       const archivePath = resolvePath(entry)
-      const tempDir = `/tmp/ssh_extract_${Date.now()}`
       setArchiveProgress({ type: 'extract', logs: [t('files.extractingFile', { name: entry.name })], done: false })
 
       try {
-        // Step 1: Extract to temp directory
-        await invoke('ssh_extract', { sessionId, archivePath, destDir: tempDir })
-
-        // Step 2: Rename temp dir to final destination
-        const finalPath = destDir === '/' ? `/${finalName}` : `${destDir}/${finalName}`
-
+        // If conflict and user chose replace, delete existing first
         if (conflict && finalName === extractName) {
-          // Replace: remove existing first
-          await invoke('ssh_delete_file', { sessionId, path: finalPath, isDir: true })
+          const targetPath = destDir === '/' ? `/${finalName}` : `${destDir}/${finalName}`
+          await invoke('ssh_delete_file', { sessionId, path: targetPath, isDir: true })
         }
 
-        // Rename temp directory to final path (SFTP rename works for dirs)
-        await invoke('ssh_rename_file', { sessionId, oldPath: tempDir, newPath: finalPath })
+        // Extract directly to destination directory
+        await invoke('ssh_extract', { sessionId, archivePath, destDir: currentPath })
 
         showToast(t('files.extracted', { name: entry.name, dest: finalName }), 'success')
         navigateTo(currentPath)
       } catch (e) {
-        // Cleanup temp dir on failure
-        try {
-          await invoke('ssh_delete_file', { sessionId, path: tempDir, isDir: true })
-        } catch { /* ignore cleanup errors */ }
         setArchiveProgress(prev => prev ? { ...prev, logs: [...prev.logs, `Error: ${e}`], done: true } : null)
         showToast(t('files.extractFailed', { error: e }), 'error')
       }

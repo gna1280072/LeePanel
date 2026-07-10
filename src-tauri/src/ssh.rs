@@ -897,7 +897,7 @@ impl SshManager {
         let safe_archive = archive_path.replace('\'', "'\\' '");
         let safe_dest = dest_dir.replace('\'', "'\\' '");
 
-        // Detect format by extension and extract
+        // Detect format by extension and extract directly to destination
         let cmd = if archive_path.ends_with(".tar.gz") || archive_path.ends_with(".tgz") {
             format!("tar -xzvf '{}' -C '{}' 2>&1", safe_archive, safe_dest)
         } else if archive_path.ends_with(".tar.bz2") || archive_path.ends_with(".tbz2") {
@@ -912,28 +912,7 @@ impl SshManager {
             return Err(format!("Unsupported archive format: {}", archive_path));
         };
 
-        // Step 1: Create destination directory if it doesn't exist
-        let create_dir_cmd = format!("mkdir -p '{}'", safe_dest);
-        channel
-            .exec(true, create_dir_cmd.as_str())
-            .await
-            .map_err(|e| format!("Failed to create directory: {}", e))?;
-
-        // Wait for mkdir to complete
-        loop {
-            match channel.wait().await {
-                Some(ChannelMsg::ExitStatus { exit_status }) => {
-                    if exit_status != 0 {
-                        return Err(format!("mkdir failed with exit code: {}", exit_status));
-                    }
-                    break;
-                }
-                Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => break,
-                _ => {}
-            }
-        }
-
-        // Step 2: Now execute the extract command
+        // Execute extract command (tar/unzip will create dest dir if needed with -C/-d)
         channel
             .exec(true, cmd)
             .await

@@ -362,12 +362,14 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       const parts = raw.split('---').map(s => s.trim())
       const availBytes = parseInt(parts[0]) || 0
       const writeOk = parts[1] === 'OK'
-      // Parse file list with type: "name|file" or "name|dir"
+      // Parse file list with type code from find -printf '%y': d=dir, f=file, l=link, etc.
       const fileMap = new Map<string, 'file' | 'dir'>()
       ;(parts[2] || '').split('\n').filter(Boolean).forEach(line => {
-        const [name, type] = line.split('|')
-        if (name && type) {
-          fileMap.set(name, type as 'file' | 'dir')
+        const lastPipe = line.lastIndexOf('|')
+        if (lastPipe > 0) {
+          const name = line.substring(0, lastPipe)
+          const typeCode = line.substring(lastPipe + 1)
+          fileMap.set(name, typeCode === 'd' ? 'dir' : 'file')
         }
       })
 

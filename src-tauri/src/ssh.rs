@@ -789,10 +789,10 @@ impl SshManager {
     pub async fn check_space(&self, session_id: &str, path: &str) -> Result<String, String> {
         let mut channel = self.open_channel(session_id).await?;
         let safe = path.replace('\'', "'\\''");
-        // df -B1 gets available bytes; touch test checks write; ls -1p lists files with type
-        // Uses POSIX-compatible case instead of [[ ]] (which requires bash)
+        // df -B1 gets available bytes; touch test checks write permission
+        // find -printf '%f|%y' outputs filename|type directly (d=dir, f=file, l=link)
         let cmd = format!(
-            "df -B1 '{}' | tail -1 | awk '{{print $4}}'; echo '---'; touch '{}/.__wtest__' 2>&1 && rm '{}/.__wtest__' && echo 'OK' || echo 'DENIED'; echo '---'; ls -1p '{}' | while read item; do case \"$item\" in */) echo \"${{item%/}}|dir\";; *) echo \"$item|file\";; esac; done",
+            "df -B1 '{}' | tail -1 | awk '{{print $4}}'; echo '---'; touch '{}/.__wtest__' 2>&1 && rm '{}/.__wtest__' && echo 'OK' || echo 'DENIED'; echo '---'; find '{}' -maxdepth 1 -mindepth 1 -printf '%f|%y\n' | grep -v '^\\.|'",
             safe, safe, safe, safe
         );
         channel.exec(true, cmd).await.map_err(|e| format!("Exec failed: {}", e))?;

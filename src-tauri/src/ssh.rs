@@ -807,17 +807,41 @@ impl SshManager {
     ) -> Result<(), String> {
         let mut channel = self.open_channel(session_id).await?;
 
-        let safe_output = output.replace('\'', "'\\' '");
-        let safe_paths: Vec<String> = paths
-            .iter()
-            .map(|p| format!("'{}'", p.replace('\'', "'\\' '")))
-            .collect();
-        let paths_str = safe_paths.join(" ");
+        if paths.is_empty() {
+            return Err("No paths to compress".to_string());
+        }
 
+        // Get the common parent directory and relative paths
+        let first_path = &paths[0];
+        let parent_dir = std::path::Path::new(first_path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or(".".to_string());
+        
+        // Extract relative filenames from full paths
+        let rel_names: Vec<String> = paths
+            .iter()
+            .map(|p| {
+                std::path::Path::new(p)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| p.clone())
+            })
+            .collect();
+
+        let safe_output = output.replace('\'', "'\\' '");
+        let safe_parent = parent_dir.replace('\'', "'\\' '");
+        let safe_names: Vec<String> = rel_names
+            .iter()
+            .map(|n| format!("'{}'", n.replace('\'', "'\\' '")))
+            .collect();
+        let names_str = safe_names.join(" ");
+
+        // Use -C to change to parent directory, then use relative names
         let cmd = match format {
-            "tar.gz" => format!("tar -czvf '{}' {} 2>&1", safe_output, paths_str),
-            "zip" => format!("zip -r '{}' {} 2>&1", safe_output, paths_str),
-            "tar.bz2" => format!("tar -cjvf '{}' {} 2>&1", safe_output, paths_str),
+            "tar.gz" => format!("cd '{}' && tar -czvf '{}' {} 2>&1", safe_parent, safe_output, names_str),
+            "zip" => format!("cd '{}' && zip -r '{}' {} 2>&1", safe_parent, safe_output, names_str),
+            "tar.bz2" => format!("cd '{}' && tar -cjvf '{}' {} 2>&1", safe_parent, safe_output, names_str),
             _ => return Err(format!("Unsupported format: {}", format)),
         };
 

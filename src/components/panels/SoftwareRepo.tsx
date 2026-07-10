@@ -463,7 +463,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
                       </div>
 
                       <div className="sw-card-actions">
-                        {sw.installed ? (
+                        {(sw.installed && sw.name !== 'php') ? (
                           <>
                             {sw.service_name && (
                               <>

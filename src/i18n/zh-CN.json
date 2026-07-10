@@ -649,7 +649,17 @@
     "loadingSources": "正在加载软件源...",
     "noOldSources": "未找到旧的软件源。",
     "removeSourcesWarning": "删除这些软件源可能影响软件安装，请确认不需要它们。",
-    "removeSelected": "删除选中项"
+    "removeSelected": "删除选中项",
+    "addSource": "增加软件源",
+    "addSourceTitle": "添加软件源",
+    "sourceName": "软件源名称",
+    "sourceUrl": "软件源地址",
+    "sourceGpgKey": "GPG 密钥地址（可选）",
+    "sourceNamePlaceholder": "例如 my-repo",
+    "sourceUrlPlaceholder": "例如 https://packages.example.com/debian",
+    "sourceGpgKeyPlaceholder": "例如 https://packages.example.com/gpg.key",
+    "addingSource": "正在添加软件源...",
+    "addSourceSuccess": "软件源添加成功"
   },
   "logs": {
     "title": "站点日志",

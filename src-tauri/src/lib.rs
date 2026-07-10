@@ -1425,6 +1425,18 @@ async fn server_clean_and_update_sources(
 }
 
 #[tauri::command]
+async fn server_add_source(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+    name: &str,
+    url: &str,
+    gpg_key: Option<&str>,
+) -> Result<String, String> {
+    let mgr = ssh_mgr.lock().await;
+    server::add_source(&mgr, session_id, name, url, gpg_key).await
+}
+
+#[tauri::command]
 async fn server_software_action(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
     app: tauri::AppHandle,
@@ -1763,7 +1775,7 @@ pub fn run() {
             server_firewall_list, server_firewall_add,
             server_firewall_remove, server_firewall_toggle,
             server_get_software_list, server_get_available_php_versions, server_software_action,
-            server_get_removable_sources, server_remove_sources, server_clean_and_update_sources,
+            server_get_removable_sources, server_remove_sources, server_clean_and_update_sources, server_add_source,
             server_reboot, server_get_uptime,
             server_deploy_pubkey, server_get_ssh_auth_mode,
             server_set_ssh_auth_mode, server_get_bbr_status,

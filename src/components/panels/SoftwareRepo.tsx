@@ -64,6 +64,14 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
   const [cleanLogs, setCleanLogs] = useState<string[]>([])
   const [cleanLogStatus, setCleanLogStatus] = useState<'running' | 'done' | 'error' | null>(null)
 
+  // Add source modal state
+  const [addSourceModalOpen, setAddSourceModalOpen] = useState(false)
+  const [addSourceName, setAddSourceName] = useState('')
+  const [addSourceUrl, setAddSourceUrl] = useState('')
+  const [addSourceGpgKey, setAddSourceGpgKey] = useState('')
+  const [addSourceLoading, setAddSourceLoading] = useState(false)
+  const [addSourceError, setAddSourceError] = useState('')
+
   const loadSoftware = async () => {
     if (!sessionId) return
     setState('loading')
@@ -203,6 +211,29 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
       setTimeout(() => handleManageSourcesClick(), 500)
     } catch (e) {
       setSourcesError(`${t('software.queryFailed')}: ${String(e)}`)
+    }
+  }
+
+  // Add new source
+  const handleAddSource = async () => {
+    if (!sessionId || !addSourceName.trim() || !addSourceUrl.trim()) return
+    setAddSourceLoading(true)
+    setAddSourceError('')
+    try {
+      await invoke<string>('server_add_source', {
+        sessionId,
+        name: addSourceName.trim(),
+        url: addSourceUrl.trim(),
+        gpgKey: addSourceGpgKey.trim() || null,
+      })
+      setAddSourceModalOpen(false)
+      setAddSourceName('')
+      setAddSourceUrl('')
+      setAddSourceGpgKey('')
+    } catch (e) {
+      setAddSourceError(String(e).slice(0, 300))
+    } finally {
+      setAddSourceLoading(false)
     }
   }
 
@@ -392,6 +423,13 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
               disabled={cleaningSources}
             >
               {cleaningSources ? t('software.updatingSources') : t('software.cleanSources')}
+            </button>
+            <button
+              className="sw-action-btn small primary"
+              onClick={() => { setAddSourceModalOpen(true); setAddSourceError('') }}
+              disabled={cleaningSources}
+            >
+              {t('software.addSource')}
             </button>
           </div>
         </div>
@@ -668,6 +706,81 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                 disabled={sourcesLoading || selectedSources.length === 0}
               >
                 {t('software.removeSelected')} ({selectedSources.length})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Source Modal */}
+      {addSourceModalOpen && (
+        <div className="sw-confirm-overlay" onClick={() => setAddSourceModalOpen(false)}>
+          <div className="sw-confirm-dialog" onClick={e => e.stopPropagation()}>
+            <div className="sw-confirm-title">{t('software.addSourceTitle')}</div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>{t('software.sourceName')}</label>
+                <input
+                  type="text"
+                  value={addSourceName}
+                  onChange={e => setAddSourceName(e.target.value)}
+                  placeholder={t('software.sourceNamePlaceholder')}
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: '4px',
+                    border: '1px solid #ccc', fontSize: '14px',
+                    background: 'var(--bg-secondary, #fff)', color: 'var(--text-primary, #000)',
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>{t('software.sourceUrl')}</label>
+                <input
+                  type="text"
+                  value={addSourceUrl}
+                  onChange={e => setAddSourceUrl(e.target.value)}
+                  placeholder={t('software.sourceUrlPlaceholder')}
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: '4px',
+                    border: '1px solid #ccc', fontSize: '14px',
+                    background: 'var(--bg-secondary, #fff)', color: 'var(--text-primary, #000)',
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>{t('software.sourceGpgKey')}</label>
+                <input
+                  type="text"
+                  value={addSourceGpgKey}
+                  onChange={e => setAddSourceGpgKey(e.target.value)}
+                  placeholder={t('software.sourceGpgKeyPlaceholder')}
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: '4px',
+                    border: '1px solid #ccc', fontSize: '14px',
+                    background: 'var(--bg-secondary, #fff)', color: 'var(--text-primary, #000)',
+                  }}
+                />
+              </div>
+            </div>
+
+            {addSourceError && (
+              <div className="sw-confirm-warning" style={{ color: '#e74c3c' }}>{addSourceError}</div>
+            )}
+
+            <div className="sw-confirm-actions">
+              <button
+                className="sw-action-btn"
+                onClick={() => setAddSourceModalOpen(false)}
+                disabled={addSourceLoading}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                className="sw-action-btn primary"
+                onClick={handleAddSource}
+                disabled={addSourceLoading || !addSourceName.trim() || !addSourceUrl.trim()}
+              >
+                {addSourceLoading ? t('software.addingSource') : t('software.addSource')}
               </button>
             </div>
           </div>

@@ -649,7 +649,17 @@
     "loadingSources": "Loading sources...",
     "noOldSources": "No old package sources found.",
     "removeSourcesWarning": "Removing these sources may affect software installation. Make sure you don't need them.",
-    "removeSelected": "Remove Selected"
+    "removeSelected": "Remove Selected",
+    "addSource": "Add New Source",
+    "addSourceTitle": "Add Package Source",
+    "sourceName": "Source Name",
+    "sourceUrl": "Source URL",
+    "sourceGpgKey": "GPG Key URL (optional)",
+    "sourceNamePlaceholder": "e.g. my-repo",
+    "sourceUrlPlaceholder": "e.g. https://packages.example.com/debian",
+    "sourceGpgKeyPlaceholder": "e.g. https://packages.example.com/gpg.key",
+    "addingSource": "Adding source...",
+    "addSourceSuccess": "Source added successfully"
   },
   "logs": {
     "title": "Site Logs",

@@ -4640,6 +4640,81 @@ fi
     }
 }
 
+/// Add a new package source
+pub async fn add_source(
+    ssh_mgr: &SshManager,
+    session_id: &str,
+    name: &str,
+    url: &str,
+    gpg_key: Option<&str>,
+) -> Result<String, String> {
+    if name.is_empty() || url.is_empty() {
+        return Err("Source name and URL are required".to_string());
+    }
+
+    // Validate name (alphanumeric, hyphen, underscore only)
+    if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        return Err("Source name can only contain letters, numbers, hyphens, and underscores".to_string());
+    }
+
+    let cmd = format!(r#"
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+fi
+
+echo "Adding package source: {}"
+
+if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+  # Debian/Ubuntu: Create .list file
+  SOURCE_FILE="/etc/apt/sources.list.d/{}.list"
+  
+  if [ -f "$SOURCE_FILE" ]; then
+    echo "ERROR: Source file already exists: $SOURCE_FILE"
+    exit 1
+  fi
+  
+  # Write the source line
+  echo '{}' > "$SOURCE_FILE"
+  
+  # Add GPG key if provided
+  if [ -n "{}" ]; then
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL "{}" | gpg --dearmor -o /etc/apt/keyrings/{}.gpg 2>/dev/null || true
+    chmod a+r /etc/apt/keyrings/{}.gpg 2>/dev/null || true
+  fi
+  
+  echo "Source added successfully"
+else
+  # CentOS/RHEL: Create .repo file
+  SOURCE_FILE="/etc/yum.repos.d/{}.repo"
+  
+  if [ -f "$SOURCE_FILE" ]; then
+    echo "ERROR: Source file already exists: $SOURCE_FILE"
+    exit 1
+  fi
+  
+  # Write repo configuration
+  cat > "$SOURCE_FILE" << 'EOF'
+[{}]
+name={}
+baseurl={}
+enabled=1
+gpgcheck=0
+EOF
+  
+  # Add GPG key if provided
+  if [ -n "{}" ]; then
+    sed -i "s/gpgcheck=0/gpgcheck=1\ngpgkey={}/" "$SOURCE_FILE"
+  fi
+  
+  echo "Source added successfully"
+fi
+"#, name, name, url, gpg_key.unwrap_or(""), gpg_key.unwrap_or(""), name, name, name, name, name, name, url, gpg_key.unwrap_or(""));
+
+    let (_stdout, _stderr, _exit_code) = ssh_mgr.exec_with_output(session_id, &cmd, 15).await?;
+    Ok(format!("Package source '{}' added successfully", name))
+}
+
 /// Install or uninstall software via SSH with real-time output
 pub async fn software_action(
     ssh_mgr: &SshManager,

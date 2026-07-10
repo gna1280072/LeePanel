@@ -184,6 +184,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
   const [downloadDialog, setDownloadDialog] = useState<{ url: string } | null>(null)
   const [downloadProgress, setDownloadProgress] = useState<{ progress: number; status: string } | null>(null)
   const [compressDialog, setCompressDialog] = useState<{ names: string[] } | null>(null)
+  const [compressFormat, setCompressFormat] = useState<'zip' | 'tar.gz' | 'tar.bz2'>('zip')
   const [dropActive, setDropActive] = useState(false)
   const dragItemRef = useRef<FileEntry | null>(null)
   const [dragOverTarget, setDragOverTarget] = useState<string | null>(null)
@@ -1175,18 +1176,18 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
 
   const isArchive = (name: string) => /\.(tar\.gz|tgz|tar\.bz2|tbz2|tar\.xz|txz|tar|zip)$/i.test(name)
 
-  const handleCompress = async (names: string[], archiveName: string) => {
+  const handleCompress = async (names: string[], archiveName: string, format: string) => {
     if (!sessionId || names.length === 0) return
     setCompressDialog(null)
     const ext = /\.(tar\.gz|tgz|tar\.bz2|tbz2|tar\.xz|txz|tar|zip)$/i.test(archiveName)
       ? ''
-      : '.zip'
+      : `.${format}`
     const outputName = archiveName + ext
     const outputPath = currentPath === '/' ? `/${outputName}` : `${currentPath}/${outputName}`
     const paths = names.map(n => currentPath === '/' ? `/${n}` : `${currentPath}/${n}`)
     setArchiveProgress({ type: 'compress', logs: [t('files.compressingItems', { count: names.length })], done: false })
     try {
-      await invoke('ssh_compress', { sessionId, paths, output: outputPath, format: 'zip' })
+      await invoke('ssh_compress', { sessionId, paths, output: outputPath, format })
       showToast(t('files.archiveCreated', { name: outputName }), 'success')
       navigateTo(currentPath)
     } catch (e) {
@@ -1746,6 +1747,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
           )}
           <div className="fb-context-item" onClick={() => {
             setCompressDialog({ names: selectedFiles.has(contextMenu.entry.name) && selectedFiles.size > 1 ? Array.from(selectedFiles) : [contextMenu.entry.name] })
+            setCompressFormat('zip')
             setContextMenu(null)
           }}>
             🗜️ {t('files.compress')}{selectedFiles.has(contextMenu.entry.name) && selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
@@ -1840,6 +1842,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
           {selectedFiles.size > 0 && (
             <div className="fb-context-item" onClick={() => {
               setCompressDialog({ names: Array.from(selectedFiles) })
+              setCompressFormat('zip')
               setBgContextMenu(null)
             }}>
               🗜️ {t('files.compress')} ({selectedFiles.size})
@@ -2063,13 +2066,28 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               ))}
               {compressDialog.names.length > 5 && <span className="fb-compress-more">{t('files.moreItems', { count: compressDialog.names.length - 5 })}</span>}
             </div>
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+              <span style={{ fontSize: '12px', color: '#8b949e', alignSelf: 'center' }}>{t('files.compressFormat')}:</span>
+              {(['zip', 'tar.gz', 'tar.bz2'] as const).map(fmt => (
+                <button
+                  key={fmt}
+                  className={`fb-dialog-btn ${compressFormat === fmt ? 'primary' : ''}`}
+                  style={{ flex: 1, fontSize: '12px', padding: '6px 0' }}
+                  onClick={() => {
+                    setCompressFormat(fmt)
+                    const input = document.getElementById('compress-name-input') as HTMLInputElement
+                    if (input) input.value = input.value.replace(/\.(zip|tar\.gz|tar\.bz2)$/, `.${fmt}`)
+                  }}
+                >.{fmt}</button>
+              ))}
+            </div>
             <input
               className="fb-prompt-input"
               placeholder={t('files.archiveName')}
               defaultValue={(compressDialog.names.length === 1 ? compressDialog.names[0] : 'archive') + '.zip'}
               onKeyDown={(e) => {
                 const val = (e.target as HTMLInputElement).value
-                if (e.key === 'Enter' && val.trim()) handleCompress(compressDialog.names, val.trim())
+                if (e.key === 'Enter' && val.trim()) handleCompress(compressDialog.names, val.trim(), compressFormat)
                 if (e.key === 'Escape') setCompressDialog(null)
               }}
               autoFocus
@@ -2079,8 +2097,8 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               <button className="fb-dialog-btn" onClick={() => setCompressDialog(null)}>{t('common.cancel')}</button>
               <button className="fb-dialog-btn primary" onClick={() => {
                 const input = document.getElementById('compress-name-input') as HTMLInputElement
-                if (input?.value.trim()) handleCompress(compressDialog.names, input.value.trim())
-              }}>{t('files.compress')} (.zip)</button>
+                if (input?.value.trim()) handleCompress(compressDialog.names, input.value.trim(), compressFormat)
+              }}>{t('files.compress')} (.{compressFormat})</button>
             </div>
           </div>
         </div>

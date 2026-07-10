@@ -912,12 +912,35 @@ impl SshManager {
             return Err(format!("Unsupported archive format: {}", archive_path));
         };
 
+        // Step 1: Create destination directory if it doesn't exist
+        let create_dir_cmd = format!("mkdir -p '{}'", safe_dest);
+        channel
+            .exec(true, create_dir_cmd.as_str())
+            .await
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
+
+        // Wait for mkdir to complete
+        loop {
+            match channel.wait().await {
+                Some(ChannelMsg::ExitStatus { exit_status }) => {
+                    if exit_status != 0 {
+                        return Err(format!("mkdir failed with exit code: {}", exit_status));
+                    }
+                    break;
+                }
+                Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => break,
+                _ => {}
+            }
+        }
+
+        // Step 2: Now execute the extract command
         channel
             .exec(true, cmd)
             .await
             .map_err(|e| format!("Exec failed: {}", e))?;
 
         let mut stderr = String::new();
+        let mut exit_ok = true;
         let deadline =
             tokio::time::Instant::now() + tokio::time::Duration::from_secs(300);
         loop {
@@ -952,10 +975,10 @@ impl SshManager {
                                 }
                             }
                         }
-                        Some(ChannelMsg::ExitStatus { .. })
-                        | Some(ChannelMsg::Eof)
-                        | Some(ChannelMsg::Close)
-                        | None => break,
+                        Some(ChannelMsg::ExitStatus { exit_status }) => {
+                            exit_ok = exit_status == 0;
+                        }
+                        Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => break,
                         _ => {}
                     }
                 }
@@ -963,6 +986,11 @@ impl SshManager {
                     return Err("Extract operation timed out".to_string());
                 }
             }
+        }
+
+        // Check if extraction was successful
+        if !exit_ok {
+            return Err(format!("Extraction failed: {}", stderr.trim()));
         }
 
         // Emit completion

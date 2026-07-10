@@ -186,6 +186,7 @@
     "current": "Current",
     "enterMode": "Enter mode (e.g. 755)",
     "compressTitle": "Compress {{count}} item",
+    "compressFormat": "Format",
     "compressItems": "items",
     "archiveName": "Archive name",
     "moreItems": "+{{count}} more...",

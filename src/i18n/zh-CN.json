@@ -186,6 +186,7 @@
     "current": "当前",
     "enterMode": "输入权限模式（如 755）",
     "compressTitle": "压缩 {{count}} 项",
+    "compressFormat": "格式",
     "compressItems": "项",
     "archiveName": "压缩包名称",
     "moreItems": "+{{count}} 项...",

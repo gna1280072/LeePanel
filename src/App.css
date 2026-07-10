@@ -4880,18 +4880,18 @@ body.dragging-files * {
 }
 
 .sw-sources-card {
-  background: var(--bg-secondary, #fff);
+  background: transparent;
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 16px;
-  border: 1px solid var(--border-color, #e1e4e8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .sw-sources-header h3 {
   margin: 0 0 12px 0;
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary, #24292e);
+  color: #fff;
 }
 
 .sw-sources-actions {

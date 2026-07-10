@@ -385,7 +385,7 @@ export default function SoftwareRepo({ sessionId, onDisconnect }: SoftwareRepoPr
           </div>
           <div className="sw-sources-actions">
             <button
-              className="sw-action-btn small"
+              className="sw-action-btn small primary"
               onClick={handleManageSourcesClick}
               disabled={cleaningSources}
             >

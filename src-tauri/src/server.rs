@@ -4213,22 +4213,6 @@ for phpver in 5.6 7.0 7.1 7.2 7.3 7.4 8.0 8.1 8.2 8.3 8.4 8.5; do
   fi
 done
 
-# Legacy single PHP detection (fallback)
-_btphp=$(ls /www/server/php/*/bin/php 2>/dev/null | tail -1)
-if command -v php &>/dev/null || [ -n "$_btphp" ]; then
-  echo "PHP_INSTALLED=1"
-  echo "PHP_VERSION=$(php -v 2>/dev/null || $_btphp -v 2>/dev/null | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1 || echo '')"
-  PHP_SVC=$(systemctl list-units --type=service 2>/dev/null | grep php | awk '{print $1}' | head -1 | sed 's/.service//')
-  echo "PHP_SERVICE=$PHP_SVC"
-  if [ -n "$PHP_SVC" ] && systemctl is-active "$PHP_SVC" &>/dev/null; then
-    echo "PHP_RUNNING=active"
-  else
-    echo "PHP_RUNNING=inactive"
-  fi
-else
-  echo "PHP_INSTALLED=0"
-fi
-
 # Check Redis
 if command -v redis-server &>/dev/null; then
   echo "REDIS_INSTALLED=1"
@@ -4362,18 +4346,6 @@ fi
                 running: get(&run_key) == "active",
             });
         }
-    }
-    // Fallback: if no versioned PHP found, add generic entry (installed or not)
-    if list.iter().all(|s| !s.name.starts_with("php")) {
-        list.push(SoftwareInfo {
-            name: "php".to_string(),
-            display_name: "PHP-FPM".to_string(),
-            category: "web".to_string(),
-            installed: true,
-            version: get("PHP_VERSION"),
-            service_name: get("PHP_SERVICE"),
-            running: get("PHP_RUNNING") == "active",
-        });
     }
 
     // Redis
@@ -4761,37 +4733,6 @@ fi
 echo "ACTION_SUCCESS"
 "#;
             return script.replace("__ACTION__", action);
-        }
-        "php" => {
-            // ponytail: version selection removed — system package manager picks the version
-            return format!(r#"#!/bin/bash
-set -e
-echo "=== {} PHP ==="
-if [ -f /etc/os-release ]; then
-  . /etc/os-release
-fi
-if [ "{}" = "install" ]; then
-  echo "Installing PHP..."
-  if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
-    apt-get update -qq
-    apt-get install -y php-fpm php-mysql php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache
-  else
-    yum install -y epel-release 2>/dev/null || true
-    yum install -y php-fpm php-mysqlnd php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache
-  fi
-  systemctl enable php-fpm && systemctl start php-fpm
-else
-  echo "Removing PHP..."
-  systemctl stop php-fpm 2>/dev/null || true
-  systemctl disable php-fpm 2>/dev/null || true
-  if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
-    apt-get purge -y php-fpm php-mysql php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache 2>/dev/null || true
-  else
-    yum remove -y php-fpm php-mysqlnd php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache 2>/dev/null || true
-  fi
-fi
-echo "ACTION_SUCCESS"
-"#, action, action);
         }
         "php5.6" | "php7.0" | "php7.1" | "php7.2" | "php7.3" | "php7.4" | "php8.0" | "php8.1" | "php8.2" | "php8.3" | "php8.4" | "php8.5" => {
             // ponytail: versioned PHP entries kept for uninstall of detected versions

@@ -5127,6 +5127,81 @@ body.dragging-files * {
   color: #f85149;
 }
 
+.sw-log-line.command {
+  color: #58a6ff;
+  font-weight: 500;
+  border-left: 3px solid #58a6ff;
+  padding-left: 8px;
+  margin: 4px 0;
+}
+
+.sw-log-line.success {
+  color: #3fb950;
+  font-weight: 500;
+}
+
+.sw-log-line.separator {
+  color: #8b949e;
+  font-weight: bold;
+  margin: 8px 0 4px 0;
+  opacity: 0.7;
+}
+
+.sw-log-line.key-error {
+  color: #f85149;
+  background: rgba(248, 81, 73, 0.1);
+  padding: 2px 8px;
+  border-radius: 3px;
+  margin: 2px 0;
+}
+
+/* Error details collapsible section */
+.sw-error-details {
+  margin-top: 12px;
+  background: #0d1117;
+  border: 1px solid #f85149;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.sw-error-details-summary {
+  padding: 12px;
+  cursor: pointer;
+  color: #f85149;
+  font-weight: 600;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sw-error-details-summary::-webkit-details-marker {
+  display: none;
+}
+
+.sw-error-details-summary::before {
+  content: '▶';
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+
+.sw-error-details[open] .sw-error-details-summary::before {
+  transform: rotate(90deg);
+}
+
+.sw-error-details-content {
+  padding: 12px;
+  margin: 0;
+  font-size: 11px;
+  color: #8b949e;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 400px;
+  overflow-y: auto;
+  border-top: 1px solid #21262d;
+}
+
 /* Confirm dialog */
 .sw-confirm-overlay {
   position: fixed;

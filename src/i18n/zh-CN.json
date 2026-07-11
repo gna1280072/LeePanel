@@ -661,7 +661,8 @@
     "sourceGpgKeyPlaceholder": "例如 https://packages.example.com/gpg.key",
     "addingSource": "正在添加软件源...",
     "addSourceSuccess": "软件源添加成功",
-    "importantNotice": "重要：软件安装成功后，需要断开重新连接服务器，才能激活使用！"
+    "importantNotice": "重要：软件安装成功后，需要断开重新连接服务器，才能激活使用！",
+    "viewFullOutput": "点击查看完整终端输出"
   },
   "logs": {
     "title": "站点日志",

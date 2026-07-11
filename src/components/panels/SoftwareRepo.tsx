@@ -383,13 +383,42 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
             </div>
           </div>
           <div className="sw-log-box">
-            {logs.map((line, i) => (
-              <div key={i} className={`sw-log-line ${line.includes('ERROR') || line.includes('failed') ? 'error' : ''}`}>
-                {line}
-              </div>
-            ))}
+            {logs.map((line, i) => {
+              // Determine log line type for styling
+              const isError = line.includes('ERROR') || line.includes('failed') || line.startsWith('E:') || line.includes('') || line.includes('fatal')
+              const isCommand = line.startsWith('Executing:') || line.startsWith('Script preview:')
+              const isSuccess = line.includes('ACTION_SUCCESS') || line.includes('completed successfully') || line.includes('✅')
+              const isSeparator = line.includes('━━━')
+              const isKeyError = line.trim().startsWith('') || line.trim().startsWith('   ')
+              
+              let lineClass = 'sw-log-line'
+              if (isSeparator) lineClass += ' separator'
+              else if (isCommand) lineClass += ' command'
+              else if (isSuccess) lineClass += ' success'
+              else if (isKeyError) lineClass += ' key-error'
+              else if (isError) lineClass += ' error'
+              
+              return (
+                <div key={i} className={lineClass}>
+                  {line}
+                </div>
+              )
+            })}
             <div ref={logEndRef} />
           </div>
+          
+          {/* Error details collapsible section */}
+          {logStatus === 'error' && (
+            <details className="sw-error-details">
+              <summary className="sw-error-details-summary">
+                 {t('software.viewFullOutput')}
+              </summary>
+              <pre className="sw-error-details-content">
+                {logs.join('\n')}
+              </pre>
+            </details>
+          )}
+          
           {logStatus === 'done' && (
             <button className="sw-action-btn primary" onClick={() => { setState('ready'); loadSoftware() }}>
               {t('software.doneRefresh')}

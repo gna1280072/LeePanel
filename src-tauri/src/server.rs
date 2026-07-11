@@ -4741,6 +4741,23 @@ pub async fn software_action(
         .write_file(session_id, "/tmp/software-action.sh", &script)
         .await?;
 
+    // Log the command being executed
+    let _ = app_handle.emit(event_name, serde_json::json!({
+        "sessionId": session_id,
+        "line": format!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"),
+        "status": "running",
+    }));
+    let _ = app_handle.emit(event_name, serde_json::json!({
+        "sessionId": session_id,
+        "line": format!("Executing: bash /tmp/software-action.sh"),
+        "status": "running",
+    }));
+    let _ = app_handle.emit(event_name, serde_json::json!({
+        "sessionId": session_id,
+        "line": format!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"),
+        "status": "running",
+    }));
+
     let mut channel = ssh_mgr.open_channel(session_id).await?;
     channel
         .exec(true, "bash /tmp/software-action.sh")
@@ -4803,16 +4820,63 @@ pub async fn software_action(
     if exit_code == 0 || success {
         let _ = app_handle.emit(event_name, serde_json::json!({
             "sessionId": session_id,
-            "line": format!("{} {} completed successfully!", action, software),
+            "line": format!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"),
+            "status": "running",
+        }));
+        let _ = app_handle.emit(event_name, serde_json::json!({
+            "sessionId": session_id,
+            "line": format!("✅ {} {} completed successfully!", action, software),
             "status": "done",
         }));
         Ok(full_output)
     } else {
+        // Extract key error lines for better visibility
+        let error_lines: Vec<&str> = full_output
+            .lines()
+            .filter(|line| {
+                let lower = line.to_lowercase();
+                lower.contains("error") || 
+                lower.contains("failed") ||
+                lower.contains("fatal") ||
+                line.starts_with("E:") ||
+                line.contains("✗") ||
+                line.contains("❌")
+            })
+            .collect();
+        
+        // Send error summary first
         let _ = app_handle.emit(event_name, serde_json::json!({
             "sessionId": session_id,
-            "line": format!("{} {} failed (exit code {})", action, software, exit_code),
+            "line": format!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"),
+            "status": "running",
+        }));
+        
+        if !error_lines.is_empty() {
+            let _ = app_handle.emit(event_name, serde_json::json!({
+                "sessionId": session_id,
+                "line": format!("🔍 Key errors found ({}):", error_lines.len()),
+                "status": "running",
+            }));
+            for err_line in &error_lines {
+                let _ = app_handle.emit(event_name, serde_json::json!({
+                    "sessionId": session_id,
+                    "line": format!("   {}", err_line),
+                    "status": "running",
+                }));
+            }
+            let _ = app_handle.emit(event_name, serde_json::json!({
+                "sessionId": session_id,
+                "line": format!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"),
+                "status": "running",
+            }));
+        }
+        
+        let _ = app_handle.emit(event_name, serde_json::json!({
+            "sessionId": session_id,
+            "line": format!("❌ {} {} failed (exit code {})", action, software, exit_code),
             "status": "error",
         }));
+        
         Err(format!("Operation failed (exit code {}):\n{}", exit_code, full_output))
     }
 }

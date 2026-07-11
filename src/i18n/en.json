@@ -661,7 +661,8 @@
     "sourceGpgKeyPlaceholder": "e.g. https://packages.example.com/gpg.key",
     "addingSource": "Adding source...",
     "addSourceSuccess": "Source added successfully",
-    "importantNotice": "IMPORTANT: After software installation succeeds, you need to disconnect and reconnect to the server to activate it!"
+    "importantNotice": "IMPORTANT: After software installation succeeds, you need to disconnect and reconnect to the server to activate it!",
+    "viewFullOutput": " Click to view full terminal output"
   },
   "logs": {
     "title": "Site Logs",

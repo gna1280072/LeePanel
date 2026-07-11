@@ -469,7 +469,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
         <div style={{
           marginTop: '16px',
           padding: '12px 16px',
-          border: '2px solid #2ecc71',
+          border: '0.5px solid #2ecc71',
           borderRadius: '8px',
           backgroundColor: 'rgba(46, 204, 113, 0.05)',
         }}>

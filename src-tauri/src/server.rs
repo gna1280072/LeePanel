@@ -5121,38 +5121,50 @@ echo "ACTION_SUCCESS"
             };
 
             let script = r#"#!/bin/bash
-set -e
+# ponytail: no set -e — optional extensions may be missing from repos
 echo "=== __ACTION__ PHP __VERSION__ ==="
 if [ -f /etc/os-release ]; then
   . /etc/os-release
 fi
+SKIPPED=""
 if [ "__ACTION__" = "install" ]; then
   echo "Installing PHP..."
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
     apt-get update -qq
     if [ -n "__VERSION__" ]; then
-      # Install specific version
-      apt-get install -y php__VERSION__-fpm php__VERSION__-mysql php__VERSION__-curl php__VERSION__-mbstring php__VERSION__-xml php__VERSION__-zip php__VERSION__-gd php__VERSION__-bcmath php__VERSION__-opcache
+      # Core package — must succeed
+      apt-get install -y php__VERSION__-fpm || { echo "ERROR: php__VERSION__-fpm install failed"; exit 1; }
+      # Optional extensions — skip if missing
+      for pkg in php__VERSION__-mysql php__VERSION__-curl php__VERSION__-mbstring php__VERSION__-xml php__VERSION__-zip php__VERSION__-gd php__VERSION__-bcmath php__VERSION__-opcache; do
+        apt-get install -y "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
+      done
     else
-      # Install default version
-      apt-get install -y php-fpm php-mysql php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache
+      apt-get install -y php-fpm || { echo "ERROR: php-fpm install failed"; exit 1; }
+      for pkg in php-mysql php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache; do
+        apt-get install -y "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
+      done
     fi
     SVC=$(systemctl list-units --type=service | grep -E 'php[0-9.]*-fpm' | awk '{print $1}' | head -1 | sed 's/.service//')
   else
     yum install -y epel-release 2>/dev/null || true
     if [ -n "__VERSION__" ]; then
-      # Install specific version (CentOS+Remi naming: php82-php-fpm)
       VER_NODOT=$(echo "__VERSION__" | tr -d '.')
-      yum install -y php${VER_NODOT}-php-fpm php${VER_NODOT}-php-mysqlnd php${VER_NODOT}-php-curl php${VER_NODOT}-php-mbstring php${VER_NODOT}-php-xml php${VER_NODOT}-php-zip php${VER_NODOT}-php-gd php${VER_NODOT}-php-bcmath php${VER_NODOT}-php-opcache
+      yum install -y php${VER_NODOT}-php-fpm || { echo "ERROR: php${VER_NODOT}-php-fpm install failed"; exit 1; }
+      for pkg in php${VER_NODOT}-php-mysqlnd php${VER_NODOT}-php-curl php${VER_NODOT}-php-mbstring php${VER_NODOT}-php-xml php${VER_NODOT}-php-zip php${VER_NODOT}-php-gd php${VER_NODOT}-php-bcmath php${VER_NODOT}-php-opcache; do
+        yum install -y "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
+      done
     else
-      # Install default version
-      yum install -y php-fpm php-mysqlnd php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache
+      yum install -y php-fpm || { echo "ERROR: php-fpm install failed"; exit 1; }
+      for pkg in php-mysqlnd php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache; do
+        yum install -y "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
+      done
     fi
     SVC=$(systemctl list-units --type=service | grep -E 'php' | awk '{print $1}' | head -1 | sed 's/.service//')
   fi
   if [ -n "$SVC" ]; then
     systemctl enable "$SVC" && systemctl start "$SVC"
   fi
+  [ -n "$SKIPPED" ] && echo "WARNING: skipped packages (not in repo):$SKIPPED"
 else
   echo "Removing PHP..."
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
@@ -5172,15 +5184,55 @@ echo "ACTION_SUCCESS"
                 .replace("__ACTION__", action)
                 .replace("__VERSION__", &version);
         }
-        "php5.6" | "php7.0" | "php7.1" | "php7.2" | "php7.3" | "php7.4" | "php8.0" | "php8.1" | "php8.2" | "php8.3" | "php8.4" | "php8.5" => {
+       "php5.6" | "php7.0" | "php7.1" | "php7.2" | "php7.3" | "php7.4" | "php8.0" | "php8.1" | "php8.2" | "php8.3" | "php8.4" | "php8.5" => {
             // ponytail: versioned PHP entries kept for uninstall of detected versions
             let php_ver = software.strip_prefix("php").unwrap_or("8.2");
+            // ponytail: full extension list kept for uninstall purge; install uses per-package loop
             let extensions = format!(
                 "php{}-fpm php{}-mysql php{}-curl php{}-mbstring php{}-xml php{}-zip php{}-gd php{}-bcmath php{}-opcache",
                 php_ver, php_ver, php_ver, php_ver, php_ver, php_ver, php_ver, php_ver, php_ver
             );
             let svc_name = format!("php{}-fpm", php_ver);
-            let script = "#!/bin/bash\nset -e\necho \"=== __ACTION__ PHP __VER__ ===\"\nif [ -f /etc/os-release ]; then\n  . /etc/os-release\nfi\nif [ \"__ACTION__\" = \"install\" ]; then\n  echo \"Installing PHP __VER__...\"\n  if [ \"$ID\" = \"ubuntu\" ] || [ \"$ID\" = \"debian\" ]; then\n    apt-get update -qq\n    apt-get install -y software-properties-common\n    add-apt-repository -y ppa:ondrej/php 2>/dev/null || true\n    apt-get update -qq\n    apt-get install -y __EXT__\n  else\n    yum install -y epel-release 2>/dev/null || true\n    yum install -y https://rpms.remirepo.net/enterprise/remi-release-$(rpm -E %{rhel}).rpm 2>/dev/null || true\n    yum module enable -y php:remi-__VER__ 2>/dev/null || true\n    yum install -y php__VER__-fpm php__VER__-mysqlnd php__VER__-curl php__VER__-mbstring php__VER__-xml php__VER__-zip php__VER__-gd php__VER__-bcmath php__VER__-opcache\n  fi\n  systemctl enable __SVC__ && systemctl start __SVC__\nelse\n  echo \"Removing PHP __VER__...\"\n  systemctl stop __SVC__ 2>/dev/null || true\n  systemctl disable __SVC__ 2>/dev/null || true\n  if [ \"$ID\" = \"ubuntu\" ] || [ \"$ID\" = \"debian\" ]; then\n    apt-get purge -y __EXT__ 2>/dev/null || true\n  else\n    yum remove -y php__VER__-fpm php__VER__-mysqlnd php__VER__-curl php__VER__-mbstring php__VER__-xml php__VER__-zip php__VER__-gd php__VER__-bcmath php__VER__-opcache 2>/dev/null || true\n  fi\nfi\necho \"ACTION_SUCCESS\"\n";
+            let script = "#!/bin/bash\n\
+# ponytail: no set -e — optional extensions may be missing from repos\n\
+SKIPPED=\"\"\n\
+echo \"=== __ACTION__ PHP __VER__ ===\"\n\
+if [ -f /etc/os-release ]; then\n\
+  . /etc/os-release\n\
+fi\n\
+if [ \"__ACTION__\" = \"install\" ]; then\n\
+  echo \"Installing PHP __VER__...\"\n\
+  if [ \"$ID\" = \"ubuntu\" ] || [ \"$ID\" = \"debian\" ]; then\n\
+    apt-get update -qq\n\
+    apt-get install -y software-properties-common\n\
+    add-apt-repository -y ppa:ondrej/php 2>/dev/null || true\n\
+    apt-get update -qq\n\
+    apt-get install -y php__VER__-fpm || { echo \"ERROR: php__VER__-fpm install failed\"; exit 1; }\n\
+    for pkg in php__VER__-mysql php__VER__-curl php__VER__-mbstring php__VER__-xml php__VER__-zip php__VER__-gd php__VER__-bcmath php__VER__-opcache; do\n\
+      apt-get install -y \"$pkg\" || { echo \"SKIP: $pkg not available\"; SKIPPED=\"$SKIPPED $pkg\"; }\n\
+    done\n\
+  else\n\
+    yum install -y epel-release 2>/dev/null || true\n\
+    yum install -y https://rpms.remirepo.net/enterprise/remi-release-$(rpm -E %{rhel}).rpm 2>/dev/null || true\n\
+    yum module enable -y php:remi-__VER__ 2>/dev/null || true\n\
+    yum install -y php__VER__-fpm || { echo \"ERROR: php__VER__-fpm install failed\"; exit 1; }\n\
+    for pkg in php__VER__-mysqlnd php__VER__-curl php__VER__-mbstring php__VER__-xml php__VER__-zip php__VER__-gd php__VER__-bcmath php__VER__-opcache; do\n\
+      yum install -y \"$pkg\" || { echo \"SKIP: $pkg not available\"; SKIPPED=\"$SKIPPED $pkg\"; }\n\
+    done\n\
+  fi\n\
+  systemctl enable __SVC__ && systemctl start __SVC__\n\
+  [ -n \"$SKIPPED\" ] && echo \"WARNING: skipped packages (not in repo):$SKIPPED\"\n\
+else\n\
+  echo \"Removing PHP __VER__...\"\n\
+  systemctl stop __SVC__ 2>/dev/null || true\n\
+  systemctl disable __SVC__ 2>/dev/null || true\n\
+  if [ \"$ID\" = \"ubuntu\" ] || [ \"$ID\" = \"debian\" ]; then\n\
+    apt-get purge -y __EXT__ 2>/dev/null || true\n\
+  else\n\
+    yum remove -y php__VER__-fpm php__VER__-mysqlnd php__VER__-curl php__VER__-mbstring php__VER__-xml php__VER__-zip php__VER__-gd php__VER__-bcmath php__VER__-opcache 2>/dev/null || true\n\
+  fi\n\
+fi\n\
+echo \"ACTION_SUCCESS\"\n";
             return script
                 .replace("__ACTION__", action)
                 .replace("__VER__", php_ver)

@@ -4200,26 +4200,49 @@ else
   echo "MYSQL_INSTALLED=0"
 fi
 
-# Check PHP versions (standard + BT Panel)
-# Scan for all installed PHP-FPM versions
-for phpver in 5.6 7.0 7.1 7.2 7.3 7.4 8.0 8.1 8.2 8.3 8.4 8.5; do
-  _svc="php${phpver}-fpm"
-  _bin="/usr/sbin/php-fpm${phpver}"
+# Check PHP versions — dynamic scan for any installed PHP-FPM
+# ponytail: no hardcoded version list — detect whatever is on the system
+for _svc in $(systemctl list-unit-files --type=service 2>/dev/null | grep -oE 'php[0-9]+\.[0-9]+-fpm' | sed 's/.service$//' | sort -uV); do
+  phpver=$(echo "$_svc" | sed -E 's/^php([0-9]+\.[0-9]+)-fpm$/\1/')
+  _bin="/usr/sbin/php-fpm-${phpver}"
   _btbin="/www/server/php/${phpver}/sbin/php-fpm"
   if systemctl is-enabled "$_svc" &>/dev/null || [ -x "$_bin" ] || [ -x "$_btbin" ]; then
-    echo "PHP_${phpver//./_}_INSTALLED=1"
-    _ver=$("$_bin" -v 2>/dev/null || "$_btbin" -v 2>/dev/null | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1 || echo "${phpver}.x")
-    echo "PHP_${phpver//./_}_VERSION=$_ver"
-    if systemctl is-active "$_svc" &>/dev/null; then
-      echo "PHP_${phpver//./_}_RUNNING=active"
+    echo "PHP_DETECT_VERSION=${phpver}"
+    if [ -x "$_bin" ]; then
+      _fullver=$("$_bin" -v 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "${phpver}.x")
+    elif [ -x "$_btbin" ]; then
+      _fullver=$("$_btbin" -v 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "${phpver}.x")
     else
-      echo "PHP_${phpver//./_}_RUNNING=inactive"
+      _fullver="${phpver}.x"
     fi
-    echo "PHP_${phpver//./_}_SERVICE=$_svc"
-  else
-    echo "PHP_${phpver//./_}_INSTALLED=0"
+    echo "PHP_DETECT_FULLVER=${_fullver}"
+    echo "PHP_DETECT_SERVICE=${_svc}"
+    if systemctl is-active "$_svc" &>/dev/null; then
+      echo "PHP_DETECT_RUNNING=active"
+    else
+      echo "PHP_DETECT_RUNNING=inactive"
+    fi
   fi
 done
+# BT Panel: scan for PHP versions not caught by systemd
+if [ -d /www/server/php ]; then
+  for _btdir in /www/server/php/*/; do
+    [ -d "$_btdir" ] || continue
+    phpver=$(basename "$_btdir")
+    echo "$phpver" | grep -qE '^[0-9]+\.[0-9]+$' || continue
+    _btbin="/www/server/php/${phpver}/sbin/php-fpm"
+    [ -x "$_btbin" ] || continue
+    # Skip if already detected by systemd
+    _svc="php${phpver}-fpm"
+    if ! systemctl list-unit-files --type=service 2>/dev/null | grep -q "${_svc}"; then
+      echo "PHP_DETECT_VERSION=${phpver}"
+      _fullver=$("$_btbin" -v 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "${phpver}.x")
+      echo "PHP_DETECT_FULLVER=${_fullver}"
+      echo "PHP_DETECT_SERVICE=$_svc"
+      echo "PHP_DETECT_RUNNING=inactive"
+    fi
+  done
+fi
 
 # Generic PHP detection (for always-visible install card)
 if command -v php &>/dev/null; then
@@ -4351,23 +4374,34 @@ fi
         running: get("MYSQL_RUNNING") == "active",
     });
 
-    // PHP - detect all installed versions
-    let php_versions = ["5.6", "7.0", "7.1", "7.2", "7.3", "7.4", "8.0", "8.1", "8.2", "8.3", "8.4", "8.5"];
-    for phpver in &php_versions {
-        let key = format!("PHP_{}_INSTALLED", phpver.replace('.', "_"));
-        if get(&key) == "1" {
-            let ver_key = format!("PHP_{}_VERSION", phpver.replace('.', "_"));
-            let run_key = format!("PHP_{}_RUNNING", phpver.replace('.', "_"));
-            let svc_key = format!("PHP_{}_SERVICE", phpver.replace('.', "_"));
+    // PHP - detect all installed versions (dynamic, no hardcoded list)
+    // ponytail: parse PHP_DETECT groups from detection script output
+    let output_lines: Vec<&str> = combined.lines().collect();
+    let mut i = 0;
+    while i < output_lines.len() {
+        if let Some(ver) = output_lines[i].strip_prefix("PHP_DETECT_VERSION=") {
+            let ver = ver.trim();
+            let fullver = output_lines.get(i + 1)
+                .and_then(|l| l.strip_prefix("PHP_DETECT_FULLVER="))
+                .unwrap_or("");
+            let svc = output_lines.get(i + 2)
+                .and_then(|l| l.strip_prefix("PHP_DETECT_SERVICE="))
+                .unwrap_or("");
+            let running = output_lines.get(i + 3)
+                .map(|l| l.trim() == "PHP_DETECT_RUNNING=active")
+                .unwrap_or(false);
             list.push(SoftwareInfo {
-                name: format!("php{}", phpver),
-                display_name: format!("PHP {} FPM", phpver),
+                name: format!("php{}", ver),
+                display_name: format!("PHP {} FPM", ver),
                 category: "web".to_string(),
                 installed: true,
-                version: get(&ver_key),
-                service_name: get(&svc_key),
-                running: get(&run_key) == "active",
+                version: fullver.to_string(),
+                service_name: svc.to_string(),
+                running,
             });
+            i += 4;
+        } else {
+            i += 1;
         }
     }
 
@@ -5184,8 +5218,8 @@ echo "ACTION_SUCCESS"
                 .replace("__ACTION__", action)
                 .replace("__VERSION__", &version);
         }
-       "php5.6" | "php7.0" | "php7.1" | "php7.2" | "php7.3" | "php7.4" | "php8.0" | "php8.1" | "php8.2" | "php8.3" | "php8.4" | "php8.5" => {
-            // ponytail: versioned PHP entries kept for uninstall of detected versions
+        _ if software.starts_with("php") => {
+            // ponytail: dynamic PHP version — any phpX.Y name handled uniformly
             let php_ver = software.strip_prefix("php").unwrap_or("8.2");
             // ponytail: full extension list kept for uninstall purge; install uses per-package loop
             let extensions = format!(

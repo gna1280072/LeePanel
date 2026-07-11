@@ -122,7 +122,7 @@
     "files": "Files",
     "installLnmp": "Install LNMP",
     "software": "Software",
-    "database": "DB/SQL Management",
+    "database": "MySQL",
     "redis": "Redis",
     "sites": "Sites",
     "logs": "Logs",
@@ -383,6 +383,7 @@
     "noSites": "No sites configured",
     "createFirst": "Create Your First Site",
     "loadingSites": "Loading sites...",
+    "nginxNotInstalled": "Nginx is not installed. Please install it from Software Repository first.",
     "siteUpdated": "Site updated",
     "siteDeleted": "Site {{domain}} deleted",
     "deleteFailed": "Delete failed: {{error}}",
@@ -659,7 +660,8 @@
     "sourceUrlPlaceholder": "e.g. https://packages.example.com/debian",
     "sourceGpgKeyPlaceholder": "e.g. https://packages.example.com/gpg.key",
     "addingSource": "Adding source...",
-    "addSourceSuccess": "Source added successfully"
+    "addSourceSuccess": "Source added successfully",
+    "importantNotice": "IMPORTANT: After software installation succeeds, you need to disconnect and reconnect to the server to activate it!"
   },
   "logs": {
     "title": "Site Logs",

@@ -253,7 +253,7 @@ export default function EditSite({
             <div style={{ display: 'flex', gap: 6 }}>
               <input type="text" className="create-input mono" value={site.config_path} disabled style={{ flex: 1 }} />
               <button
-                className="svc-cfg-btn"
+                className="svc-cfg-btn primary"
                 style={{ whiteSpace: 'nowrap', fontSize: 12, padding: '4px 10px' }}
                 onClick={async () => {
                   setConfigEditorOpen(true)

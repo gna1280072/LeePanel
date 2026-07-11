@@ -435,6 +435,26 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
         </div>
       )}
 
+      {/* Important Notice - Green border, red text */}
+      {(state === 'ready' || state === 'error') && (
+        <div style={{
+          marginTop: '16px',
+          padding: '12px 16px',
+          border: '2px solid #2ecc71',
+          borderRadius: '8px',
+          backgroundColor: 'rgba(46, 204, 113, 0.05)',
+        }}>
+          <p style={{
+            margin: 0,
+            color: '#e74c3c',
+            fontWeight: 600,
+            fontSize: '14px',
+          }}>
+            ️ {t('software.importantNotice')}
+          </p>
+        </div>
+      )}
+
       {/* Cleaning Sources Progress */}
       {cleaningSources && (
         <div className="sw-running" style={{ marginTop: '16px', marginBottom: '16px' }}>

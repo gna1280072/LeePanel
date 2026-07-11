@@ -448,6 +448,20 @@ function CreateSiteForm({
       onError('Please enter a domain name')
       return
     }
+    
+    // Check if Nginx is installed before creating site
+    try {
+      const softwareList = await invoke<any[]>('server_get_software_list', { sessionId })
+      const nginx = softwareList.find(s => s.name === 'nginx' || s.name === 'Nginx')
+      if (!nginx || !nginx.installed) {
+        onError(t('sites.nginxNotInstalled'))
+        return
+      }
+    } catch (e) {
+      // If check fails, continue with creation (let backend handle it)
+      console.error('Failed to check Nginx status:', e)
+    }
+    
     setCreating(true)
     try {
       // Switch to progress view before starting creation

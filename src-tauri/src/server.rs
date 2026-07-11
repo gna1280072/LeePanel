@@ -2521,11 +2521,7 @@ pub async fn update_site_full(
     root {root};
     index {index_directive};
 
-    location / {{
-        {try_files}
-    }}
-
-{rewrite_section}{php_location}
+{location_root}{rewrite_section}{php_location}
     location ~ /\.ht {{
         deny all;
     }}
@@ -2539,7 +2535,19 @@ pub async fn update_site_full(
         index_directive = index_directive,
         domain = safe_domains.first().map(|s| s.as_str()).unwrap_or(primary_domain),
         running_dir = running_dir.trim(),
-        try_files = try_files,
+        location_root = if proxy_enabled && proxy_path.trim() == "/" {
+            // When reverse proxy covers root path, skip default location / block to avoid duplicate
+            String::new()
+        } else {
+            format!(
+                r#"    location / {{
+        {}
+    }}
+
+"#,
+                try_files
+            )
+        },
         php_location = php_location,
         rewrite_section = if rewrite_rules.trim().is_empty() {
             String::new()

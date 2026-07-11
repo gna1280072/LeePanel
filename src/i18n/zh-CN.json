@@ -122,7 +122,7 @@
     "files": "文件",
     "installLnmp": "安装 LNMP",
     "software": "软件",
-    "database": "DB/SQL管理",
+    "database": "MySQL",
     "redis": "Redis",
     "sites": "站点",
     "logs": "日志",
@@ -383,6 +383,7 @@
     "noSites": "暂无站点",
     "createFirst": "创建您的第一个站点",
     "loadingSites": "加载站点中...",
+    "nginxNotInstalled": "Nginx 未安装，请先前往软件仓库安装",
     "siteUpdated": "站点已更新",
     "siteDeleted": "站点 {{domain}} 已删除",
     "deleteFailed": "删除失败: {{error}}",
@@ -659,7 +660,8 @@
     "sourceUrlPlaceholder": "例如 https://packages.example.com/debian",
     "sourceGpgKeyPlaceholder": "例如 https://packages.example.com/gpg.key",
     "addingSource": "正在添加软件源...",
-    "addSourceSuccess": "软件源添加成功"
+    "addSourceSuccess": "软件源添加成功",
+    "importantNotice": "重要：软件安装成功后，需要断开重新连接服务器，才能激活使用！"
   },
   "logs": {
     "title": "站点日志",

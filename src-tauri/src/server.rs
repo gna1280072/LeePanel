@@ -4741,6 +4741,8 @@ pub async fn software_action(
         .write_file(session_id, "/tmp/software-action.sh", &script)
         .await?;
 
+    let event_name = "software-action-progress";
+    
     // Log the command being executed
     let _ = app_handle.emit(event_name, serde_json::json!({
         "sessionId": session_id,
@@ -4764,7 +4766,6 @@ pub async fn software_action(
         .await
         .map_err(|e| format!("Failed to start script: {}", e))?;
 
-    let event_name = "software-action-progress";
     let mut full_output = String::new();
     let mut exit_code: i32 = -1;
     let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(600);

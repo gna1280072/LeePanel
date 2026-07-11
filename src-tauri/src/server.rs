@@ -1115,16 +1115,19 @@ pub async fn list_php_versions(
         .exec_with_output(
             session_id,
             r#"
-for v in 5.6 7.0 7.1 7.2 7.3 7.4 8.0 8.1 8.2 8.3 8.4 8.5; do
-  # Check multiple possible locations for php-fpm binary
-  if command -v php-fpm$v >/dev/null 2>&1 || \
-     [ -x /usr/sbin/php-fpm$v ] || \
-     [ -x /usr/bin/php-fpm$v ] || \
-     [ -x /www/server/php/$v/sbin/php-fpm ] || \
-     systemctl list-units --type=service 2>/dev/null | grep -q "php${v}-fpm"; then
+# ponytail: dynamic scan — no hardcoded version list
+# From systemd unit files
+systemctl list-unit-files --type=service 2>/dev/null | grep -oE 'php[0-9]+\.[0-9]+-fpm' | sed -E 's/^php([0-9]+\.[0-9]+)-fpm$/\1/' | sort -V | uniq
+# BT Panel: versions not in systemd
+if [ -d /www/server/php ]; then
+  for d in /www/server/php/*/; do
+    [ -d "$d" ] || continue
+    v=$(basename "$d")
+    echo "$v" | grep -qE '^[0-9]+\.[0-9]+$' || continue
+    [ -x "/www/server/php/$v/sbin/php-fpm" ] || continue
     echo "$v"
-  fi
-done
+  done | sort -V | uniq
+fi
 "#,
             10,
         )

@@ -800,7 +800,8 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
   }
 
   const openEditor = async (entry: FileEntry) => {
-    if (!isTextFile(entry.name) || entry.size >= 1024 * 1024) {
+    // ponytail: allow all files up to 3MB, no format restriction
+    if (entry.size >= 3 * 1024 * 1024) {
       showToast(t('files.binaryOrLarge'), 'info')
       onTerminalCommand?.(`file ${currentPath}/${entry.name}`)
       return

@@ -214,6 +214,7 @@
     "searchResultsHint": "当前的搜索结果：",
     "noSearchResults": "无匹配文件",
     "uploadFiles": "上传文件",
+    "uploadFolder": "上传文件夹",
     "dropFilesHere": "拖拽文件到此处上传",
     "emptyDir": "空目录",
     "selected": "已选择",

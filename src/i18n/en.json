@@ -214,6 +214,7 @@
     "searchResultsHint": "Current search results:",
     "noSearchResults": "No matching files",
     "uploadFiles": "Upload Files",
+    "uploadFolder": "Upload Folder",
     "dropFilesHere": "Drop files here to upload",
     "emptyDir": "Empty directory",
     "selected": "selected",

@@ -4877,6 +4877,14 @@ if [ "{}" = "install" ]; then
   fi
   echo "Installing Redis..."
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    # Wait for apt lock
+    for i in $(seq 1 60); do
+      if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then
+        break
+      fi
+      echo "Waiting for package manager lock... ($i/60)"
+      sleep 1
+    done
     apt-get update -qq
     apt-get install -y redis-server
   else
@@ -4918,6 +4926,14 @@ if [ "{}" = "install" ]; then
   if [ -f /etc/os-release ]; then
     . /etc/os-release
     if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+      # Wait for apt lock
+      for i in $(seq 1 60); do
+        if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then
+          break
+        fi
+        echo "Waiting for package manager lock... ($i/60)"
+        sleep 1
+      done
       apt-get update -qq
       apt-get install -y nodejs npm
     else
@@ -4940,6 +4956,13 @@ echo "ACTION_SUCCESS"
 "#, action, action);
         }
         "docker" => {
+            let install_cmd = if options == "aliyun" {
+                // Download script and run with Aliyun mirror
+                r#"curl -fsSL https://get.docker.com -o /tmp/get-docker.sh && sh /tmp/get-docker.sh --mirror Aliyun && rm -f /tmp/get-docker.sh"#
+            } else {
+                // Direct pipe for official source
+                r#"curl -fsSL https://get.docker.com | sh"#
+            };
             return format!(r#"#!/bin/bash
 echo "=== {} Docker ==="
 if [ "{}" = "install" ]; then
@@ -4949,24 +4972,9 @@ if [ "{}" = "install" ]; then
     exit 0
   fi
   echo "Installing Docker..."
-  if [ -f /etc/os-release ]; then
-    . /etc/os-release
-    if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
-      apt-get update -qq
-      apt-get install -y ca-certificates curl gnupg
-      install -m 0755 -d /etc/apt/keyrings
-      curl -fsSL https://download.docker.com/linux/$ID/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
-      chmod a+r /etc/apt/keyrings/docker.gpg
-      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$ID $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list
-      apt-get update -qq
-      apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-    else
-      yum install -y yum-utils
-      yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-      yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-    fi
-  fi
+  {}
   systemctl enable docker && systemctl start docker
+  usermod -aG docker $(whoami) 2>/dev/null || true
 else
   echo "Removing Docker..."
   systemctl stop docker 2>/dev/null || true
@@ -4981,9 +4989,10 @@ else
     fi
   fi
   rm -rf /var/lib/docker 2>/dev/null || true
+  rm -f /etc/apt/sources.list.d/docker.list /etc/apt/keyrings/docker.gpg /etc/yum.repos.d/docker-ce.repo 2>/dev/null || true
 fi
 echo "ACTION_SUCCESS"
-"#, action, action);
+"#, action, action, install_cmd);
         }
         "nginx" => (
             "nginx",
@@ -5005,6 +5014,14 @@ if [ "__ACTION__" = "install" ]; then
   echo "Installing MySQL/MariaDB from system repositories..."
   
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    # Wait for apt lock
+    for i in $(seq 1 60); do
+      if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then
+        break
+      fi
+      echo "Waiting for package manager lock... ($i/60)"
+      sleep 1
+    done
     apt-get update -qq
     if apt-cache show mysql-server &>/dev/null; then
       apt-get install -y debconf-utils
@@ -5096,6 +5113,14 @@ SKIPPED=""
 if [ "__ACTION__" = "install" ]; then
   echo "Installing PHP..."
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    # Wait for apt lock
+    for i in $(seq 1 60); do
+      if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then
+        break
+      fi
+      echo "Waiting for package manager lock... ($i/60)"
+      sleep 1
+    done
     apt-get update -qq
     if [ -n "__VERSION__" ]; then
       # Core package — must succeed
@@ -5169,6 +5194,14 @@ fi\n\
 if [ \"__ACTION__\" = \"install\" ]; then\n\
   echo \"Installing PHP __VER__...\"\n\
   if [ \"$ID\" = \"ubuntu\" ] || [ \"$ID\" = \"debian\" ]; then\n\
+    # Wait for apt lock\n\
+    for i in $(seq 1 60); do\n\
+      if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then\n\
+        break\n\
+      fi\n\
+      echo \"Waiting for package manager lock... ($i/60)\"\n\
+      sleep 1\n\
+    done\n\
     apt-get update -qq\n\
     apt-get install -y software-properties-common\n\
     add-apt-repository -y ppa:ondrej/php 2>/dev/null || true\n\
@@ -5298,6 +5331,15 @@ if [ "{}" = "install" ]; then
     echo "{} is already installed"
   else
     echo "Installing {}..."
+    # Wait for apt/yum lock to be released (max 60s)
+    for i in $(seq 1 60); do
+      if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then
+        break
+      fi
+      echo "Waiting for package manager lock... ($i/60)"
+      sleep 1
+    done
+    {} update -qq 2>/dev/null || true
     {} {} 2>&1
     {}
   fi
@@ -5316,6 +5358,7 @@ echo "ACTION_SUCCESS"
         packages,
         software,
         software,
+        pkg_mgr,
         pkg_install, packages,
         if action == "install" { post_install } else { "" },
         software,
@@ -6086,6 +6129,10 @@ elif command -v yum &>/dev/null; then
 fi
 
 systemctl daemon-reload 2>/dev/null || true
+
+# Cleanup Docker apt/yum source
+rm -f /etc/apt/sources.list.d/docker.list /etc/apt/keyrings/docker.gpg /etc/yum.repos.d/docker-ce.repo 2>/dev/null || true
+
 echo "Docker uninstalled successfully"
 "#;
 

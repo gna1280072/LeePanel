@@ -146,8 +146,7 @@ export default function ServerPanel({ sessionId, connHost, jumpToPath, setJumpTo
         return <MonitorPanel sessionId={sessionId} />
       case 'firewall':
         return <FirewallPanel sessionId={sessionId} />
-      case 'software':
-        return <SoftwareRepo sessionId={sessionId} />
+      // case 'software': removed - always mounted below
       case 'bbr':
         return <BbrPanel sessionId={sessionId} />
       case 'database':
@@ -191,7 +190,11 @@ export default function ServerPanel({ sessionId, connHost, jumpToPath, setJumpTo
         <div style={{ display: activeSection === 'sites' ? 'block' : 'none', height: '100%' }}>
           <SitesPanel sessionId={sessionId} onOpenFolder={handleInternalOpenFolder} />
         </div>
-        {activeSection !== 'terminal' && activeSection !== 'files' && activeSection !== 'sites' && renderContent()}
+        {/* Software always mounted to preserve install progress state */}
+        <div style={{ display: activeSection === 'software' ? 'block' : 'none', height: '100%' }}>
+          <SoftwareRepo sessionId={sessionId} />
+        </div>
+        {activeSection !== 'terminal' && activeSection !== 'files' && activeSection !== 'sites' && activeSection !== 'software' && renderContent()}
       </div>
     </div>
   )

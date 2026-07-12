@@ -166,6 +166,8 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
   const [cacheTime, setCacheTime] = useState<number>(0) // ponytail: cached_at ms
   const initializedRef = useRef(false)
   const uploadInputRef = useRef<HTMLInputElement>(null)
+  const uploadFolderInputRef = useRef<HTMLInputElement>(null)
+  const [uploadMenuOpen, setUploadMenuOpen] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
   const [lastClickedFile, setLastClickedFile] = useState<string | null>(null)
   const [rubberBand, setRubberBand] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null)
@@ -566,6 +568,56 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     onStartUpload?.(uploadFiles)
     navigateTo(currentPath)
   }, [sessionId, currentPath, checkDirReady, getUniqueName, navigateTo, showToast, showConflict, onStartUpload])
+
+ // ponytail: folder upload — use webkitRelativePath to preserve directory structure
+  const handleUploadFolder = useCallback(async (fileList: FileList) => {
+    if (!sessionId) return
+    if (!fileList || fileList.length === 0) return
+
+    // Extract unique parent directories (excluding root folder name itself)
+    const dirsToCreate = new Set<string>()
+    for (let i = 0; i < fileList.length; i++) {
+      const relPath = (fileList[i] as any).webkitRelativePath || fileList[i].name
+      const parts = relPath.split('/')
+      // Create all parent dirs except the last segment (the file itself)
+      for (let j = 1; j < parts.length; j++) {
+        const dirPath = currentPath === '/'
+          ? '/' + parts.slice(0, j).join('/')
+          : currentPath + '/' + parts.slice(0, j).join('/')
+        dirsToCreate.add(dirPath)
+      }
+    }
+
+    // Sort by depth (shortest first) so parents are created before children
+    const sortedDirs = [...dirsToCreate].sort((a, b) => a.split('/').length - b.split('/').length)
+    for (const dir of sortedDirs) {
+      try {
+        await invoke('ssh_create_dir', { sessionId, path: dir })
+      } catch (_) {
+        // Directory may already exist — ignore
+      }
+    }
+
+    const uploadFiles: { file: File; fileName: string; remotePath: string }[] = []
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i]
+      const relPath = (file as any).webkitRelativePath || file.name
+      const remotePath = currentPath === '/' ? `/${relPath}` : `${currentPath}/${relPath}`
+      uploadFiles.push({ file, fileName: relPath, remotePath })
+    }
+
+    if (uploadFiles.length === 0) return
+    onStartUpload?.(uploadFiles)
+    navigateTo(currentPath)
+  }, [sessionId, currentPath, navigateTo, onStartUpload])
+
+  // Close upload menu on outside click
+  useEffect(() => {
+    if (!uploadMenuOpen) return
+    const handleClick = () => setUploadMenuOpen(false)
+    document.addEventListener('click', handleClick)
+    return () => document.removeEventListener('click', handleClick)
+  }, [uploadMenuOpen])
 
   // Handle files dropped from local computer
   const handleDropFiles = useCallback(async (e: React.DragEvent) => {
@@ -2212,11 +2264,38 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
         }}
       />
 
+      {/* Hidden folder input for upload button */}
+      <input
+        ref={uploadFolderInputRef}
+        type="file"
+        multiple
+        {...{ webkitdirectory: '', directory: '' } as any}
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            handleUploadFolder(e.target.files)
+            e.target.value = ''
+          }
+        }}
+      />
+
+      {/* Upload menu */}
+      {uploadMenuOpen && (
+        <div className="fb-upload-menu">
+          <div className="fb-upload-menu-item" onClick={() => { uploadInputRef.current?.click(); setUploadMenuOpen(false) }}>
+            📄 {t('files.uploadFiles')}
+          </div>
+          <div className="fb-upload-menu-item" onClick={() => { uploadFolderInputRef.current?.click(); setUploadMenuOpen(false) }}>
+            📁 {t('files.uploadFolder')}
+          </div>
+        </div>
+      )}
+
       {/* Upload floating button */}
       <button
         className="fb-upload-btn"
-        onClick={() => uploadInputRef.current?.click()}
-        title={t('files.uploadFiles')}
+        onClick={(e) => { e.stopPropagation(); setUploadMenuOpen(v => !v) }}
+        title={t('common.upload')}
       >+</button>
 
       {/* Status Bar */}

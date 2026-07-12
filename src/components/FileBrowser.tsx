@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useImperativeHandle, forwardRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
+import { readFile, readDir } from '@tauri-apps/plugin-fs'
 import { useTranslation } from 'react-i18next'
 
 interface FileEntry {
@@ -165,8 +167,6 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
   const [loading, setLoading] = useState(false)
   const [cacheTime, setCacheTime] = useState<number>(0) // ponytail: cached_at ms
   const initializedRef = useRef(false)
-  const uploadInputRef = useRef<HTMLInputElement>(null)
-  const uploadFolderInputRef = useRef<HTMLInputElement>(null)
   const [uploadMenuOpen, setUploadMenuOpen] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
   const [lastClickedFile, setLastClickedFile] = useState<string | null>(null)
@@ -569,17 +569,37 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     navigateTo(currentPath)
   }, [sessionId, currentPath, checkDirReady, getUniqueName, navigateTo, showToast, showConflict, onStartUpload])
 
- // ponytail: folder upload — use webkitRelativePath to preserve directory structure
-  const handleUploadFolder = useCallback(async (fileList: FileList) => {
-    if (!sessionId) return
-    if (!fileList || fileList.length === 0) return
+ // ponytail: Tauri native dialog for folder upload — avoids webkitdirectory WebView2 issues
+  const walkDir = async (dir: string, relBase: string): Promise<{ absPath: string; relPath: string }[]> => {
+    const entries = await readDir(dir)
+    const results: { absPath: string; relPath: string }[] = []
+    for (const entry of entries) {
+      if (!entry.name) continue
+      const absPath = dir + '/' + entry.name
+      const relPath = relBase ? relBase + '/' + entry.name : entry.name
+      if (entry.isDirectory) {
+        results.push(...(await walkDir(absPath, relPath)))
+      } else if (entry.isFile) {
+        results.push({ absPath, relPath })
+      }
+    }
+    return results
+  }
 
-    // Extract unique parent directories (excluding root folder name itself)
+  const handleUploadFolder = useCallback(async () => {
+    if (!sessionId) return
+    const folderPath = await openDialog({ directory: true, multiple: false })
+    if (!folderPath || typeof folderPath !== 'string') return
+
+    // Extract folder name from path
+    const folderName = folderPath.split(/[\\/]/).pop()!
+    const allFiles = await walkDir(folderPath, folderName)
+    if (allFiles.length === 0) return
+
+    // Create directory structure on server
     const dirsToCreate = new Set<string>()
-    for (let i = 0; i < fileList.length; i++) {
-      const relPath = (fileList[i] as any).webkitRelativePath || fileList[i].name
-      const parts = relPath.split('/')
-      // Create all parent dirs except the last segment (the file itself)
+    for (const f of allFiles) {
+      const parts = f.relPath.split('/')
       for (let j = 1; j < parts.length; j++) {
         const dirPath = currentPath === '/'
           ? '/' + parts.slice(0, j).join('/')
@@ -587,23 +607,46 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
         dirsToCreate.add(dirPath)
       }
     }
-
-    // Sort by depth (shortest first) so parents are created before children
     const sortedDirs = [...dirsToCreate].sort((a, b) => a.split('/').length - b.split('/').length)
     for (const dir of sortedDirs) {
-      try {
-        await invoke('ssh_create_dir', { sessionId, path: dir })
-      } catch (_) {
-        // Directory may already exist — ignore
-      }
+      try { await invoke('ssh_create_dir', { sessionId, path: dir }) } catch (_) { /* may exist */ }
     }
 
+    // Read files from disk and create File objects
     const uploadFiles: { file: File; fileName: string; remotePath: string }[] = []
-    for (let i = 0; i < fileList.length; i++) {
-      const file = fileList[i]
-      const relPath = (file as any).webkitRelativePath || file.name
-      const remotePath = currentPath === '/' ? `/${relPath}` : `${currentPath}/${relPath}`
-      uploadFiles.push({ file, fileName: relPath, remotePath })
+    for (const f of allFiles) {
+      try {
+        const bytes = await readFile(f.absPath)
+        const blob = new Blob([bytes])
+        const file = new File([blob], f.relPath, { type: 'application/octet-stream' })
+        const remotePath = currentPath === '/' ? `/${f.relPath}` : `${currentPath}/${f.relPath}`
+        uploadFiles.push({ file, fileName: f.relPath, remotePath })
+      } catch (_) { /* skip unreadable files */ }
+    }
+
+    if (uploadFiles.length === 0) return
+    onStartUpload?.(uploadFiles)
+    navigateTo(currentPath)
+  }, [sessionId, currentPath, navigateTo, onStartUpload])
+
+  // ponytail: Tauri native dialog for file upload — more reliable than hidden input.click() in WebView2
+  const handleUploadFilesBtn = useCallback(async () => {
+    if (!sessionId) return
+    const selected = await openDialog({ multiple: true, directory: false })
+    if (!selected) return
+    const paths = Array.isArray(selected) ? selected : [selected]
+    if (paths.length === 0) return
+
+    const uploadFiles: { file: File; fileName: string; remotePath: string }[] = []
+    for (const p of paths) {
+      try {
+        const fileName = p.split(/[\\/]/).pop()!
+        const bytes = await readFile(p)
+        const blob = new Blob([bytes])
+        const file = new File([blob], fileName, { type: 'application/octet-stream' })
+        const remotePath = currentPath === '/' ? `/${fileName}` : `${currentPath}/${fileName}`
+        uploadFiles.push({ file, fileName, remotePath })
+      } catch (_) { /* skip unreadable files */ }
     }
 
     if (uploadFiles.length === 0) return
@@ -2250,42 +2293,13 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
         </div>
       )}
 
-      {/* Hidden file input for upload button */}
-      <input
-        ref={uploadInputRef}
-        type="file"
-        multiple
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          if (e.target.files && e.target.files.length > 0) {
-            handleUploadFiles(e.target.files)
-            e.target.value = '' // reset so same file can be selected again
-          }
-        }}
-      />
-
-      {/* Hidden folder input for upload button */}
-      <input
-        ref={uploadFolderInputRef}
-        type="file"
-        multiple
-        {...{ webkitdirectory: '', directory: '' } as any}
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          if (e.target.files && e.target.files.length > 0) {
-            handleUploadFolder(e.target.files)
-            e.target.value = ''
-          }
-        }}
-      />
-
       {/* Upload menu */}
       {uploadMenuOpen && (
         <div className="fb-upload-menu">
-          <div className="fb-upload-menu-item" onClick={() => { uploadInputRef.current?.click(); setUploadMenuOpen(false) }}>
+          <div className="fb-upload-menu-item" onClick={() => { handleUploadFilesBtn(); setUploadMenuOpen(false) }}>
             📄 {t('files.uploadFiles')}
           </div>
-          <div className="fb-upload-menu-item" onClick={() => { uploadFolderInputRef.current?.click(); setUploadMenuOpen(false) }}>
+          <div className="fb-upload-menu-item" onClick={() => { handleUploadFolder(); setUploadMenuOpen(false) }}>
             📁 {t('files.uploadFolder')}
           </div>
         </div>

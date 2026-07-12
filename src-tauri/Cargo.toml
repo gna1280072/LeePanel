@@ -31,5 +31,6 @@ uuid = { version = "1", features = ["v4"] }
 dirs = "5"
 open = "5"
 tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
 tauri-plugin-updater = "2"

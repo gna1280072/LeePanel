@@ -9,6 +9,7 @@
     "core:default",
     "core:event:default",
     "dialog:default",
+    "fs:default",
     "updater:default",
     "log:default"
   ]

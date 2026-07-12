@@ -87,7 +87,14 @@ export default forwardRef<TerminalHandle, TerminalProps>(function Terminal({ ses
       hasSelectionRef.current = term.hasSelection()
     })
 
-    setTimeout(() => fitAddon.fit(), 100)
+    // ponytail: sync remote PTY size with xterm.js after every fit
+    const syncSize = () => {
+      const sid = sidRef.current
+      if (sid) {
+        invoke('ssh_resize', { sessionId: sid, cols: term.cols, rows: term.rows })
+      }
+    }
+    setTimeout(() => { fitAddon.fit(); syncSize() }, 100)
 
     term.onData((data) => {
       const sid = sidRef.current
@@ -164,17 +171,28 @@ export default forwardRef<TerminalHandle, TerminalProps>(function Terminal({ ses
     },
   }))
 
-  // Refit on session change
+  // Refit on session change + sync PTY
   useEffect(() => {
-    if (fitRef.current) {
-      setTimeout(() => fitRef.current?.fit(), 100)
+    if (fitRef.current && termRef.current) {
+      setTimeout(() => {
+        fitRef.current?.fit()
+        if (sessionId) {
+          invoke('ssh_resize', { sessionId, cols: termRef.current!.cols, rows: termRef.current!.rows })
+        }
+      }, 100)
     }
   }, [sessionId])
 
-  // Refit when tab becomes active (was hidden with display:none)
+  // Refit when tab becomes active (was hidden with display:none) + sync PTY
   useEffect(() => {
-    if (isActive && fitRef.current) {
-      setTimeout(() => fitRef.current?.fit(), 50)
+    if (isActive && fitRef.current && termRef.current) {
+      setTimeout(() => {
+        fitRef.current?.fit()
+        const sid = sidRef.current
+        if (sid) {
+          invoke('ssh_resize', { sessionId: sid, cols: termRef.current!.cols, rows: termRef.current!.rows })
+        }
+      }, 50)
     }
   }, [isActive])
 

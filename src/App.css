@@ -1261,6 +1261,66 @@ body {
   margin-left: auto;
 }
 
+.fb-search-box {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 4px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+.fb-search-box:focus-within {
+  border-color: #0969da;
+}
+.fb-search-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #1f2328;
+  font-size: 12px;
+  width: 140px;
+}
+.fb-search-input::placeholder {
+  color: #656d76;
+}
+.fb-search-clear {
+  background: none;
+  border: none;
+  color: #656d76;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+.fb-search-clear:hover {
+  color: #1f2328;
+}
+
+.fb-search-hint {
+  grid-column: 1 / -1;
+  color: #f85149;
+  font-size: 12px;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.fb-search-hint-close {
+  background: none;
+  border: none;
+  color: #f85149;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0.7;
+}
+.fb-search-hint-close:hover {
+  opacity: 1;
+}
+
 .fb-grid {
   flex: 1;
   overflow-y: auto;
@@ -2650,6 +2710,39 @@ body.dragging-files * {
   min-width: 70px;
   text-align: right;
   font-family: 'JetBrains Mono', monospace;
+}
+
+/* Upload Floating Button */
+.fb-upload-btn {
+  position: absolute;
+  bottom: 32px;
+  left: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #238636;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 300;
+  line-height: 36px;
+  text-align: center;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+  transition: background 0.2s, transform 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fb-upload-btn:hover {
+  background: #2ea043;
+  transform: scale(1.1);
+}
+
+.fb-upload-btn:active {
+  transform: scale(0.95);
 }
 
 /* Status Bar */
@@ -5079,7 +5172,7 @@ body.dragging-files * {
 }
 
 .sw-running-status.error {
-  color: #f85149;
+  color: #c9d1d9;
 }
 
 .sw-spinner {
@@ -5102,7 +5195,7 @@ body.dragging-files * {
 
 .sw-error-icon {
   font-size: 18px;
-  color: #f85149;
+  color: #c9d1d9;
 }
 
 .sw-log-box {
@@ -5118,13 +5211,13 @@ body.dragging-files * {
 }
 
 .sw-log-line {
-  color: #8b949e;
+  color: #c9d1d9;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .sw-log-line.error {
-  color: #f85149;
+  color: #c9d1d9;
 }
 
 .sw-log-line.command {
@@ -5148,8 +5241,8 @@ body.dragging-files * {
 }
 
 .sw-log-line.key-error {
-  color: #f85149;
-  background: rgba(248, 81, 73, 0.1);
+  color: #c9d1d9;
+  background: rgba(255, 255, 255, 0.05);
   padding: 2px 8px;
   border-radius: 3px;
   margin: 2px 0;
@@ -5159,7 +5252,7 @@ body.dragging-files * {
 .sw-error-details {
   margin-top: 12px;
   background: #0d1117;
-  border: 1px solid #f85149;
+  border: 1px solid #30363d;
   border-radius: 8px;
   overflow: hidden;
 }
@@ -5167,7 +5260,7 @@ body.dragging-files * {
 .sw-error-details-summary {
   padding: 12px;
   cursor: pointer;
-  color: #f85149;
+  color: #c9d1d9;
   font-weight: 600;
   list-style: none;
   display: flex;
@@ -5193,7 +5286,7 @@ body.dragging-files * {
   padding: 12px;
   margin: 0;
   font-size: 11px;
-  color: #8b949e;
+  color: #c9d1d9;
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-all;

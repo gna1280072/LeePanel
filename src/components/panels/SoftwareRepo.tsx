@@ -49,6 +49,8 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
 
   // PHP version selection modal state
   const [phpVersionModalOpen, setPhpVersionModalOpen] = useState(false)
+  const [dockerSourceModal, setDockerSourceModal] = useState<SoftwareInfo | null>(null)
+  const [dockerSourceSelected, setDockerSourceSelected] = useState<'official' | 'aliyun'>('official')
   const [availableVersions, setAvailableVersions] = useState<string[]>([])
   const [selectedVersion, setSelectedVersion] = useState('')
   const [versionsLoading, setVersionsLoading] = useState(false)
@@ -128,10 +130,10 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
 
-  const handleAction = async (sw: SoftwareInfo, action: 'install' | 'uninstall') => {
+  const handleAction = async (sw: SoftwareInfo, action: 'install' | 'uninstall', options = '') => {
     if (!sessionId) return
-    let options = ''
-    // ponytail: options always empty — system package manager picks the version
+    let opts = options
+    // ponytail: options passed from caller (e.g. docker source, php version)
     setState('running')
     setLogs([`${action === 'install' ? 'Installing' : 'Uninstalling'} ${sw.display_name}...`])
     setLogStatus('running')
@@ -142,7 +144,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
         sessionId,
         software: sw.name,
         action,
-        options,
+        options: opts,
       })
       setLogStatus('done')
     } catch (e) {
@@ -385,11 +387,11 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
           <div className="sw-log-box">
             {logs.map((line, i) => {
               // Determine log line type for styling
-              const isError = line.includes('ERROR') || line.includes('failed') || line.startsWith('E:') || line.includes('') || line.includes('fatal')
+              const isError = line.includes('ERROR') || line.includes('failed') || line.startsWith('E:') || line.includes('fatal')
               const isCommand = line.startsWith('Executing:') || line.startsWith('Script preview:')
               const isSuccess = line.includes('ACTION_SUCCESS') || line.includes('completed successfully') || line.includes('✅')
               const isSeparator = line.includes('━━━')
-              const isKeyError = line.trim().startsWith('') || line.trim().startsWith('   ')
+              const isKeyError = line.trim().startsWith('🔍') || line.trim().startsWith('   ')
               
               let lineClass = 'sw-log-line'
               if (isSeparator) lineClass += ' separator'
@@ -587,7 +589,13 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                           ) : (
                             <button
                               className="sw-action-btn small primary"
-                              onClick={() => setConfirmAction({ software: sw, action: 'install' })}
+                              onClick={() => {
+                                if (sw.name === 'docker') {
+                                  setDockerSourceModal(sw)
+                                } else {
+                                  setConfirmAction({ software: sw, action: 'install' })
+                                }
+                              }}
                             >{t('common.install')}</button>
                           )
                         )}
@@ -687,6 +695,37 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                 onClick={handleConfirmPHPInstall}
                 disabled={versionsLoading || !!versionsError || !selectedVersion}
               >{t('software.installPHPVersion', { version: selectedVersion })}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Docker Source Selection Modal */}
+      {dockerSourceModal && (
+        <div className="sw-confirm-overlay" onClick={() => setDockerSourceModal(null)}>
+          <div className="sw-confirm-dialog" onClick={e => e.stopPropagation()}>
+            <div className="sw-confirm-title">{t('software.dockerSourceTitle')}</div>
+            <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${dockerSourceSelected === 'official' ? '#238636' : '#30363d'}`, background: dockerSourceSelected === 'official' ? 'rgba(35,134,54,0.1)' : 'transparent' }}>
+                <input type="radio" name="dockerSource" checked={dockerSourceSelected === 'official'} onChange={() => setDockerSourceSelected('official')} />
+                {t('software.dockerSourceOfficial')}
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${dockerSourceSelected === 'aliyun' ? '#238636' : '#30363d'}`, background: dockerSourceSelected === 'aliyun' ? 'rgba(35,134,54,0.1)' : 'transparent' }}>
+                <input type="radio" name="dockerSource" checked={dockerSourceSelected === 'aliyun'} onChange={() => setDockerSourceSelected('aliyun')} />
+                {t('software.dockerSourceAliyun')}
+              </label>
+            </div>
+            <div className="sw-confirm-actions">
+              <button className="sw-action-btn" onClick={() => setDockerSourceModal(null)}>{t('common.cancel')}</button>
+              <button
+                className="sw-action-btn primary"
+                onClick={() => {
+                  handleAction(dockerSourceModal, 'install', dockerSourceSelected)
+                  setDockerSourceModal(null)
+                }}
+              >
+                {t('software.install')}
+              </button>
             </div>
           </div>
         </div>

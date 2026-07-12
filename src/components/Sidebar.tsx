@@ -249,7 +249,7 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
                   }}
                   title={t('common.edit')}
                 >
-                  {t('common.edit')}
+                  ✏️ {t('common.edit')}
                 </button>
               </div>
             </div>
@@ -280,7 +280,7 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
               setContextMenu(null)
             }}
           >
-             {t('common.edit')}
+             ✏️ {t('common.edit')}
           </div>
           <div className="context-menu-divider" />
           <div

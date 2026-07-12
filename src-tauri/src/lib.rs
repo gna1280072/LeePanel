@@ -28,8 +28,11 @@ async fn ssh_connect(
     let username = config["username"].as_str().unwrap_or("").to_string();
     let password = config["password"].as_str().map(|s| s.to_string());
     let key_path = config["keyPath"].as_str().map(|s| s.to_string());
-    let mut mgr = ssh_mgr.lock().await;
-    mgr.connect(session_id.clone(), host, port, username, password, key_path, app).await?;
+    // ponytail: network operations without lock — only acquire briefly to insert session
+    let session = SshManager::do_connect(session_id.clone(), host, port, username, password, key_path, app.clone()).await?;
+    let mgr = ssh_mgr.lock().await;
+    mgr.insert_session(session_id.clone(), session, app);
+    drop(mgr);
     Ok(session_id)
 }
 
@@ -39,8 +42,11 @@ async fn ssh_input(
     session_id: &str,
     data: &str,
 ) -> Result<(), String> {
+    // ponytail: extract session quickly, release lock before network operations
     let mgr = ssh_mgr.lock().await;
-    mgr.input(session_id, data.as_bytes()).await
+    let _session = mgr.get_session(session_id)?;
+    drop(mgr);
+    _session.input_tx.send(data.as_bytes().to_vec()).await.map_err(|_| "Failed to send input".to_string())
 }
 
 #[tauri::command]
@@ -51,7 +57,9 @@ async fn ssh_resize(
     rows: u32,
 ) -> Result<(), String> {
     let mgr = ssh_mgr.lock().await;
-    mgr.resize(session_id, cols, rows).await
+    let _session = mgr.get_session(session_id)?;
+    drop(mgr);
+    _session.resize_tx.send((cols, rows)).await.map_err(|_| "Failed to send resize".to_string())
 }
 
 #[tauri::command]
@@ -59,10 +67,25 @@ async fn ssh_disconnect(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
     session_id: &str,
 ) -> Result<(), String> {
-    let mut mgr = ssh_mgr.lock().await;
-    // ponytail: clear all cached data for this session on disconnect
-    mgr.cache.clear_session(session_id).await;
-    mgr.disconnect(session_id).await
+    // ponytail: timeout on lock acquisition — if another op holds the lock for 3s, force disconnect locally
+    match tokio::time::timeout(std::time::Duration::from_secs(3), ssh_mgr.lock()).await {
+        Ok(mgr) => {
+            mgr.cache.clear_session(session_id);
+            let session = mgr.get_session(session_id).ok();
+            drop(mgr);
+            if let Some(ref s) = session {
+                ssh::session_disconnect(s).await.ok();
+            }
+            let mgr = ssh_mgr.lock().await;
+            mgr.remove_session(session_id);
+            drop(mgr);
+            Ok(())
+        }
+        Err(_) => {
+            eprintln!("ssh_disconnect: lock timeout, forcing session removal for {}", session_id);
+            Ok(())
+        }
+    }
 }
 
 #[tauri::command]
@@ -71,7 +94,9 @@ async fn ssh_get_cwd(
     session_id: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    mgr.get_cwd(session_id).await
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    ssh::session_open_channel_and_exec(&session, "pwd", 5).await
 }
 
 #[tauri::command]
@@ -81,7 +106,9 @@ async fn ssh_list_dir(
     path: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    mgr.list_dir(session_id, path).await
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    ssh::session_list_dir(&session, path).await
 }
 
 #[tauri::command]
@@ -91,7 +118,9 @@ async fn ssh_stat_file(
     path: &str,
 ) -> Result<serde_json::Value, String> {
     let mgr = ssh_mgr.lock().await;
-    mgr.stat_file(session_id, path).await
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    ssh::session_stat_file(&session, path).await
 }
 
 #[tauri::command]
@@ -101,7 +130,9 @@ async fn ssh_read_file(
     path: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    mgr.read_file(session_id, path).await
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    ssh::session_read_file(&session, path).await
 }
 
 #[tauri::command]
@@ -112,7 +143,9 @@ async fn ssh_write_file(
     content: &str,
 ) -> Result<(), String> {
     let mgr = ssh_mgr.lock().await;
-    mgr.write_file(session_id, path, content).await
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    ssh::session_write_file(&session, path, content).await
 }
 
 #[tauri::command]
@@ -123,7 +156,9 @@ async fn ssh_delete_file(
     is_dir: bool,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    mgr.delete_file(session_id, path, is_dir).await
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    ssh::session_delete_file(&session, path, is_dir).await
 }
 
 #[tauri::command]
@@ -134,7 +169,9 @@ async fn ssh_delete_files_batch(
     is_dir: bool,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    mgr.delete_files_batch(session_id, &paths, is_dir).await
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    ssh::session_delete_files_batch(&session, &paths, is_dir).await
 }
 
 #[tauri::command]
@@ -144,7 +181,9 @@ async fn ssh_create_dir(
     path: &str,
 ) -> Result<(), String> {
     let mgr = ssh_mgr.lock().await;
-    mgr.create_dir(session_id, path).await
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    ssh::session_create_dir(&session, path).await
 }
 
 #[tauri::command]
@@ -155,7 +194,9 @@ async fn ssh_rename_file(
     new_path: &str,
 ) -> Result<(), String> {
     let mgr = ssh_mgr.lock().await;
-    mgr.rename_file(session_id, old_path, new_path).await
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    ssh::session_rename_file(&session, old_path, new_path).await
 }
 
 #[tauri::command]
@@ -165,7 +206,9 @@ async fn ssh_rename_files_batch(
     renames: Vec<(String, String)>, // (old_path, new_path)
 ) -> Result<(), String> {
     let mgr = ssh_mgr.lock().await;
-    mgr.rename_files_batch(session_id, &renames).await
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    ssh::session_rename_files_batch(&session, &renames).await
 }
 
 #[tauri::command]
@@ -177,7 +220,9 @@ async fn ssh_copy_files_batch(
     is_move: bool,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    mgr.copy_files_batch(session_id, &sources, dest_dir, is_move).await
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    ssh::session_copy_files_batch(&session, &sources, dest_dir, is_move).await
 }
 
 #[tauri::command]
@@ -188,7 +233,9 @@ async fn ssh_set_permissions_batch(
     mode: &str,
 ) -> Result<(), String> {
     let mgr = ssh_mgr.lock().await;
-    mgr.set_permissions_batch(session_id, &paths, mode).await
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    ssh::session_set_permissions_batch(&session, &paths, mode).await
 }
 
 #[tauri::command]
@@ -200,7 +247,9 @@ async fn ssh_copy_file(
     dst: &str,
 ) -> Result<(), String> {
     let mgr = ssh_mgr.lock().await;
-    mgr.copy_file(session_id, src, dst, &app).await
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    ssh::session_copy_file(&session, session_id, src, dst, &app).await
 }
 
 #[tauri::command]
@@ -212,7 +261,9 @@ async fn ssh_copy_dir(
     dst: &str,
 ) -> Result<(), String> {
     let mgr = ssh_mgr.lock().await;
-    mgr.copy_dir(session_id, src, dst, &app).await
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    ssh::session_copy_dir(&session, session_id, src, dst, &app).await
 }
 
 #[tauri::command]
@@ -223,7 +274,9 @@ async fn ssh_set_permissions(
     mode: &str,
 ) -> Result<(), String> {
     let mgr = ssh_mgr.lock().await;
-    mgr.set_permissions(session_id, path, mode).await
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    ssh::session_set_permissions(&session, path, mode).await
 }
 
 #[tauri::command]
@@ -233,7 +286,9 @@ async fn ssh_check_space(
     path: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    mgr.check_space(session_id, path).await
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    ssh::session_check_space(&session, path).await
 }
 
 #[tauri::command]
@@ -339,7 +394,8 @@ async fn ssh_reconnect(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
     session_id: &str,
 ) -> Result<(), String> {
-    let mut mgr = ssh_mgr.lock().await;
+    // ponytail: reconnect modifies sessions map, needs mgr lock briefly for disconnect/connect
+    let mgr = ssh_mgr.lock().await;
     mgr.reconnect(session_id).await
 }
 
@@ -454,7 +510,10 @@ async fn server_get_system_info(
     session_id: &str,
 ) -> Result<SystemInfo, String> {
     let mgr = ssh_mgr.lock().await;
-    server::get_system_info(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_system_info(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -463,7 +522,10 @@ async fn server_get_service_statuses(
     session_id: &str,
 ) -> Result<Vec<ServiceStatus>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::get_service_statuses(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_service_statuses(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -473,7 +535,10 @@ async fn server_get_service_info(
     service: &str,
 ) -> Result<ServiceInfo, String> {
     let mgr = ssh_mgr.lock().await;
-    server::get_service_info(&mgr, session_id, service).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_service_info(&session, &cache, session_id, service).await
 }
 
 #[tauri::command]
@@ -484,10 +549,13 @@ async fn server_service_action(
     action: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
     let cmd = format!("systemctl {} {}", action, service);
-    let (_, stderr, code) = mgr.exec_with_output(session_id, &cmd, 30).await?;
+    let (_, stderr, code) = ssh::session_exec_with_output(&session, &cmd, 30).await?;
     // ponytail: invalidate service/software cache after start/stop/restart
-    mgr.cache.invalidate(session_id, &["service_statuses", "software_list"]).await;
+    cache.invalidate(session_id, &["service_statuses", "software_list"]);
     if code != 0 && !stderr.is_empty() {
         Err(format!("{} failed: {}", service, stderr.trim()))
     } else {
@@ -502,7 +570,10 @@ async fn server_read_remote_file(
     path: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::read_remote_file(&mgr, session_id, path).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::read_remote_file(&session, &cache, session_id, path).await
 }
 
 #[tauri::command]
@@ -513,7 +584,10 @@ async fn server_write_remote_file(
     content: &str,
 ) -> Result<(), String> {
     let mgr = ssh_mgr.lock().await;
-    server::write_remote_file(&mgr, session_id, path, content).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::write_remote_file(&session, &cache, session_id, path, content).await
 }
 
 #[tauri::command]
@@ -524,7 +598,10 @@ async fn server_get_log_lines(
     lines: u32,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::get_log_lines(&mgr, session_id, path, lines).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_log_lines(&session, &cache, session_id, path, lines).await
 }
 
 #[tauri::command]
@@ -533,7 +610,9 @@ async fn server_test_nginx_config(
     session_id: &str,
 ) -> Result<(bool, String), String> {
     let mgr = ssh_mgr.lock().await;
-    let (stdout, stderr, code) = mgr.exec_with_output(session_id, "nginx -t 2>&1", 10).await?;
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    let (stdout, stderr, code) = ssh::session_exec_with_output(&session, "nginx -t 2>&1", 10).await?;
     let combined = format!("{}{}", stdout, stderr);
     Ok((code == 0, combined))
 }
@@ -544,7 +623,10 @@ async fn server_list_nginx_vhosts(
     session_id: &str,
 ) -> Result<Vec<String>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::list_nginx_vhosts(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::list_nginx_vhosts(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -553,7 +635,10 @@ async fn server_find_mysql_service(
     session_id: &str,
 ) -> Result<(String, ServiceInfo), String> {
     let mgr = ssh_mgr.lock().await;
-    server::find_mysql_service(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::find_mysql_service(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -562,7 +647,10 @@ async fn server_find_php_service(
     session_id: &str,
 ) -> Result<(String, ServiceInfo), String> {
     let mgr = ssh_mgr.lock().await;
-    server::find_php_service(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::find_php_service(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -571,7 +659,10 @@ async fn server_find_php_fpm_config(
     session_id: &str,
 ) -> Result<(String, String), String> {
     let mgr = ssh_mgr.lock().await;
-    server::find_php_fpm_config(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::find_php_fpm_config(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -580,7 +671,10 @@ async fn server_mysql_processes(
     session_id: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::get_mysql_processes(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_mysql_processes(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -590,7 +684,10 @@ async fn server_mysql_query(
     query: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::exec_mysql_query(&mgr, session_id, query).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::exec_mysql_query(&session, &cache, session_id, query).await
 }
 
 #[tauri::command]
@@ -599,7 +696,10 @@ async fn server_list_databases(
     session_id: &str,
 ) -> Result<Vec<server::DbInfo>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::list_databases(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::list_databases(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -614,7 +714,10 @@ async fn server_mysql_create_database(
     allowed_ip: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::create_database(&mgr, session_id, db_name, db_user, db_pass, charset, access_type, allowed_ip).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::create_database(&session, &cache, session_id, db_name, db_user, db_pass, charset, access_type, allowed_ip).await
 }
 
 #[tauri::command]
@@ -625,7 +728,10 @@ async fn server_mysql_delete_database(
     db_user: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::delete_database(&mgr, session_id, db_name, db_user).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::delete_database(&session, &cache, session_id, db_name, db_user).await
 }
 
 #[tauri::command]
@@ -638,7 +744,10 @@ async fn server_mysql_change_db_access(
     allowed_ip: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::change_db_access(&mgr, session_id, db_name, db_user, access_type, allowed_ip).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::change_db_access(&session, &cache, session_id, db_name, db_user, access_type, allowed_ip).await
 }
 
 #[tauri::command]
@@ -648,7 +757,10 @@ async fn server_change_mysql_root_password(
     new_password: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::change_mysql_root_password(&mgr, session_id, new_password).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::change_mysql_root_password(&session, &cache, session_id, new_password).await
 }
 
 #[tauri::command]
@@ -661,7 +773,10 @@ async fn server_change_db_user_password(
     allowed_ip: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::change_db_user_password(&mgr, session_id, db_user, new_password, access_type, allowed_ip).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::change_db_user_password(&session, &cache, session_id, db_user, new_password, access_type, allowed_ip).await
 }
 
 #[tauri::command]
@@ -672,7 +787,10 @@ async fn server_save_db_remark(
     remark: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::save_db_remark(&mgr, session_id, db_name, remark).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::save_db_remark(&session, &cache, session_id, db_name, remark).await
 }
 
 #[tauri::command]
@@ -681,7 +799,10 @@ async fn server_get_db_remarks(
     session_id: &str,
 ) -> Result<Vec<(String, String)>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::get_db_remarks(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_db_remarks(&session, &cache, session_id).await
 }
 
 // ===== Database Credentials Commands =====
@@ -696,7 +817,10 @@ async fn server_save_db_credentials(
     allowed_ip: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::save_db_credentials(&mgr, session_id, db_name, password, access_type, allowed_ip).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::save_db_credentials(&session, &cache, session_id, db_name, password, access_type, allowed_ip).await
 }
 
 #[tauri::command]
@@ -705,7 +829,10 @@ async fn server_get_db_credentials(
     session_id: &str,
 ) -> Result<Vec<crate::db::DbCredential>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::get_db_credentials(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_db_credentials(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -715,7 +842,10 @@ async fn server_get_db_credential(
     db_name: &str,
 ) -> Result<Option<crate::db::DbCredential>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::get_db_credential(&mgr, session_id, db_name).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_db_credential(&session, &cache, session_id, db_name).await
 }
 
 #[tauri::command]
@@ -726,7 +856,10 @@ async fn server_update_db_credential_password(
     password: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::update_db_credential_password(&mgr, session_id, db_name, password).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::update_db_credential_password(&session, &cache, session_id, db_name, password).await
 }
 
 #[tauri::command]
@@ -738,7 +871,10 @@ async fn server_backup_database(
     db_password: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::backup_database(&mgr, session_id, db_name, db_user, db_password).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::backup_database(&session, &cache, session_id, db_name, db_user, db_password).await
 }
 
 #[tauri::command]
@@ -748,7 +884,10 @@ async fn server_list_db_backups(
     db_name: &str,
 ) -> Result<Vec<server::BackupInfo>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::list_db_backups(&mgr, session_id, db_name).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::list_db_backups(&session, &cache, session_id, db_name).await
 }
 
 #[tauri::command]
@@ -758,7 +897,10 @@ async fn server_delete_db_backup(
     backup_filename: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::delete_db_backup(&mgr, session_id, backup_filename).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::delete_db_backup(&session, &cache, session_id, backup_filename).await
 }
 
 #[tauri::command]
@@ -768,7 +910,10 @@ async fn server_download_db_backup(
     backup_filename: &str,
 ) -> Result<Vec<u8>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::download_db_backup(&mgr, session_id, backup_filename).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::download_db_backup(&session, &cache, session_id, backup_filename).await
 }
 
 #[tauri::command]
@@ -796,9 +941,11 @@ async fn server_save_db_backup_to_local(
     
     let local_str = local_path.to_string();
     let mgr = ssh_mgr.lock().await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
     
     // Get backup content from server
-    let bytes = server::download_db_backup(&mgr, session_id, backup_filename).await?;
+    let bytes = server::download_db_backup(&session, &cache, session_id, backup_filename).await?;
     
     // Write to local filesystem
     std::fs::write(&local_str, &bytes)
@@ -817,7 +964,10 @@ async fn server_import_database_from_file(
     sql_content: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::import_database_from_file(&mgr, session_id, db_name, db_user, db_password, sql_content).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::import_database_from_file(&session, &cache, session_id, db_name, db_user, db_password, sql_content).await
 }
 
 #[tauri::command]
@@ -830,7 +980,10 @@ async fn server_import_database_from_backup(
     backup_filename: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::import_database_from_backup(&mgr, session_id, db_name, db_user, db_password, backup_filename).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::import_database_from_backup(&session, &cache, session_id, db_name, db_user, db_password, backup_filename).await
 }
 
 // ===== Redis Commands =====
@@ -841,7 +994,10 @@ async fn server_redis_check_status(
     session_id: &str,
 ) -> Result<bool, String> {
     let mgr = ssh_mgr.lock().await;
-    server::check_redis_status(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::check_redis_status(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -850,7 +1006,10 @@ async fn server_redis_get_version(
     session_id: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::get_redis_version(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_redis_version(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -859,7 +1018,10 @@ async fn server_redis_dbsize_all(
     session_id: &str,
 ) -> Result<Vec<server::RedisDbSize>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::redis_dbsize_all(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::redis_dbsize_all(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -873,7 +1035,10 @@ async fn server_redis_scan_keys(
     count: usize,
 ) -> Result<(Vec<server::RedisKeyInfo>, usize), String> {
     let mgr = ssh_mgr.lock().await;
-    server::redis_scan_keys(&mgr, session_id, db_index, pattern, search_type, cursor, count).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::redis_scan_keys(&session, &cache, session_id, db_index, pattern, search_type, cursor, count).await
 }
 
 #[tauri::command]
@@ -886,7 +1051,10 @@ async fn server_redis_set_key(
     ttl: Option<i64>,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::redis_set_key(&mgr, session_id, db_index, key, value, ttl).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::redis_set_key(&session, &cache, session_id, db_index, key, value, ttl).await
 }
 
 #[tauri::command]
@@ -897,7 +1065,10 @@ async fn server_redis_del_key(
     keys: Vec<String>,
 ) -> Result<usize, String> {
     let mgr = ssh_mgr.lock().await;
-    server::redis_del_key(&mgr, session_id, db_index, &keys).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::redis_del_key(&session, &cache, session_id, db_index, &keys).await
 }
 
 #[tauri::command]
@@ -907,7 +1078,10 @@ async fn server_redis_flushdb(
     db_index: u8,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::redis_flushdb(&mgr, session_id, db_index).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::redis_flushdb(&session, &cache, session_id, db_index).await
 }
 
 #[tauri::command]
@@ -916,7 +1090,10 @@ async fn server_redis_save_backup(
     session_id: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::redis_save_backup(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::redis_save_backup(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -925,7 +1102,10 @@ async fn server_redis_list_backups(
     session_id: &str,
 ) -> Result<Vec<server::BackupInfo>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::redis_list_backups(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::redis_list_backups(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -934,7 +1114,10 @@ async fn server_check_lnmp(
     session_id: &str,
 ) -> Result<LnmpStatus, String> {
     let mgr = ssh_mgr.lock().await;
-    server::check_lnmp_status(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::check_lnmp_status(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -945,11 +1128,14 @@ async fn server_install_lnmp(
     config: LnmpInstallConfig,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    let result = server::install_lnmp(&mgr, session_id, &config, &app).await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    let result = server::install_lnmp(&session, &cache, session_id, &config, &app).await;
     // ponytail: invalidate LNMP-related caches after install
-    mgr.cache.invalidate(session_id, &[
+    cache.invalidate(session_id, &[
         "lnmp_status", "service_statuses", "software_list", "php_versions", "docker_status",
-    ]).await;
+    ]);
     result
 }
 
@@ -961,9 +1147,11 @@ async fn server_list_sites(
     session_id: &str,
 ) -> Result<Vec<server::SiteInfo>, String> {
     let mgr = ssh_mgr.lock().await;
-    let mut sites = server::list_sites(&mgr, session_id).await?;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
     let host = mgr.get_host(session_id).unwrap_or_default();
     drop(mgr);
+    let mut sites = server::list_sites(&session, &cache, session_id).await?;
     // ponytail: fix up creation times from DB after SSH call (db is not Send)
     let conn = db.lock().map_err(|e| e.to_string())?;
     let now_ms = std::time::SystemTime::now()
@@ -1163,7 +1351,10 @@ async fn server_create_site(
     db_pass: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    let (_config_path, msg) = server::create_site(&mgr, session_id, domain, root, php_version, running_dir, open_basedir, use_ssl, create_db, db_name, db_user, db_pass, &app).await?;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    let (_config_path, msg) = server::create_site(&session, &cache, session_id, domain, root, php_version, running_dir, open_basedir, use_ssl, create_db, db_name, db_user, db_pass, &app).await?;
     Ok(msg)
 }
 
@@ -1176,7 +1367,10 @@ async fn server_toggle_site(
     enable: bool,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    let msg = server::toggle_site(&mgr, session_id, config_path, domain, enable).await?;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    let msg = server::toggle_site(&session, &cache, session_id, config_path, domain, enable).await?;
     Ok(msg)
 }
 
@@ -1188,7 +1382,10 @@ async fn server_delete_site(
     remove_files: bool,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    let msg = server::delete_site(&mgr, session_id, domain, remove_files).await?;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    let msg = server::delete_site(&session, &cache, session_id, domain, remove_files).await?;
     Ok(msg)
 }
 
@@ -1207,7 +1404,10 @@ async fn server_update_site(
     open_basedir: bool,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    let msg = server::update_site(&mgr, session_id, old_domain, new_domains, new_root, new_php_version, index_files, rewrite_rules, config_path, running_dir, open_basedir).await?;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    let msg = server::update_site(&session, &cache, session_id, old_domain, new_domains, new_root, new_php_version, index_files, rewrite_rules, config_path, running_dir, open_basedir).await?;
     Ok(msg)
 }
 
@@ -1236,8 +1436,11 @@ async fn server_update_site_full(
     proxy_preserve_host: bool,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
     let msg = server::update_site_full(
-        &mgr, session_id, old_domain, new_domains, new_root,
+        &session, &cache, session_id, old_domain, new_domains, new_root,
         new_php_version, index_files, rewrite_rules, config_path,
         running_dir, open_basedir, hotlink_enabled, hotlink_extensions,
         hotlink_allowed_domains, hotlink_response, hotlink_allow_empty_referer,
@@ -1254,7 +1457,10 @@ async fn server_save_site_config(
     config_content: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::save_site_config(&mgr, session_id, config_path, config_content).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::save_site_config(&session, &cache, session_id, config_path, config_content).await
 }
 
 #[tauri::command]
@@ -1269,7 +1475,10 @@ async fn server_set_hotlink_protection(
     allow_empty_referer: bool,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::set_hotlink_protection(&mgr, session_id, config_path, enabled, extensions, allowed_domains, response_code, allow_empty_referer).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::set_hotlink_protection(&session, &cache, session_id, config_path, enabled, extensions, allowed_domains, response_code, allow_empty_referer).await
 }
 
 #[tauri::command]
@@ -1284,7 +1493,10 @@ async fn server_set_reverse_proxy(
     preserve_host: bool,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::set_reverse_proxy(&mgr, session_id, config_path, enabled, proxy_path, proxy_target, websocket, preserve_host).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::set_reverse_proxy(&session, &cache, session_id, config_path, enabled, proxy_path, proxy_target, websocket, preserve_host).await
 }
 
 #[tauri::command]
@@ -1293,7 +1505,10 @@ async fn server_list_php_versions(
     session_id: &str,
 ) -> Result<Vec<String>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::list_php_versions(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::list_php_versions(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -1303,7 +1518,10 @@ async fn server_list_subdirs(
     path: &str,
 ) -> Result<Vec<String>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::list_subdirs(&mgr, session_id, path).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::list_subdirs(&session, &cache, session_id, path).await
 }
 
 #[tauri::command]
@@ -1314,7 +1532,10 @@ async fn server_setup_ssl(
     domain: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    let result = server::setup_ssl(&mgr, session_id, domain, &app).await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    let result = server::setup_ssl(&session, &cache, session_id, domain, &app).await;
     result
 }
 
@@ -1324,7 +1545,10 @@ async fn server_get_monitor_data(
     session_id: &str,
 ) -> Result<MonitorData, String> {
     let mgr = ssh_mgr.lock().await;
-    server::get_monitor_data(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_monitor_data(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -1333,7 +1557,10 @@ async fn server_firewall_list(
     session_id: &str,
 ) -> Result<FirewallInfo, String> {
     let mgr = ssh_mgr.lock().await;
-    server::get_firewall_rules(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_firewall_rules(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -1345,9 +1572,12 @@ async fn server_firewall_add(
     action: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    let result = server::add_firewall_rule(&mgr, session_id, port, protocol, action).await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    let result = server::add_firewall_rule(&session, &cache, session_id, port, protocol, action).await;
     // ponytail: invalidate firewall cache after rule change
-    mgr.cache.invalidate(session_id, &["firewall"]).await;
+    cache.invalidate(session_id, &["firewall"]);
     result
 }
 
@@ -1360,8 +1590,11 @@ async fn server_firewall_remove(
     action: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    let result = server::remove_firewall_rule(&mgr, session_id, port, protocol, action).await;
-    mgr.cache.invalidate(session_id, &["firewall"]).await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    let result = server::remove_firewall_rule(&session, &cache, session_id, port, protocol, action).await;
+    cache.invalidate(session_id, &["firewall"]);
     result
 }
 
@@ -1372,8 +1605,11 @@ async fn server_firewall_toggle(
     enable: bool,
 ) -> Result<FirewallToggleResult, String> {
     let mgr = ssh_mgr.lock().await;
-    let result = server::toggle_firewall(&mgr, session_id, enable).await;
-    mgr.cache.invalidate(session_id, &["firewall"]).await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    let result = server::toggle_firewall(&session, &cache, session_id, enable).await;
+    cache.invalidate(session_id, &["firewall"]);
     result
 }
 
@@ -1383,7 +1619,10 @@ async fn server_get_software_list(
     session_id: &str,
 ) -> Result<Vec<SoftwareInfo>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::get_software_list(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_software_list(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -1392,7 +1631,10 @@ async fn server_get_available_php_versions(
     session_id: &str,
 ) -> Result<Vec<String>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::get_available_php_versions(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_available_php_versions(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -1401,7 +1643,10 @@ async fn server_get_removable_sources(
     session_id: &str,
 ) -> Result<Vec<String>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::get_removable_sources(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_removable_sources(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -1411,7 +1656,10 @@ async fn server_remove_sources(
     source_names: Vec<String>,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::remove_sources(&mgr, session_id, source_names).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::remove_sources(&session, &cache, session_id, source_names).await
 }
 
 #[tauri::command]
@@ -1421,7 +1669,10 @@ async fn server_clean_and_update_sources(
     session_id: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::clean_and_update_sources(&mgr, session_id, &app).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::clean_and_update_sources(&session, &cache, session_id, &app).await
 }
 
 #[tauri::command]
@@ -1433,7 +1684,10 @@ async fn server_add_source(
     gpg_key: Option<&str>,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::add_source(&mgr, session_id, name, url, gpg_key).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::add_source(&session, &cache, session_id, name, url, gpg_key).await
 }
 
 #[tauri::command]
@@ -1446,11 +1700,14 @@ async fn server_software_action(
     options: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    let result = server::software_action(&mgr, session_id, software, action, options, &app).await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    let result = server::software_action(&session, &cache, session_id, software, action, options, &app).await;
     // ponytail: invalidate software/service caches after install/uninstall
-    mgr.cache.invalidate(session_id, &[
+    cache.invalidate(session_id, &[
         "software_list", "service_statuses", "lnmp_status", "docker_status",
-    ]).await;
+    ]);
     result
 }
 
@@ -1461,9 +1718,12 @@ async fn server_reboot(
     force: bool,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    let result = server::reboot_server(&mgr, session_id, force).await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    let result = server::reboot_server(&session, &cache, session_id, force).await;
     // ponytail: clear all cache after reboot (everything is stale)
-    mgr.cache.clear_session(session_id).await;
+    cache.clear_session(session_id);
     result
 }
 
@@ -1473,7 +1733,10 @@ async fn server_get_uptime(
     session_id: &str,
 ) -> Result<(String, String), String> {
     let mgr = ssh_mgr.lock().await;
-    server::get_server_uptime(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_server_uptime(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -1483,7 +1746,10 @@ async fn server_deploy_pubkey(
     pubkey: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::deploy_ssh_pubkey(&mgr, session_id, pubkey).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::deploy_ssh_pubkey(&session, &cache, session_id, pubkey).await
 }
 
 #[tauri::command]
@@ -1492,7 +1758,10 @@ async fn server_get_ssh_auth_mode(
     session_id: &str,
 ) -> Result<SshAuthMode, String> {
     let mgr = ssh_mgr.lock().await;
-    server::get_ssh_auth_mode(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_ssh_auth_mode(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -1503,8 +1772,11 @@ async fn server_set_ssh_auth_mode(
     pubkey_enabled: bool,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    let result = server::set_ssh_auth_mode(&mgr, session_id, password_enabled, pubkey_enabled).await;
-    mgr.cache.invalidate(session_id, &["ssh_auth_mode"]).await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    let result = server::set_ssh_auth_mode(&session, &cache, session_id, password_enabled, pubkey_enabled).await;
+    cache.invalidate(session_id, &["ssh_auth_mode"]);
     result
 }
 
@@ -1514,7 +1786,10 @@ async fn server_get_bbr_status(
     session_id: &str,
 ) -> Result<BbrStatus, String> {
     let mgr = ssh_mgr.lock().await;
-    server::get_bbr_status(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_bbr_status(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -1524,8 +1799,11 @@ async fn server_set_bbr_status(
     enable: bool,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    let result = server::set_bbr_status(&mgr, session_id, enable).await;
-    mgr.cache.invalidate(session_id, &["bbr_status"]).await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    let result = server::set_bbr_status(&session, &cache, session_id, enable).await;
+    cache.invalidate(session_id, &["bbr_status"]);
     result
 }
 
@@ -1536,7 +1814,10 @@ async fn server_get_site_logs(
     domain: &str,
 ) -> Result<Vec<SiteLogInfo>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::get_site_logs(&mgr, session_id, domain).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_site_logs(&session, &cache, session_id, domain).await
 }
 
 #[tauri::command]
@@ -1549,7 +1830,10 @@ async fn server_read_site_log(
     date_to: Option<&str>,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::read_site_log(&mgr, session_id, log_path, lines, date_from, date_to).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::read_site_log(&session, &cache, session_id, log_path, lines, date_from, date_to).await
 }
 
 // ===== Docker Commands =====
@@ -1560,7 +1844,10 @@ async fn server_check_docker(
     session_id: &str,
 ) -> Result<server::DockerStatus, String> {
     let mgr = ssh_mgr.lock().await;
-    server::check_docker(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::check_docker(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -1571,8 +1858,11 @@ async fn server_install_docker(
     use_mirror: bool,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    let result = server::install_docker(&mgr, session_id, use_mirror, &app).await;
-    mgr.cache.invalidate(session_id, &["docker_status", "software_list"]).await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    let result = server::install_docker(&session, &cache, session_id, use_mirror, &app).await;
+    cache.invalidate(session_id, &["docker_status", "software_list"]);
     result
 }
 
@@ -1583,8 +1873,11 @@ async fn server_uninstall_docker(
     session_id: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    let result = server::uninstall_docker(&mgr, session_id, &app).await;
-    mgr.cache.invalidate(session_id, &["docker_status", "software_list"]).await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    let result = server::uninstall_docker(&session, &cache, session_id, &app).await;
+    cache.invalidate(session_id, &["docker_status", "software_list"]);
     result
 }
 
@@ -1594,7 +1887,10 @@ async fn server_docker_container_list(
     session_id: &str,
 ) -> Result<Vec<server::DockerContainer>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::docker_container_list(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::docker_container_list(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -1605,7 +1901,10 @@ async fn server_docker_container_action(
     action: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::docker_container_action(&mgr, session_id, container_id, action).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::docker_container_action(&session, &cache, session_id, container_id, action).await
 }
 
 #[tauri::command]
@@ -1616,7 +1915,10 @@ async fn server_docker_container_remove(
     force: bool,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::docker_container_remove(&mgr, session_id, container_id, force).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::docker_container_remove(&session, &cache, session_id, container_id, force).await
 }
 
 #[tauri::command]
@@ -1627,7 +1929,10 @@ async fn server_docker_container_logs(
     lines: usize,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::docker_container_logs(&mgr, session_id, container_id, lines).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::docker_container_logs(&session, &cache, session_id, container_id, lines).await
 }
 
 #[tauri::command]
@@ -1636,7 +1941,10 @@ async fn server_docker_image_list(
     session_id: &str,
 ) -> Result<Vec<server::DockerImage>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::docker_image_list(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::docker_image_list(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -1647,7 +1955,10 @@ async fn server_docker_image_pull(
     image_name: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::docker_image_pull(&mgr, session_id, image_name, &app).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::docker_image_pull(&session, &cache, session_id, image_name, &app).await
 }
 
 #[tauri::command]
@@ -1657,7 +1968,10 @@ async fn server_docker_image_remove(
     image_id: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::docker_image_remove(&mgr, session_id, image_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::docker_image_remove(&session, &cache, session_id, image_id).await
 }
 
 #[tauri::command]
@@ -1669,7 +1983,10 @@ async fn server_docker_image_run(
     run_args: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::docker_image_run(&mgr, session_id, image_name, run_args, &app).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::docker_image_run(&session, &cache, session_id, image_name, run_args, &app).await
 }
 
 #[tauri::command]
@@ -1678,7 +1995,10 @@ async fn server_docker_get_mirror_config(
     session_id: &str,
 ) -> Result<Vec<String>, String> {
     let mgr = ssh_mgr.lock().await;
-    server::docker_get_mirror_config(&mgr, session_id).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::docker_get_mirror_config(&session, &cache, session_id).await
 }
 
 #[tauri::command]
@@ -1688,7 +2008,10 @@ async fn server_docker_set_mirror_config(
     mirrors: Vec<String>,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
-    server::docker_set_mirror_config(&mgr, session_id, &mirrors).await
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::docker_set_mirror_config(&session, &cache, session_id, &mirrors).await
 }
 
 // ===== SSH Response Cache =====
@@ -1702,7 +2025,7 @@ async fn server_cache_invalidate(
 ) -> Result<(), String> {
     let mgr = ssh_mgr.lock().await;
     let key_refs: Vec<&str> = keys.iter().map(|s| s.as_str()).collect();
-    mgr.cache.invalidate(session_id, &key_refs).await;
+    mgr.cache.invalidate(session_id, &key_refs);
     Ok(())
 }
 

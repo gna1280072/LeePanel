@@ -86,11 +86,15 @@ function App() {
       console.log('Received sidebar-disconnect event')
       if (sessionId) {
         manualDisconnectRef.current = true
-        invoke('ssh_disconnect', { sessionId }).then(() => {
+        const doClear = () => {
           clearSession()
-          // Clear terminal after clearing session state
           termRef.current?.clear()
-        })
+        }
+        // ponytail: race disconnect against 3s local timeout — ensures UI always responds
+        Promise.race([
+          invoke('ssh_disconnect', { sessionId }).catch(() => {}),
+          new Promise<void>(resolve => setTimeout(resolve, 3000)),
+        ]).then(doClear)
       }
     }
     window.addEventListener('sidebar-disconnect', handleDisconnectRequest)
@@ -401,9 +405,13 @@ function App() {
     const doConnect = (username: string, password?: string, keyPath?: string) => {
       setConnectingServerId(conn.id)
       setError('')
-      invoke<string>('ssh_connect', {
-        config: { host: conn.host, port: conn.port, username, password, keyPath },
-      }).then(sid => {
+      // ponytail: 20s local timeout — ensures UI always recovers even if backend hangs
+      Promise.race([
+        invoke<string>('ssh_connect', {
+          config: { host: conn.host, port: conn.port, username, password, keyPath },
+        }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 20000)),
+      ]).then(sid => {
         setSessionId(sid)
         setConnectedConfigId(conn.id)
         console.log('Direct connect! sessionId:', sid, 'configId:', conn.id)

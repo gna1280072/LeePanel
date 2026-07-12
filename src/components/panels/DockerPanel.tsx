@@ -305,14 +305,14 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
     }
   }
 
-  if (!sessionId) return <div className="sp-empty">Connect to a server first</div>
+  if (!sessionId) return <div className="sp-empty">{t('dockerPanel.connectFirst')}</div>
 
   return (
     <div className="docker-panel">
       <div className="docker-header">
         <h2>Docker</h2>
         <button className="docker-refresh-btn" onClick={() => { fetchStatus(); if (status?.installed) { fetchContainers(); fetchImages() } }} disabled={statusLoading}>
-          {statusLoading ? '...' : '↻ Refresh'}
+          {statusLoading ? '...' : `↻ ${t('dockerPanel.refresh')}`}
         </button>
       </div>
 
@@ -322,14 +322,14 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
       {/* Docker Status Card */}
       <div className="docker-status-card">
         {statusLoading && !status ? (
-          <div className="docker-status-loading">Checking Docker...</div>
+          <div className="docker-status-loading">{t('dockerPanel.checking')}</div>
         ) : status ? (
           <>
             <div className="docker-status-info">
               <span className={`docker-status-badge ${status.installed && status.running ? 'active' : status.installed ? 'installed' : 'not-installed'}`}>
                 {status.installed
-                  ? status.running ? 'Running' : 'Installed (Stopped)'
-                  : 'Not Installed'}
+                  ? status.running ? t('dockerPanel.running') : t('dockerPanel.stopped')
+                  : t('dockerPanel.installed')}
               </span>
               {status.installed && (
                 <>
@@ -361,10 +361,10 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
         <div className="docker-stream-panel">
           <div className="docker-stream-header">
             <span className="docker-stream-title">
-              {streamActive ? '⟳ Running...' : '✓ Completed'}
+              {streamActive ? `⟳ ${t('dockerPanel.streamRunning')}` : `✓ ${t('dockerPanel.streamCompleted')}`}
             </span>
             {streamLogs.length > 0 && (
-              <button className="docker-stream-clear" onClick={() => setStreamLogs([])}>✕ Clear</button>
+              <button className="docker-stream-clear" onClick={() => setStreamLogs([])}>✕ {t('dockerPanel.streamClear')}</button>
             )}
           </div>
           <div className="docker-stream-body">
@@ -381,13 +381,13 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
         <>
           <div className="docker-tabs">
             <button className={`docker-tab ${activeTab === 'containers' ? 'active' : ''}`} onClick={() => setActiveTab('containers')}>
-              Containers ({containers.length})
+              {t('dockerPanel.containersTab', { count: containers.length })}
             </button>
             <button className={`docker-tab ${activeTab === 'images' ? 'active' : ''}`} onClick={() => setActiveTab('images')}>
-              Images ({images.length})
+              {t('dockerPanel.imagesTab', { count: images.length })}
             </button>
             <button className={`docker-tab ${activeTab === 'mirror' ? 'active' : ''}`} onClick={() => setActiveTab('mirror')}>
-              Mirror
+              {t('dockerPanel.mirrorTab')}
             </button>
           </div>
 
@@ -395,17 +395,17 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
           {activeTab === 'containers' && (
             <div className="docker-tab-content">
               {containersLoading && containers.length === 0 ? (
-                <div className="docker-loading">Loading containers...</div>
+                <div className="docker-loading">{t('dockerPanel.loadingContainers')}</div>
               ) : containers.length === 0 ? (
-                <div className="docker-empty">No containers found.</div>
+                <div className="docker-empty">{t('dockerPanel.noContainers')}</div>
               ) : (
                 <div className="docker-table">
                   <div className="docker-table-header">
-                    <span className="docker-col-name">Name</span>
-                    <span className="docker-col-image">Image</span>
-                    <span className="docker-col-status">Status</span>
-                    <span className="docker-col-ports">Ports</span>
-                    <span className="docker-col-actions">Actions</span>
+                    <span className="docker-col-name">{t('dockerPanel.colName')}</span>
+                    <span className="docker-col-image">{t('dockerPanel.colImage')}</span>
+                    <span className="docker-col-status">{t('dockerPanel.colStatus')}</span>
+                    <span className="docker-col-ports">{t('dockerPanel.colPorts')}</span>
+                    <span className="docker-col-actions">{t('dockerPanel.colActions')}</span>
                   </div>
                   {containers.map((c) => (
                     <div className="docker-table-row" key={c.id}>
@@ -416,17 +416,17 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
                       <span className="docker-col-actions">
                         {c.state === 'running' ? (
                           <>
-                            <button className="docker-action-btn" onClick={() => handleContainerAction(c, 'stop')} disabled={!!containerAction} title="Stop">⏹</button>
-                            <button className="docker-action-btn" onClick={() => handleContainerAction(c, 'restart')} disabled={!!containerAction} title="Restart">🔄</button>
-                            <button className="docker-action-btn" onClick={() => handleContainerAction(c, 'pause')} disabled={!!containerAction} title="Pause">⏸</button>
+                            <button className="docker-action-btn" onClick={() => handleContainerAction(c, 'stop')} disabled={!!containerAction} title={t('dockerPanel.stop')}>⏹</button>
+                            <button className="docker-action-btn" onClick={() => handleContainerAction(c, 'restart')} disabled={!!containerAction} title={t('dockerPanel.restart')}>🔄</button>
+                            <button className="docker-action-btn" onClick={() => handleContainerAction(c, 'pause')} disabled={!!containerAction} title={t('dockerPanel.pause')}>⏸</button>
                           </>
                         ) : c.state === 'paused' ? (
-                          <button className="docker-action-btn" onClick={() => handleContainerAction(c, 'unpause')} disabled={!!containerAction} title="Unpause">▶</button>
+                          <button className="docker-action-btn" onClick={() => handleContainerAction(c, 'unpause')} disabled={!!containerAction} title={t('dockerPanel.unpause')}>▶</button>
                         ) : (
-                          <button className="docker-action-btn" onClick={() => handleContainerAction(c, 'start')} disabled={!!containerAction} title="Start">▶</button>
+                          <button className="docker-action-btn" onClick={() => handleContainerAction(c, 'start')} disabled={!!containerAction} title={t('dockerPanel.start')}>▶</button>
                         )}
-                        <button className="docker-action-btn" onClick={() => handleViewLogs(c)} disabled={!!containerAction} title="Logs">📋</button>
-                        <button className="docker-action-btn danger" onClick={() => setConfirmDeleteContainer(c)} disabled={!!containerAction} title="Delete">🗑</button>
+                        <button className="docker-action-btn" onClick={() => handleViewLogs(c)} disabled={!!containerAction} title={t('dockerPanel.logs')}>📋</button>
+                        <button className="docker-action-btn danger" onClick={() => setConfirmDeleteContainer(c)} disabled={!!containerAction} title={t('dockerPanel.delete')}>🗑</button>
                         {containerAction === c.id + 'stop' || containerAction === c.id + 'start' || containerAction === c.id + 'restart' || containerAction === c.id + 'pause' || containerAction === c.id + 'unpause' || containerAction === c.id + 'delete' ? (
                           <span className="docker-action-loading">...</span>
                         ) : null}
@@ -446,27 +446,27 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
                   className="docker-pull-input"
                   value={pullImageName}
                   onChange={(e) => setPullImageName(e.target.value)}
-                  placeholder="nginx:latest, redis:7, mysql:8.0..."
+                  placeholder={t('dockerPanel.pullPlaceholder')}
                   onKeyDown={(e) => { if (e.key === 'Enter') handlePullImage() }}
                   disabled={pulling}
                 />
                 <button className="docker-btn primary" onClick={handlePullImage} disabled={pulling || !pullImageName.trim()}>
-                  {pulling ? 'Pulling...' : 'Pull Image'}
+                  {pulling ? t('dockerPanel.pulling') : t('dockerPanel.pullImage')}
                 </button>
               </div>
 
               {imagesLoading && images.length === 0 ? (
-                <div className="docker-loading">Loading images...</div>
+                <div className="docker-loading">{t('dockerPanel.loadingImages')}</div>
               ) : images.length === 0 ? (
-                <div className="docker-empty">No images found. Pull an image to get started.</div>
+                <div className="docker-empty">{t('dockerPanel.noImages')}</div>
               ) : (
                 <div className="docker-table">
                   <div className="docker-table-header">
-                    <span className="docker-col-repo">Repository</span>
-                    <span className="docker-col-tag">Tag</span>
-                    <span className="docker-col-id">Image ID</span>
-                    <span className="docker-col-size">Size</span>
-                    <span className="docker-col-actions">Actions</span>
+                    <span className="docker-col-repo">{t('dockerPanel.colRepo')}</span>
+                    <span className="docker-col-tag">{t('dockerPanel.colTag')}</span>
+                    <span className="docker-col-id">{t('dockerPanel.colId')}</span>
+                    <span className="docker-col-size">{t('dockerPanel.colSize')}</span>
+                    <span className="docker-col-actions">{t('dockerPanel.colActions')}</span>
                   </div>
                   {images.map((img, idx) => (
                     <div className="docker-table-row" key={`${img.id}-${idx}`}>
@@ -476,7 +476,7 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
                       <span className="docker-col-size">{img.size}</span>
                       <span className="docker-col-actions">
                         <button className="docker-action-btn" onClick={() => handleRunFromImage(img)} title={t('dockerPanel.runContainer')}>▶️</button>
-                        <button className="docker-action-btn danger" onClick={() => setConfirmDeleteImage(img)} title="Delete">🗑</button>
+                        <button className="docker-action-btn danger" onClick={() => setConfirmDeleteImage(img)} title={t('dockerPanel.delete')}>🗑</button>
                       </span>
                     </div>
                   ))}
@@ -490,21 +490,21 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
             <div className="docker-tab-content">
               <div className="docker-mirror-section">
                 <div className="docker-mirror-header">
-                  <h3>Registry Mirrors</h3>
-                  <p className="docker-mirror-desc">Configure Docker registry mirrors to accelerate image pulls (especially useful in China).</p>
+                  <h3>{t('dockerPanel.registryMirrors')}</h3>
+                  <p className="docker-mirror-desc">{t('dockerPanel.mirrorDesc')}</p>
                 </div>
 
                 {mirrorLoading ? (
-                  <div className="docker-loading">Loading config...</div>
+                  <div className="docker-loading">{t('dockerPanel.loadingConfig')}</div>
                 ) : (
                   <>
                     {mirrors.length > 0 && (
                       <div className="docker-mirror-current">
-                        <span className="docker-mirror-label">Current mirrors:</span>
+                        <span className="docker-mirror-label">{t('dockerPanel.currentMirrors')}</span>
                         {mirrors.map((m, i) => (
                           <span key={i} className="docker-mirror-tag">
                             {m}
-                            <button className="docker-mirror-remove" onClick={() => handleRemoveMirror(m)} title="Remove">✕</button>
+                            <button className="docker-mirror-remove" onClick={() => handleRemoveMirror(m)} title={t('dockerPanel.remove')}>✕</button>
                           </span>
                         ))}
                       </div>
@@ -512,7 +512,7 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
 
                     <div className="docker-mirror-form">
                       <label className="docker-mirror-form-label">
-                        Mirror URLs (one per line):
+                        {t('dockerPanel.mirrorUrlsLabel')}
                       </label>
                       <textarea
                         className="docker-mirror-textarea"
@@ -523,22 +523,22 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
                       />
                       <div className="docker-mirror-actions">
                         <button className="docker-btn primary" onClick={handleSaveMirror} disabled={mirrorSaving || !mirrorInput.trim()}>
-                          {mirrorSaving ? 'Saving...' : 'Save & Restart Docker'}
+                          {mirrorSaving ? t('dockerPanel.saving') : t('dockerPanel.saveRestart')}
                         </button>
                         <button className="docker-btn" onClick={() => { setMirrorInput(mirrors.join('\n')) }}>
-                          Load Current
+                          {t('dockerPanel.loadCurrent')}
                         </button>
                       </div>
                     </div>
 
                     <div className="docker-mirror-presets">
-                      <span className="docker-mirror-presets-title">Common mirrors:</span>
+                      <span className="docker-mirror-presets-title">{t('dockerPanel.commonMirrors')}</span>
                       <div className="docker-mirror-presets-list">
                         {[
-                          { name: 'Aliyun', url: 'https://registry.cn-hangzhou.aliyuncs.com' },
                           { name: 'Tencent', url: 'https://mirror.ccs.tencentyun.com' },
-                          { name: 'DaoCloud', url: 'https://f1361db2.m.daocloud.io' },
-                          { name: 'Docker CN', url: 'https://registry.docker-cn.com' },
+                          { name: 'DaoCloud', url: 'https://docker.m.daocloud.io' },
+                          { name: 'Xuanyuan', url: 'https://docker.xuanyuan.me' },
+                          { name: '1ms', url: 'https://docker.1ms.run' },
                         ].map((preset) => (
                           <button
                             key={preset.name}
@@ -567,14 +567,14 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
         <div className="docker-modal-overlay">
           <div className="docker-modal" onClick={(e) => e.stopPropagation()}>
             <div className="docker-modal-header">
-              <span className="docker-modal-title">Logs: {logContainer.name}</span>
+              <span className="docker-modal-title">{t('dockerPanel.logsTitle', { name: logContainer.name })}</span>
               <button className="docker-modal-close" onClick={() => setLogContainer(null)}>×</button>
             </div>
             <div className="docker-modal-body">
               {logsLoading ? (
-                <div className="docker-loading">Loading logs...</div>
+                <div className="docker-loading">{t('dockerPanel.loadingLogs')}</div>
               ) : (
-                <pre className="docker-logs-content">{containerLogs || 'No logs available.'}</pre>
+                <pre className="docker-logs-content">{containerLogs || t('dockerPanel.noLogs')}</pre>
               )}
             </div>
           </div>
@@ -588,17 +588,17 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
             <button 
               className="modal-close-btn"
               onClick={() => setConfirmDeleteContainer(null)}
-              title="关闭"
+              title={t('dockerPanel.close')}
             >×</button>
-            <div className="docker-confirm-title">Delete Container</div>
+            <div className="docker-confirm-title">{t('dockerPanel.deleteContainerTitle')}</div>
             <div className="docker-confirm-msg">
-              Delete container <strong>{confirmDeleteContainer.name}</strong>?
-              {confirmDeleteContainer.state === 'running' && <span className="docker-warn"> (Running container will be force-removed)</span>}
+              {t('dockerPanel.deleteContainerMsg', { name: confirmDeleteContainer.name })}
+              {confirmDeleteContainer.state === 'running' && <span className="docker-warn">{t('dockerPanel.forceRemoveWarn')}</span>}
             </div>
             <div className="docker-confirm-actions">
-              <button className="docker-btn" onClick={() => setConfirmDeleteContainer(null)}>Cancel</button>
+              <button className="docker-btn" onClick={() => setConfirmDeleteContainer(null)}>{t('dockerPanel.cancel')}</button>
               <button className="docker-btn danger" onClick={() => handleDeleteContainer(confirmDeleteContainer, confirmDeleteContainer.state === 'running')}>
-                Delete
+                {t('dockerPanel.delete')}
               </button>
             </div>
           </div>
@@ -612,15 +612,15 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
             <button 
               className="modal-close-btn"
               onClick={() => setConfirmDeleteImage(null)}
-              title="关闭"
+              title={t('dockerPanel.close')}
             >×</button>
-            <div className="docker-confirm-title">Delete Image</div>
+            <div className="docker-confirm-title">{t('dockerPanel.deleteImageTitle')}</div>
             <div className="docker-confirm-msg">
-              Delete image <strong>{confirmDeleteImage.repository === '<none>' ? confirmDeleteImage.id.substring(0, 12) : `${confirmDeleteImage.repository}:${confirmDeleteImage.tag}`}</strong>?
+              {t('dockerPanel.deleteImageMsg', { name: confirmDeleteImage.repository === '<none>' ? confirmDeleteImage.id.substring(0, 12) : `${confirmDeleteImage.repository}:${confirmDeleteImage.tag}` })}
             </div>
             <div className="docker-confirm-actions">
-              <button className="docker-btn" onClick={() => setConfirmDeleteImage(null)}>Cancel</button>
-              <button className="docker-btn danger" onClick={() => handleDeleteImage(confirmDeleteImage)}>Delete</button>
+              <button className="docker-btn" onClick={() => setConfirmDeleteImage(null)}>{t('dockerPanel.cancel')}</button>
+              <button className="docker-btn danger" onClick={() => handleDeleteImage(confirmDeleteImage)}>{t('dockerPanel.delete')}</button>
             </div>
           </div>
         </div>
@@ -636,13 +636,13 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
                 setRunImageModal(null)
                 setRunCommand('')
               }}
-              title="关闭"
+              title={t('dockerPanel.close')}
             >×</button>
             <div className="docker-confirm-title">
-              Run Container: {runImageModal.repository === '<none>' ? runImageModal.id.substring(0, 12) : `${runImageModal.repository}:${runImageModal.tag}`}
+              {t('dockerPanel.runContainerTitle', { name: runImageModal.repository === '<none>' ? runImageModal.id.substring(0, 12) : `${runImageModal.repository}:${runImageModal.tag}` })}
             </div>
             <div className="docker-confirm-msg">
-              Enter docker run arguments (without 'docker run' and image name):
+              {t('dockerPanel.runArgsLabel')}
             </div>
             <textarea
               className="docker-mirror-textarea"
@@ -656,9 +656,9 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
               <button className="docker-btn" onClick={() => {
                 setRunImageModal(null)
                 setRunCommand('')
-              }}>Cancel</button>
+              }}>{t('dockerPanel.cancel')}</button>
               <button className="docker-btn primary" onClick={handleExecuteRun} disabled={runningContainer}>
-                {runningContainer ? 'Running...' : 'Run Container'}
+                {runningContainer ? t('dockerPanel.runningAction') : t('dockerPanel.runContainer')}
               </button>
             </div>
           </div>

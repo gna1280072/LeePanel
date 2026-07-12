@@ -1,4 +1,4 @@
-use crate::ssh::SshManager;
+use crate::ssh::{SshSession, SshCache};
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use russh_keys::key::{KeyPair, SignatureHash};
 use serde::{Deserialize, Serialize};
@@ -55,10 +55,8 @@ pub struct ServiceStatus {
 // ===== OS Detection =====
 
 /// Detect the operating system of the remote server
-pub async fn detect_os(ssh_mgr: &SshManager, session_id: &str) -> Result<OsInfo, String> {
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(
-            session_id,
+pub async fn detect_os(session: &SshSession, cache: &SshCache, session_id: &str) -> Result<OsInfo, String> {
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
 # Detect distro
 if [ -f /etc/os-release ]; then
@@ -145,19 +143,18 @@ echo "HOSTNAME=$(hostname)"
 
 /// Get comprehensive system information
 pub async fn get_system_info(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<SystemInfo, String> {
     // ponytail: cache system info for 15s (memory/uptime/load change, but panel switches are fast)
-    if let Some(cached) = ssh_mgr.cache.get(session_id, "system_info", 15).await {
+    if let Some(cached) = cache.get(session_id, "system_info", 15) {
         if let Ok(info) = serde_json::from_str::<SystemInfo>(&cached) {
             return Ok(info);
         }
     }
     // ponytail: single SSH round-trip combining OS detection + system info (was 2 calls)
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(
-            session_id,
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
 # OS Detection
 if [ -f /etc/os-release ]; then
@@ -302,7 +299,7 @@ df -h --output=source,size,used,avail,pcent,target -x tmpfs -x devtmpfs -x squas
 
     // ponytail: cache system info
     if let Ok(json) = serde_json::to_string(&info) {
-        ssh_mgr.cache.put(session_id, "system_info", json).await;
+        cache.put(session_id, "system_info", json);
     }
     Ok(info)
 }
@@ -311,19 +308,18 @@ df -h --output=source,size,used,avail,pcent,target -x tmpfs -x devtmpfs -x squas
 
 /// Check status of LNMP services
 pub async fn get_service_statuses(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<Vec<ServiceStatus>, String> {
     // ponytail: cache service statuses for 30s (changes only on start/stop)
-    if let Some(cached) = ssh_mgr.cache.get(session_id, "service_statuses", 30).await {
+    if let Some(cached) = cache.get(session_id, "service_statuses", 30) {
         if let Ok(statuses) = serde_json::from_str::<Vec<ServiceStatus>>(&cached) {
             return Ok(statuses);
         }
     }
     // ponytail: single SSH round-trip for all services (was ~10 sequential calls)
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(
-            session_id,
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
 for svc in nginx php-fpm; do
   ACTIVE=$(systemctl is-active $svc 2>/dev/null)
@@ -392,7 +388,7 @@ echo "PHP_VER=$(echo "$_pver" | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head 
 
     // ponytail: cache service statuses
     if let Ok(json) = serde_json::to_string(&statuses) {
-        ssh_mgr.cache.put(session_id, "service_statuses", json).await;
+        cache.put(session_id, "service_statuses", json);
     }
     Ok(statuses)
 }
@@ -416,18 +412,17 @@ pub struct LnmpStatus {
 
 /// Check which LNMP components are currently installed
 pub async fn check_lnmp_status(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<LnmpStatus, String> {
     // ponytail: cache LNMP status for connection lifetime (changes only on install/uninstall)
-    if let Some(cached) = ssh_mgr.cache.get(session_id, "lnmp_status", 0).await {
+    if let Some(cached) = cache.get(session_id, "lnmp_status", 0) {
         if let Ok(status) = serde_json::from_str::<LnmpStatus>(&cached) {
             return Ok(status);
         }
     }
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(
-            session_id,
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
 echo "NGINX=$(( command -v nginx || [ -x /www/server/nginx/sbin/nginx ] ) >/dev/null 2>&1 && echo yes || echo no)"
 echo "PHP=$(( command -v php || ls /www/server/php/*/bin/php >/dev/null 2>&1 ) >/dev/null 2>&1 && echo yes || echo no)"
@@ -459,7 +454,7 @@ echo "PHP_VER=$(php -v 2>/dev/null || $(ls /www/server/php/*/bin/php 2>/dev/null
 
     // ponytail: cache LNMP status
     if let Ok(json) = serde_json::to_string(&status) {
-        ssh_mgr.cache.put(session_id, "lnmp_status", json).await;
+        cache.put(session_id, "lnmp_status", json);
     }
     Ok(status)
 }
@@ -561,13 +556,14 @@ fn generate_install_script(os: &OsInfo, config: &LnmpInstallConfig) -> String {
 
 /// Install LNMP stack on the remote server, emitting progress events
 pub async fn install_lnmp(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     config: &LnmpInstallConfig,
     app_handle: &AppHandle,
 ) -> Result<String, String> {
     // Detect OS first
-    let os = detect_os(ssh_mgr, session_id).await?;
+    let os = detect_os(session, cache, session_id).await?;
 
     if os.family == "unknown" {
         return Err(format!("Unsupported operating system: {}", os.distro));
@@ -577,13 +573,12 @@ pub async fn install_lnmp(
     let script = generate_install_script(&os, config);
 
     // Write script to remote server
-    ssh_mgr
-        .write_file(session_id, "/tmp/lnmp-install.sh", &script)
+    crate::ssh::session_write_file(session, "/tmp/lnmp-install.sh", &script)
         .await?;
 
     // Make it executable and run it
     // Use a shell channel to stream output
-    let mut channel = ssh_mgr.open_channel(session_id).await?;
+    let mut channel = crate::ssh::session_open_channel(session).await?;
     channel
         .exec(true, "bash /tmp/lnmp-install.sh")
         .await
@@ -678,7 +673,8 @@ pub struct ServiceInfo {
 
 /// Get detailed info for a specific service
 pub async fn get_service_info(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     service: &str,
 ) -> Result<ServiceInfo, String> {
@@ -706,8 +702,7 @@ echo "CFG=$(php -i 2>/dev/null | grep 'Loaded Configuration File' | head -1 | cu
 "#, svc = service),
     };
 
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(session_id, &cmd, 15)
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session, &cmd, 15)
         .await?;
 
     let mut info = ServiceInfo {
@@ -795,12 +790,11 @@ echo "CFG=$(php -i 2>/dev/null | grep 'Loaded Configuration File' | head -1 | cu
 
 /// Find the active MySQL/MariaDB service name in a single SSH call (was ~9 sequential calls)
 pub async fn find_mysql_service(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<(String, ServiceInfo), String> {
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(
-            session_id,
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
 for svc in mysqld mariadb mysql; do
   ACTIVE=$(systemctl is-active $svc 2>/dev/null || echo inactive)
@@ -836,18 +830,17 @@ done
         return Err("No MySQL/MariaDB service found".to_string());
     }
 
-    let info = get_service_info(ssh_mgr, session_id, &service_name).await?;
+    let info = get_service_info(session, cache, session_id, &service_name).await?;
     Ok((service_name, info))
 }
 
 /// Find the active PHP-FPM service name in a single SSH call (was ~18 sequential calls)
 pub async fn find_php_service(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<(String, ServiceInfo), String> {
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(
-            session_id,
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
 for svc in php-fpm php8.4-fpm php8.3-fpm php8.2-fpm php8.1-fpm php8.0-fpm; do
   ACTIVE=$(systemctl is-active $svc 2>/dev/null || echo inactive)
@@ -882,18 +875,17 @@ done
         return Err("No PHP-FPM service found".to_string());
     }
 
-    let info = get_service_info(ssh_mgr, session_id, &service_name).await?;
+    let info = get_service_info(session, cache, session_id, &service_name).await?;
     Ok((service_name, info))
 }
 
 /// Find the FPM pool config path in a single SSH call (was up to 6 sequential reads)
 pub async fn find_php_fpm_config(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<(String, String), String> {
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(
-            session_id,
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
 for p in /etc/php-fpm.d/www.conf /etc/php/8.4/fpm/pool.d/www.conf /etc/php/8.3/fpm/pool.d/www.conf /etc/php/8.2/fpm/pool.d/www.conf /etc/php/8.1/fpm/pool.d/www.conf /etc/php/8.0/fpm/pool.d/www.conf; do
   if [ -f "$p" ]; then
@@ -932,13 +924,13 @@ echo "NOT_FOUND"
 
 /// Read a remote file's content via SSH exec
 pub async fn read_remote_file(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     path: &str,
 ) -> Result<String, String> {
     let safe = path.replace('\'', "'\\''");
-    let (stdout, stderr, code) = ssh_mgr
-        .exec_with_output(session_id, &format!("cat '{}'", safe), 10)
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &format!("cat '{}'", safe), 10)
         .await?;
     if code != 0 {
         Err(format!("Failed to read {}: {}", path, stderr.trim()))
@@ -949,36 +941,36 @@ pub async fn read_remote_file(
 
 /// Write content to a remote file via SFTP
 pub async fn write_remote_file(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     path: &str,
     content: &str,
 ) -> Result<(), String> {
-    ssh_mgr.write_file(session_id, path, content).await
+    crate::ssh::session_write_file(session, path, content).await
 }
 
 /// Get recent log lines from a file
 pub async fn get_log_lines(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     path: &str,
     lines: u32,
 ) -> Result<String, String> {
     let safe = path.replace('\'', "'\\''");
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(session_id, &format!("tail -{} '{}'", lines, safe), 10)
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session, &format!("tail -{} '{}'", lines, safe), 10)
         .await?;
     Ok(stdout)
 }
 
 /// List Nginx virtual hosts
 pub async fn list_nginx_vhosts(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<Vec<String>, String> {
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(
-            session_id,
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
 for dir in /etc/nginx/conf.d /etc/nginx/sites-enabled /etc/nginx/sites-available /www/server/panel/vhost/nginx /www/server/nginx/conf/vhost; do
   [ -d "$dir" ] && find "$dir" -maxdepth 1 -type f 2>/dev/null
@@ -1003,11 +995,11 @@ done | sort -u
 
 /// Get Nginx configuration test result
 pub async fn test_nginx_config(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<(bool, String), String> {
-    let (stdout, stderr, code) = ssh_mgr
-        .exec_with_output(session_id, "nginx -t 2>&1", 10)
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, "nginx -t 2>&1", 10)
         .await?;
     let combined = format!("{} {}", stdout, stderr);
     let ok = code == 0 || combined.contains("test is successful") || combined.contains("syntax is ok");
@@ -1016,12 +1008,11 @@ pub async fn test_nginx_config(
 
 /// Get MySQL global variables
 pub async fn get_mysql_variables(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<Vec<(String, String)>, String> {
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(
-            session_id,
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             "mysql -e 'SHOW GLOBAL VARIABLES' 2>/dev/null | head -80",
             10,
         )
@@ -1038,12 +1029,11 @@ pub async fn get_mysql_variables(
 
 /// Get MySQL process list
 pub async fn get_mysql_processes(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<String, String> {
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(
-            session_id,
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             "mysql -e 'SHOW PROCESSLIST' 2>/dev/null",
             10,
         )
@@ -1053,14 +1043,13 @@ pub async fn get_mysql_processes(
 
 /// Execute a MySQL query
 pub async fn exec_mysql_query(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     query: &str,
 ) -> Result<String, String> {
     let safe_query = query.replace('\'', "'\\''");
-    let (stdout, stderr, code) = ssh_mgr
-        .exec_with_output(
-            session_id,
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session,
             &format!("mysql -e '{}' 2>&1", safe_query),
             15,
         )
@@ -1102,18 +1091,17 @@ pub struct SiteInfo {
 
 /// List installed PHP-FPM versions on the server
 pub async fn list_php_versions(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<Vec<String>, String> {
     // ponytail: cache PHP versions for connection lifetime
-    if let Some(cached) = ssh_mgr.cache.get(session_id, "php_versions", 0).await {
+    if let Some(cached) = cache.get(session_id, "php_versions", 0) {
         if let Ok(versions) = serde_json::from_str::<Vec<String>>(&cached) {
             return Ok(versions);
         }
     }
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(
-            session_id,
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
 # ponytail: dynamic scan — no hardcoded version list
 # From systemd unit files
@@ -1141,21 +1129,20 @@ fi
 
     // ponytail: cache PHP versions
     if let Ok(json) = serde_json::to_string(&versions) {
-        ssh_mgr.cache.put(session_id, "php_versions", json).await;
+        cache.put(session_id, "php_versions", json);
     }
     Ok(versions)
 }
 
 /// List immediate subdirectories of a given path
 pub async fn list_subdirs(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     path: &str,
 ) -> Result<Vec<String>, String> {
     let safe_path = path.replace('\'', "'\\''");
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(
-            session_id,
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             &format!("find '{}' -maxdepth 1 -mindepth 1 -type d -printf '%f\\n' 2>/dev/null | sort", safe_path),
             10,
         )
@@ -1172,12 +1159,11 @@ pub async fn list_subdirs(
 
 /// List all configured sites from Nginx
 pub async fn list_sites(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<Vec<SiteInfo>, String> {
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(
-            session_id,
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r##"
 # Parse nginx vhost configs — scan both enabled and disabled
 seen=""
@@ -1557,7 +1543,8 @@ fn parse_site_config(path: &str, content: &str) -> Option<SiteInfo> {
 
 /// Create a new site with Nginx vhost configuration
 pub async fn create_site(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     domain: &str,
     root: &str,
@@ -1586,8 +1573,7 @@ pub async fn create_site(
     // Check if nginx is installed
     let nginx_check_cmd = r#"which nginx 2>/dev/null || command -v nginx 2>/dev/null || [ -x /www/server/nginx/sbin/nginx ] && echo 'found' || echo ''"#;
     emit(&format!("Command: {}", nginx_check_cmd));
-    let (nginx_check_out, nginx_check_err, _nginx_check_code) = ssh_mgr
-        .exec_with_output(session_id, nginx_check_cmd, 5)
+    let (nginx_check_out, nginx_check_err, _nginx_check_code) = crate::ssh::session_exec_with_output(session, nginx_check_cmd, 5)
         .await?;
     if !nginx_check_out.trim().is_empty() {
         emit("STDOUT: Nginx found");
@@ -1641,8 +1627,7 @@ echo "HAS_FCGI_SNIPPET=$([ -f /etc/nginx/snippets/fastcgi-php.conf ] && echo '1'
     
     emit("Detecting system configuration...");
     emit(&format!("Command: {}", detect_cmd.trim()));
-    let (detect_out, detect_err, _) = ssh_mgr
-        .exec_with_output(session_id, detect_cmd, 10)
+    let (detect_out, detect_err, _) = crate::ssh::session_exec_with_output(session, detect_cmd, 10)
         .await?;
     
     if !detect_out.trim().is_empty() {
@@ -1773,8 +1758,7 @@ echo "HAS_FCGI_SNIPPET=$([ -f /etc/nginx/snippets/fastcgi-php.conf ] && echo '1'
     emit(&format!("Creating web root: {}", root));
     let mkdir_cmd = format!("mkdir -p '{}'", effective_root);
     emit(&format!("Command: {}", mkdir_cmd));
-    let (mkdir_out, mkdir_err, _) = ssh_mgr
-        .exec_with_output(session_id, &mkdir_cmd, 10)
+    let (mkdir_out, mkdir_err, _) = crate::ssh::session_exec_with_output(session, &mkdir_cmd, 10)
         .await?;
     if !mkdir_out.trim().is_empty() {
         emit(&format!("STDOUT: {}", mkdir_out.trim()));
@@ -1787,8 +1771,7 @@ echo "HAS_FCGI_SNIPPET=$([ -f /etc/nginx/snippets/fastcgi-php.conf ] && echo '1'
     emit("Setting file permissions...");
     let chown_cmd = format!("chown -R {}:'{}' '{}' 2>/dev/null || true", nginx_user, nginx_user, safe_root);
     emit(&format!("Command: {}", chown_cmd));
-    let (chown_out, chown_err, _) = ssh_mgr
-        .exec_with_output(session_id, &chown_cmd, 10)
+    let (chown_out, chown_err, _) = crate::ssh::session_exec_with_output(session, &chown_cmd, 10)
         .await?;
     if !chown_out.trim().is_empty() {
         emit(&format!("STDOUT: {}", chown_out.trim()));
@@ -1920,9 +1903,7 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
 </body>
 </html>
 "#;
-        ssh_mgr
-            .write_file(
-                session_id,
+        crate::ssh::session_write_file(session,
                 &format!("{}/index.php", root),
                 index_content,
             )
@@ -2016,9 +1997,7 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
 </body>
 </html>
 "#;
-        ssh_mgr
-            .write_file(
-                session_id,
+        crate::ssh::session_write_file(session,
                 &format!("{}/index.html", root),
                 index_content,
             )
@@ -2027,8 +2006,7 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
 
     // Write nginx config
     emit("Generating Nginx configuration...");
-    ssh_mgr
-        .write_file(session_id, &config_path, &nginx_conf)
+    crate::ssh::session_write_file(session, &config_path, &nginx_conf)
         .await?;
     emit(&format!("Config written to: {}", config_path));
 
@@ -2037,8 +2015,7 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
         emit("Enabling site in Nginx...");
         let symlink_cmd = format!("ln -sf '{}' '/etc/nginx/sites-enabled/{}'", config_path, safe_domain);
         emit(&format!("Command: {}", symlink_cmd));
-        let (symlink_out, symlink_err, _) = ssh_mgr
-            .exec_with_output(session_id, &symlink_cmd, 5)
+        let (symlink_out, symlink_err, _) = crate::ssh::session_exec_with_output(session, &symlink_cmd, 5)
             .await?;
         if !symlink_out.trim().is_empty() {
             emit(&format!("STDOUT: {}", symlink_out.trim()));
@@ -2052,8 +2029,7 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
     emit("Testing Nginx configuration...");
     let test_cmd = "nginx -t 2>&1";
     emit(&format!("Command: {}", test_cmd));
-    let (test_stdout, test_stderr, test_code) = ssh_mgr
-        .exec_with_output(session_id, test_cmd, 10)
+    let (test_stdout, test_stderr, test_code) = crate::ssh::session_exec_with_output(session, test_cmd, 10)
         .await?;
     // nginx -t outputs everything to stderr; combine both for robust checking
     let test_combined = format!("{} {}", test_stdout, test_stderr);
@@ -2072,8 +2048,7 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
     emit("Reloading Nginx...");
     let reload_cmd = "systemctl reload nginx";
     emit(&format!("Command: {}", reload_cmd));
-    let (reload_out, reload_err, _) = ssh_mgr
-        .exec_with_output(session_id, reload_cmd, 10)
+    let (reload_out, reload_err, _) = crate::ssh::session_exec_with_output(session, reload_cmd, 10)
         .await?;
     if !reload_out.trim().is_empty() {
         emit(&format!("STDOUT: {}", reload_out.trim()));
@@ -2089,8 +2064,7 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
         emit(&format!("Creating database: {}...", db_name));
         
         // Check if mysql client is installed on the server
-        let (which_out, _, which_code) = ssh_mgr
-            .exec_with_output(session_id, "command -v mysql", 5)
+        let (which_out, _, which_code) = crate::ssh::session_exec_with_output(session, "command -v mysql", 5)
             .await?;
         if which_code != 0 || which_out.trim().is_empty() {
             emit("✗ MySQL client is NOT installed on the server");
@@ -2120,7 +2094,7 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
                 emit(line);
             }
             
-            if let Err(e) = ssh_mgr.write_file(session_id, tmp_sql, &sql).await {
+            if let Err(e) = crate::ssh::session_write_file(session, tmp_sql, &sql).await {
                 emit(&format!("✗ Failed to write SQL file: {}", e));
                 db_warning = format!(" (database not created: failed to write SQL file: {})", e);
             } else {
@@ -2130,14 +2104,12 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
                 let mysql_cmd = format!("mysql < {}", tmp_sql);
                 emit(&format!("Command: {}", mysql_cmd));
                 
-                let (db_out, db_err, db_code) = ssh_mgr
-                    .exec_with_output(session_id, &mysql_cmd, 30)
+                let (db_out, db_err, db_code) = crate::ssh::session_exec_with_output(session, &mysql_cmd, 30)
                     .await?;
                 
                 // Check if database was actually created (verify regardless of exit code)
                 let verify_cmd = format!("mysql -e 'SHOW DATABASES' 2>&1 | grep -i '{}'", safe_db);
-                let (verify_out, _, _) = ssh_mgr
-                    .exec_with_output(session_id, &verify_cmd, 10)
+                let (verify_out, _, _) = crate::ssh::session_exec_with_output(session, &verify_cmd, 10)
                     .await?;
                 let db_exists = !verify_out.trim().is_empty();
                 
@@ -2208,8 +2180,7 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
         emit("Setting up SSL certificate...");
         let ssl_cmd = format!("certbot --nginx -d '{}' --non-interactive --agree-tos --email admin@'{}' 2>&1", safe_domain, safe_domain);
         emit(&format!("Command: {}", ssl_cmd));
-        let (ssl_out, ssl_err, ssl_code) = ssh_mgr
-            .exec_with_output(session_id, &ssl_cmd, 120)
+        let (ssl_out, ssl_err, ssl_code) = crate::ssh::session_exec_with_output(session, &ssl_cmd, 120)
             .await?;
         
         if !ssl_out.trim().is_empty() {
@@ -2243,7 +2214,8 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
 
 /// Toggle site enable/disable
 pub async fn toggle_site(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     config_path: &str,
     domain: &str,
@@ -2271,26 +2243,21 @@ pub async fn toggle_site(
             if config_path.contains("sites-enabled") && !config_path.contains("sites-available") {
                 let src = config_path.trim_end_matches(".disabled");
                 let safe_src = src.replace('\'', "'\\''");
-                ssh_mgr
-                    .exec_with_output(session_id, &format!("mv '{}' '{}'", safe_src, safe_available), 5)
+                crate::ssh::session_exec_with_output(session, &format!("mv '{}' '{}'", safe_src, safe_available), 5)
                     .await?;
             }
             // Create symlink
-            ssh_mgr
-                .exec_with_output(session_id, &format!("ln -sf '{}' '{}'", safe_available, link), 5)
+            crate::ssh::session_exec_with_output(session, &format!("ln -sf '{}' '{}'", safe_available, link), 5)
                 .await?;
         } else {
             // Remove symlink from sites-enabled
-            ssh_mgr
-                .exec_with_output(session_id, &format!("rm -f '{}'", link), 5)
+            crate::ssh::session_exec_with_output(session, &format!("rm -f '{}'", link), 5)
                 .await?;
             // If config is in sites-enabled, move to sites-available
             if config_path.contains("sites-enabled") && !config_path.contains("sites-available") {
-                ssh_mgr
-                    .exec_with_output(session_id, "mkdir -p /etc/nginx/sites-available", 5)
+                crate::ssh::session_exec_with_output(session, "mkdir -p /etc/nginx/sites-available", 5)
                     .await?;
-                ssh_mgr
-                    .exec_with_output(session_id, &format!("mv '{}' '{}'", safe_path, safe_available), 5)
+                crate::ssh::session_exec_with_output(session, &format!("mv '{}' '{}'", safe_path, safe_available), 5)
                     .await?;
             }
         }
@@ -2298,19 +2265,16 @@ pub async fn toggle_site(
         // conf.d style: rename between .conf and .conf.disabled
         let enabled_path = config_path.trim_end_matches(".disabled").to_string();
         if enable {
-            ssh_mgr
-                .exec_with_output(session_id, &format!("mv '{}' '{}'", safe_path, enabled_path.replace('\'', "'\\''")), 5)
+            crate::ssh::session_exec_with_output(session, &format!("mv '{}' '{}'", safe_path, enabled_path.replace('\'', "'\\''")), 5)
                 .await?;
         } else {
-            ssh_mgr
-                .exec_with_output(session_id, &format!("mv '{}' '{}.disabled'", safe_path, safe_path), 5)
+            crate::ssh::session_exec_with_output(session, &format!("mv '{}' '{}.disabled'", safe_path, safe_path), 5)
                 .await?;
         }
     }
 
     // Test and reload nginx
-    let (test_out, test_err, test_code) = ssh_mgr
-        .exec_with_output(session_id, "nginx -t 2>&1", 10)
+    let (test_out, test_err, test_code) = crate::ssh::session_exec_with_output(session, "nginx -t 2>&1", 10)
         .await?;
     let test_combined = format!("{} {}", test_out, test_err);
     if test_code != 0 && !test_combined.contains("test is successful") && !test_combined.contains("syntax is ok") {
@@ -2324,24 +2288,23 @@ pub async fn toggle_site(
             };
             let safe_available = available_path.replace('\'', "'\\''");
             if enable {
-                let _ = ssh_mgr.exec_with_output(session_id, &format!("rm -f '{}'", link), 5).await;
+                let _ = crate::ssh::session_exec_with_output(session, &format!("rm -f '{}'", link), 5).await;
                 if config_path.contains("sites-enabled") && !config_path.contains("sites-available") {
                     let src = config_path.trim_end_matches(".disabled");
                     let safe_src = src.replace('\'', "'\\''");
-                    let _ = ssh_mgr.exec_with_output(session_id, &format!("mv '{}' '{}'", safe_available, safe_src), 5).await;
+                    let _ = crate::ssh::session_exec_with_output(session, &format!("mv '{}' '{}'", safe_available, safe_src), 5).await;
                 }
             } else {
                 if config_path.contains("sites-enabled") && !config_path.contains("sites-available") {
-                    let _ = ssh_mgr.exec_with_output(session_id, &format!("mv '{}' '{}'", safe_available, safe_path), 5).await;
+                    let _ = crate::ssh::session_exec_with_output(session, &format!("mv '{}' '{}'", safe_available, safe_path), 5).await;
                 }
-                let _ = ssh_mgr.exec_with_output(session_id, &format!("ln -sf '{}' '{}'", safe_available, link), 5).await;
+                let _ = crate::ssh::session_exec_with_output(session, &format!("ln -sf '{}' '{}'", safe_available, link), 5).await;
             }
         }
         return Err(format!("Nginx test failed after toggling site, reverted: {}", test_combined.trim()));
     }
 
-    ssh_mgr
-        .exec_with_output(session_id, "systemctl reload nginx", 10)
+    crate::ssh::session_exec_with_output(session, "systemctl reload nginx", 10)
         .await?;
 
     let action = if enable { "Started" } else { "Stopped" };
@@ -2351,21 +2314,20 @@ pub async fn toggle_site(
 /// Graceful restart (reload) a site — nginx -t then systemctl reload nginx
 #[allow(dead_code)]
 pub async fn restart_site(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     domain: &str,
 ) -> Result<String, String> {
     // Verify config first
-    let (test_out, test_err, test_code) = ssh_mgr
-        .exec_with_output(session_id, "nginx -t 2>&1", 10)
+    let (test_out, test_err, test_code) = crate::ssh::session_exec_with_output(session, "nginx -t 2>&1", 10)
         .await?;
     let test_combined = format!("{} {}", test_out, test_err);
     if test_code != 0 && !test_combined.contains("test is successful") && !test_combined.contains("syntax is ok") {
         return Err(format!("Nginx config test failed, reload aborted: {}", test_combined.trim()));
     }
 
-    ssh_mgr
-        .exec_with_output(session_id, "systemctl reload nginx", 10)
+    crate::ssh::session_exec_with_output(session, "systemctl reload nginx", 10)
         .await?;
 
     Ok(format!("Restarted site {}", domain))
@@ -2373,7 +2335,8 @@ pub async fn restart_site(
 
 /// Delete a site
 pub async fn delete_site(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     domain: &str,
     remove_files: bool,
@@ -2381,9 +2344,7 @@ pub async fn delete_site(
     let safe_domain = domain.replace('\'', "'\\''");
 
     // Remove symlinks and config files
-    ssh_mgr
-        .exec_with_output(
-            session_id,
+    crate::ssh::session_exec_with_output(session,
             &format!(
                 "rm -f '/etc/nginx/sites-enabled/{}' '/etc/nginx/conf.d/{}.conf' 2>/dev/null; rm -f '/etc/nginx/sites-available/{}' 2>/dev/null",
                 safe_domain, safe_domain, safe_domain
@@ -2394,9 +2355,7 @@ pub async fn delete_site(
 
     if remove_files {
         // Find and remove the web root (check both common paths)
-        let (stdout, _, _) = ssh_mgr
-            .exec_with_output(
-                session_id,
+        let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
                 &format!(
                     "for d in /www/wwwroot/{d} /var/www/{d}; do [ -d \"$d\" ] && echo \"$d\" && break; done",
                     d = safe_domain
@@ -2406,9 +2365,7 @@ pub async fn delete_site(
             .await?;
         let web_root = stdout.trim();
         if !web_root.is_empty() {
-            ssh_mgr
-                .exec_with_output(
-                    session_id,
+            crate::ssh::session_exec_with_output(session,
                     &format!("rm -rf '{}'", web_root.replace('\'', "'\\''")),
                     10,
                 )
@@ -2417,8 +2374,7 @@ pub async fn delete_site(
     }
 
     // Reload nginx
-    let (reload_stdout, reload_stderr, reload_code) = ssh_mgr
-        .exec_with_output(session_id, "nginx -t 2>&1 && systemctl reload nginx 2>&1", 10)
+    let (reload_stdout, reload_stderr, reload_code) = crate::ssh::session_exec_with_output(session, "nginx -t 2>&1 && systemctl reload nginx 2>&1", 10)
         .await?;
     let reload_combined = format!("{} {}", reload_stdout, reload_stderr);
     let reload_ok = reload_code == 0
@@ -2433,7 +2389,8 @@ pub async fn delete_site(
 
 /// Update site with all settings in one call (batch update)
 pub async fn update_site_full(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     old_domain: &str,
     new_domains: &str,           // space-separated
@@ -2458,8 +2415,7 @@ pub async fn update_site_full(
     let primary_domain = new_domains.split_whitespace().next().unwrap_or(old_domain);
     
     // Step 1: Read existing config to check for SSL and preserve it
-    let (old_conf, _, _) = ssh_mgr
-        .exec_with_output(session_id, &format!("cat '{}' 2>/dev/null", config_path.replace('\'', "'\\''")), 5)
+    let (old_conf, _, _) = crate::ssh::session_exec_with_output(session, &format!("cat '{}' 2>/dev/null", config_path.replace('\'', "'\\''")), 5)
         .await?;
     let has_ssl = old_conf.contains("ssl_certificate") || old_conf.contains("listen 443");
     
@@ -2691,26 +2647,21 @@ pub async fn update_site_full(
     };
     
     // Step 4: Create effective root directory
-    ssh_mgr
-        .exec_with_output(
-            session_id,
+    crate::ssh::session_exec_with_output(session,
             &format!("mkdir -p '{}' && chown -R www-data:www-data '{}' 2>/dev/null || true", effective_root, effective_root),
             10,
         )
         .await?;
     
     // Step 5: Write complete config in one operation
-    ssh_mgr
-        .write_file(session_id, &new_config_path, &nginx_conf)
+    crate::ssh::session_write_file(session, &new_config_path, &nginx_conf)
         .await?;
     
     // Step 6: Handle domain change: symlink + cleanup
     if domain_changed {
         let safe_old_domain = old_domain.replace('\'', "'\\''");
         if new_config_path.contains("sites-available") {
-            ssh_mgr
-                .exec_with_output(
-                    session_id,
+            crate::ssh::session_exec_with_output(session,
                     &format!(
                         "rm -f '/etc/nginx/sites-enabled/{}'; ln -sf '{}' '/etc/nginx/sites-enabled/{}'",
                         safe_old_domain, new_config_path, safe_domains.first().map(|s| s.as_str()).unwrap_or(primary_domain)
@@ -2720,9 +2671,7 @@ pub async fn update_site_full(
                 .await?;
         }
         if new_config_path != config_path {
-            ssh_mgr
-                .exec_with_output(
-                    session_id,
+            crate::ssh::session_exec_with_output(session,
                     &format!("rm -f '{}'", config_path.replace('\'', "'\\''")),
                     5,
                 )
@@ -2731,14 +2680,15 @@ pub async fn update_site_full(
     }
     
     // Step 7: Test + reload nginx
-    test_and_reload_nginx(ssh_mgr, session_id).await?;
+    test_and_reload_nginx(session, cache, session_id).await?;
     
     Ok(format!("Site {} updated successfully", primary_domain))
 }
 
 /// Update an existing site's configuration
 pub async fn update_site(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     old_domain: &str,
     new_domains: &str,
@@ -2764,8 +2714,7 @@ pub async fn update_site(
     let has_php = !php_sock.is_empty();
 
     // Read old config to check for SSL
-    let (old_conf, _, _) = ssh_mgr
-        .exec_with_output(session_id, &format!("cat '{}' 2>/dev/null", config_path.replace('\'', "'\\''")), 5)
+    let (old_conf, _, _) = crate::ssh::session_exec_with_output(session, &format!("cat '{}' 2>/dev/null", config_path.replace('\'', "'\\''")), 5)
         .await?;
     let has_ssl = old_conf.contains("ssl_certificate") || old_conf.contains("listen 443");
 
@@ -2894,26 +2843,21 @@ pub async fn update_site(
     };
 
     // Create effective root directory (web_root + running_dir)
-    ssh_mgr
-        .exec_with_output(
-            session_id,
+    crate::ssh::session_exec_with_output(session,
             &format!("mkdir -p '{}' && chown -R www-data:www-data '{}' 2>/dev/null || true", effective_root, effective_root),
             10,
         )
         .await?;
 
     // Write config
-    ssh_mgr
-        .write_file(session_id, &new_config_path, &nginx_conf)
+    crate::ssh::session_write_file(session, &new_config_path, &nginx_conf)
         .await?;
 
     // Handle domain change: symlink + cleanup
     if domain_changed {
         let safe_old_domain = old_domain.replace('\'', "'\\''");
         if new_config_path.contains("sites-available") {
-            ssh_mgr
-                .exec_with_output(
-                    session_id,
+            crate::ssh::session_exec_with_output(session,
                     &format!(
                         "rm -f '/etc/nginx/sites-enabled/{}'; ln -sf '{}' '/etc/nginx/sites-enabled/{}'",
                         safe_old_domain, new_config_path, safe_domains.first().map(|s| s.as_str()).unwrap_or(primary_domain)
@@ -2923,9 +2867,7 @@ pub async fn update_site(
                 .await?;
         }
         if new_config_path != config_path {
-            ssh_mgr
-                .exec_with_output(
-                    session_id,
+            crate::ssh::session_exec_with_output(session,
                     &format!("rm -f '{}'", config_path.replace('\'', "'\\''")),
                     5,
                 )
@@ -2934,28 +2876,29 @@ pub async fn update_site(
     }
 
     // Test + reload nginx
-    test_and_reload_nginx(ssh_mgr, session_id).await?;
+    test_and_reload_nginx(session, cache, session_id).await?;
 
     Ok(format!("Site {} updated successfully", primary_domain))
 }
 
 /// Save raw nginx config for a site, test and reload
 pub async fn save_site_config(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     config_path: &str,
     config_content: &str,
 ) -> Result<String, String> {
-    ssh_mgr
-        .write_file(session_id, config_path, config_content)
+    crate::ssh::session_write_file(session, config_path, config_content)
         .await?;
-    test_and_reload_nginx(ssh_mgr, session_id).await?;
+    test_and_reload_nginx(session, cache, session_id).await?;
     Ok("Config saved and nginx reloaded".to_string())
 }
 
 /// Set hotlink protection for a site
 pub async fn set_hotlink_protection(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     config_path: &str,
     enabled: bool,
@@ -2965,8 +2908,7 @@ pub async fn set_hotlink_protection(
     allow_empty_referer: bool,
 ) -> Result<String, String> {
     // Read current config
-    let (config, _, _) = ssh_mgr
-        .exec_with_output(session_id, &format!("cat '{}'", config_path.replace('\'', "'\\''")), 5)
+    let (config, _, _) = crate::ssh::session_exec_with_output(session, &format!("cat '{}'", config_path.replace('\'', "'\\''")), 5)
         .await?;
 
     // Remove existing hotlink block (between markers)
@@ -3049,15 +2991,16 @@ r#"    # Hotlink Protection Start
     }
 
     let new_config = lines.join("\n");
-    ssh_mgr.write_file(session_id, config_path, &new_config).await?;
-    test_and_reload_nginx(ssh_mgr, session_id).await?;
+    crate::ssh::session_write_file(session, config_path, &new_config).await?;
+    test_and_reload_nginx(session, cache, session_id).await?;
 
     Ok(if enabled { "Hotlink protection enabled".to_string() } else { "Hotlink protection disabled".to_string() })
 }
 
 /// Set or remove reverse proxy configuration for a site
 pub async fn set_reverse_proxy(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     config_path: &str,
     enabled: bool,
@@ -3067,11 +3010,10 @@ pub async fn set_reverse_proxy(
     preserve_host: bool,
 ) -> Result<String, String> {
     // Clean up corrupted proxy blocks in other sites BEFORE we do anything
-    cleanup_all_proxy_blocks(ssh_mgr, session_id, config_path).await;
+    cleanup_all_proxy_blocks(session, cache, session_id, config_path).await;
 
     // Read current config
-    let (config, _, _) = ssh_mgr
-        .exec_with_output(session_id, &format!("cat '{}'", config_path.replace('\'', "'\\''" )), 5)
+    let (config, _, _) = crate::ssh::session_exec_with_output(session, &format!("cat '{}'", config_path.replace('\'', "'\\''" )), 5)
         .await?;
 
     // Remove existing reverse proxy block (between markers)
@@ -3166,17 +3108,16 @@ pub async fn set_reverse_proxy(
     }
 
     let new_config = lines.join("\n");
-    ssh_mgr.write_file(session_id, config_path, &new_config).await?;
-    test_and_reload_nginx(ssh_mgr, session_id).await?;
+    crate::ssh::session_write_file(session, config_path, &new_config).await?;
+    test_and_reload_nginx(session, cache, session_id).await?;
 
     Ok(if enabled { "Reverse proxy enabled".to_string() } else { "Reverse proxy disabled".to_string() })
 }
 
 /// Remove ALL reverse proxy location blocks from all site configs in /etc/nginx/sites-enabled/
 /// This handles both marked blocks (with # Reverse Proxy Start/End) and unmarked/orphaned proxy locations
-async fn cleanup_all_proxy_blocks(ssh_mgr: &SshManager, session_id: &str, skip_path: &str) {
-    let (files_out, _, _) = match ssh_mgr
-        .exec_with_output(session_id, "ls -1 /etc/nginx/sites-enabled/ 2>/dev/null", 5)
+async fn cleanup_all_proxy_blocks(session: &SshSession, cache: &SshCache, session_id: &str, skip_path: &str) {
+    let (files_out, _, _) = match crate::ssh::session_exec_with_output(session, "ls -1 /etc/nginx/sites-enabled/ 2>/dev/null", 5)
         .await
     {
         Ok(r) => r,
@@ -3192,8 +3133,7 @@ async fn cleanup_all_proxy_blocks(ssh_mgr: &SshManager, session_id: &str, skip_p
             || fpath.replace("sites-available", "sites-enabled") == skip_path
         { continue; }
 
-        let (content, _, _) = match ssh_mgr
-            .exec_with_output(session_id, &format!("cat '{}'", fpath), 5)
+        let (content, _, _) = match crate::ssh::session_exec_with_output(session, &format!("cat '{}'", fpath), 5)
             .await
         {
             Ok(r) => r,
@@ -3244,19 +3184,19 @@ async fn cleanup_all_proxy_blocks(ssh_mgr: &SshManager, session_id: &str, skip_p
 
         if changed {
             let cleaned = lines.join("\n");
-            let _ = ssh_mgr.write_file(session_id, &fpath, &cleaned).await;
+            let _ = crate::ssh::session_write_file(session, &fpath, &cleaned).await;
         }
     }
 }
 
 /// Helper: test nginx config and reload
 async fn test_and_reload_nginx(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<(), String> {
     // Test config first
-    let (test_stdout, test_stderr, test_code) = ssh_mgr
-        .exec_with_output(session_id, "nginx -t 2>&1", 10)
+    let (test_stdout, test_stderr, test_code) = crate::ssh::session_exec_with_output(session, "nginx -t 2>&1", 10)
         .await?;
     let test_combined = format!("{} {}", test_stdout, test_stderr).trim().to_string();
     if test_code != 0 && !test_combined.contains("test is successful") && !test_combined.contains("syntax is ok") {
@@ -3264,8 +3204,7 @@ async fn test_and_reload_nginx(
     }
 
     // Try systemctl reload first
-    let (sys_stdout, sys_stderr, sys_code) = ssh_mgr
-        .exec_with_output(session_id, "systemctl reload nginx 2>&1", 10)
+    let (sys_stdout, sys_stderr, sys_code) = crate::ssh::session_exec_with_output(session, "systemctl reload nginx 2>&1", 10)
         .await?;
     let sys_combined = format!("{} {}", sys_stdout, sys_stderr).trim().to_string();
     if sys_code == 0 || sys_combined.is_empty() {
@@ -3273,8 +3212,7 @@ async fn test_and_reload_nginx(
     }
 
     // Fallback: try nginx -s reload
-    let (ns_stdout, ns_stderr, ns_code) = ssh_mgr
-        .exec_with_output(session_id, "nginx -s reload 2>&1", 10)
+    let (ns_stdout, ns_stderr, ns_code) = crate::ssh::session_exec_with_output(session, "nginx -s reload 2>&1", 10)
         .await?;
     let ns_combined = format!("{} {}", ns_stdout, ns_stderr).trim().to_string();
     if ns_code == 0 || ns_combined.is_empty() {
@@ -3282,8 +3220,7 @@ async fn test_and_reload_nginx(
     }
 
     // Both failed — check nginx error log for real reason
-    let (log_out, _, _) = ssh_mgr
-        .exec_with_output(session_id, "tail -5 /var/log/nginx/error.log 2>/dev/null || journalctl -u nginx --no-pager -n 5 2>/dev/null || echo 'No error log accessible'", 5)
+    let (log_out, _, _) = crate::ssh::session_exec_with_output(session, "tail -5 /var/log/nginx/error.log 2>/dev/null || journalctl -u nginx --no-pager -n 5 2>/dev/null || echo 'No error log accessible'", 5)
         .await?;
     let log_info = log_out.trim();
 
@@ -3293,7 +3230,8 @@ async fn test_and_reload_nginx(
 
 /// Setup SSL certificate for a site using certbot (streaming output via events)
 pub async fn setup_ssl(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     domain: &str,
     app_handle: &AppHandle,
@@ -3311,14 +3249,12 @@ pub async fn setup_ssl(
 
     // Check if certbot and nginx plugin are installed
     emit("Checking certbot...", "installing");
-    let (certbot_out, _, certbot_code) = ssh_mgr
-        .exec_with_output(session_id, "command -v certbot 2>/dev/null", 5)
+    let (certbot_out, _, certbot_code) = crate::ssh::session_exec_with_output(session, "command -v certbot 2>/dev/null", 5)
         .await?;
     let certbot_installed = certbot_code == 0 && !certbot_out.trim().is_empty();
 
     // Check nginx plugin: certbot plugins 2>/dev/null | grep -q nginx
-    let (plugin_out, _, plugin_code) = ssh_mgr
-        .exec_with_output(session_id, "certbot plugins 2>/dev/null | grep -q nginx && echo OK", 10)
+    let (plugin_out, _, plugin_code) = crate::ssh::session_exec_with_output(session, "certbot plugins 2>/dev/null | grep -q nginx && echo OK", 10)
         .await?;
     let nginx_plugin_installed = plugin_code == 0 && plugin_out.contains("OK");
 
@@ -3328,14 +3264,14 @@ pub async fn setup_ssl(
         } else {
             emit("Installing certbot-nginx plugin...", "installing");
         }
-        let os = detect_os(ssh_mgr, session_id).await?;
+        let os = detect_os(session, cache, session_id).await?;
         let install_cmd = if os.family == "debian" {
             "apt-get install -y certbot python3-certbot-nginx"
         } else {
             "yum install -y certbot python3-certbot-nginx || dnf install -y certbot python3-certbot-nginx"
         };
         // Stream certbot install output
-        let mut install_channel = ssh_mgr.open_channel(session_id).await?;
+        let mut install_channel = crate::ssh::session_open_channel(session).await?;
         install_channel.exec(true, install_cmd).await
             .map_err(|e| format!("Failed to install certbot: {}", e))?;
         let install_deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(180);
@@ -3360,14 +3296,12 @@ pub async fn setup_ssl(
         }
 
         // ponytail: if package manager failed to provide nginx plugin, try pip fallback
-        let (pip_check, _, pip_code) = ssh_mgr
-            .exec_with_output(session_id, "certbot plugins 2>/dev/null | grep -q nginx && echo OK", 10)
+        let (pip_check, _, pip_code) = crate::ssh::session_exec_with_output(session, "certbot plugins 2>/dev/null | grep -q nginx && echo OK", 10)
             .await?;
         if pip_code != 0 || !pip_check.contains("OK") {
             emit("Package install didn't provide nginx plugin, trying pip...", "installing");
             let pip_cmd = "pip3 install certbot-nginx 2>&1 || pip install certbot-nginx 2>&1";
-            let (pip_out, _, _) = ssh_mgr
-                .exec_with_output(session_id, pip_cmd, 120)
+            let (pip_out, _, _) = crate::ssh::session_exec_with_output(session, pip_cmd, 120)
                 .await?;
             for line in pip_out.lines() {
                 if !line.trim().is_empty() { emit(line, "installing"); }
@@ -3377,15 +3311,14 @@ pub async fn setup_ssl(
 
     // Detect BT Panel nginx path: certbot expects /etc/nginx/nginx.conf by default
     // BT Panel stores config at /www/server/nginx/conf/nginx.conf
-    let (nginx_root_check, _, _) = ssh_mgr
-        .exec_with_output(session_id,
+    let (nginx_root_check, _, _) = crate::ssh::session_exec_with_output(session,
             "if [ ! -f /etc/nginx/nginx.conf ] && [ -f /www/server/nginx/conf/nginx.conf ]; then echo /www/server/nginx/conf; fi",
             5).await?;
     let nginx_server_root = nginx_root_check.trim().to_string();
     let root_flag = if !nginx_server_root.is_empty() {
         emit(&format!("BT Panel nginx detected, server root: {}", nginx_server_root), "installing");
         // Create /etc/nginx symlink so certbot's internal path checks work
-        let _ = ssh_mgr.exec_with_output(session_id,
+        let _ = crate::ssh::session_exec_with_output(session,
             "[ ! -e /etc/nginx ] && ln -sf /www/server/nginx/conf /etc/nginx || true",
             5).await?;
         format!("--nginx-server-root '{}'", nginx_server_root)
@@ -3400,7 +3333,7 @@ pub async fn setup_ssl(
     );
     emit(&format!("Running: {}", cmd), "installing");
 
-    let mut channel = ssh_mgr.open_channel(session_id).await?;
+    let mut channel = crate::ssh::session_open_channel(session).await?;
     channel.exec(true, cmd.as_str()).await
         .map_err(|e| format!("Failed to start certbot: {}", e))?;
 
@@ -3457,8 +3390,7 @@ pub async fn setup_ssl(
             r#"if [ -f '/etc/nginx/sites-enabled/{domain}' ] && grep -q 'ssl_certificate' '/etc/nginx/sites-enabled/{domain}' 2>/dev/null; then echo 'FOUND:/etc/nginx/sites-enabled/{domain}'; elif [ -f '/etc/nginx/conf.d/{domain}.conf' ] && grep -q 'ssl_certificate' '/etc/nginx/conf.d/{domain}.conf' 2>/dev/null; then echo 'FOUND:/etc/nginx/conf.d/{domain}.conf'; elif [ -f '/www/server/panel/vhost/nginx/{domain}.conf' ] && grep -q 'ssl_certificate' '/www/server/panel/vhost/nginx/{domain}.conf' 2>/dev/null; then echo 'FOUND:/www/server/panel/vhost/nginx/{domain}.conf'; elif [ -f '/www/server/nginx/conf/vhost/{domain}.conf' ] && grep -q 'ssl_certificate' '/www/server/nginx/conf/vhost/{domain}.conf' 2>/dev/null; then echo 'FOUND:/www/server/nginx/conf/vhost/{domain}.conf'; else echo 'NOT_FOUND'; fi"#,
             domain = safe_domain
         );
-        let (verify_out, _, _) = ssh_mgr
-            .exec_with_output(session_id, &check_ssl_cmd, 5)
+        let (verify_out, _, _) = crate::ssh::session_exec_with_output(session, &check_ssl_cmd, 5)
             .await?;
         
         if verify_out.trim().starts_with("FOUND:") {
@@ -3468,8 +3400,7 @@ pub async fn setup_ssl(
             // Reload nginx: run test and reload SEPARATELY
             // SSH exit codes are unreliable (-1 means channel didn't receive ExitStatus)
             emit("Reloading Nginx to apply SSL config...", "installing");
-            let (test_out, test_err, _test_code) = ssh_mgr
-                .exec_with_output(session_id, "nginx -t 2>&1", 5)
+            let (test_out, test_err, _test_code) = crate::ssh::session_exec_with_output(session, "nginx -t 2>&1", 5)
                 .await?;
             let test_combined = format!("{}{}", test_out, test_err);
             let test_ok = test_combined.contains("syntax is ok") && test_combined.contains("test is successful");
@@ -3477,8 +3408,7 @@ pub async fn setup_ssl(
             if !test_ok {
                 emit(&format!("Nginx config test failed: {}", test_combined.trim()), "error");
             } else {
-                let (reload_out, reload_err, _reload_code) = ssh_mgr
-                    .exec_with_output(session_id, "systemctl reload nginx 2>&1", 10)
+                let (reload_out, reload_err, _reload_code) = crate::ssh::session_exec_with_output(session, "systemctl reload nginx 2>&1", 10)
                     .await?;
                 let reload_combined = format!("{}{}", reload_out, reload_err);
                 if reload_combined.to_lowercase().contains("error") || reload_combined.to_lowercase().contains("fail") {
@@ -3491,8 +3421,7 @@ pub async fn setup_ssl(
             emit("⚠ Warning: SSL directives not found in expected vhost files. Checking all configs...", "error");
             // Check all enabled configs
             let check_all_cmd = r#"for f in /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf /www/server/panel/vhost/nginx/*.conf /www/server/nginx/conf/vhost/*.conf; do [ -f "$f" ] && grep -q 'ssl_certificate' "$f" 2>/dev/null && echo "SSL found in: $f"; done 2>/dev/null || echo 'No SSL configs found'"#;
-            let (all_out, _, _) = ssh_mgr
-                .exec_with_output(session_id, check_all_cmd, 5)
+            let (all_out, _, _) = crate::ssh::session_exec_with_output(session, check_all_cmd, 5)
                 .await?;
             if !all_out.trim().is_empty() && all_out.trim() != "No SSL configs found" {
                 emit(&format!("Found SSL in other configs: {}", all_out.trim()), "installing");
@@ -3538,12 +3467,11 @@ pub struct ProcessInfo {
 
 /// Get real-time monitoring data
 pub async fn get_monitor_data(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<MonitorData, String> {
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(
-            session_id,
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
 # CPU usage (1-second sample)
 CPU_IDLE=$(top -bn1 | grep 'Cpu(s)' | awk '{print $8}' | tr -d '%,id,' 2>/dev/null)
@@ -3708,19 +3636,18 @@ pub struct FirewallToggleResult {
 }
 
 pub async fn get_firewall_rules(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<FirewallInfo, String> {
     // ponytail: cache firewall rules for 60s (changes only on add/remove)
-    if let Some(cached) = ssh_mgr.cache.get(session_id, "firewall", 60).await {
+    if let Some(cached) = cache.get(session_id, "firewall", 60) {
         if let Ok(info) = serde_json::from_str::<FirewallInfo>(&cached) {
             return Ok(info);
         }
     }
     // ponytail: single SSH round-trip combining firewall detection + query (was 2 calls)
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(
-            session_id,
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
 if command -v ufw >/dev/null 2>&1; then
   echo "FW_TYPE=ufw"
@@ -3761,7 +3688,7 @@ fi
     // ponytail: cache firewall rules
     if let Ok(ref info) = result {
         if let Ok(json) = serde_json::to_string(info) {
-            ssh_mgr.cache.put(session_id, "firewall", json).await;
+            cache.put(session_id, "firewall", json);
         }
     }
     result
@@ -3895,15 +3822,15 @@ fn parse_iptables_output(stdout: &str) -> Result<FirewallInfo, String> {
 }
 
 pub async fn add_firewall_rule(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     port: &str,
     protocol: &str,
     action: &str,
 ) -> Result<String, String> {
     // Detect firewall type
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(session_id, "command -v ufw && echo HAS_UFW; command -v firewall-cmd && echo HAS_FIREWALLD", 10)
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session, "command -v ufw && echo HAS_UFW; command -v firewall-cmd && echo HAS_FIREWALLD", 10)
         .await?;
 
     let cmd = if stdout.contains("HAS_UFW") {
@@ -3927,7 +3854,7 @@ pub async fn add_firewall_rule(
         format!("iptables -I INPUT -p {} --dport {} -j {}", proto, port, target)
     };
 
-    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 15).await?;
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 15).await?;
     // ponytail: ufw/firewalld may return non-zero exit on warnings; check for actual error text
     let combined = format!("{} {}", stdout, stderr);
     let has_real_error = combined.contains("ERROR") || combined.contains("denied")
@@ -3938,21 +3865,21 @@ pub async fn add_firewall_rule(
 
     // Reload if firewalld
     if stdout.contains("HAS_FIREWALLD") || cmd.starts_with("firewall-cmd") {
-        let _ = ssh_mgr.exec_with_output(session_id, "firewall-cmd --reload", 15).await;
+        let _ = crate::ssh::session_exec_with_output(session, "firewall-cmd --reload", 15).await;
     }
 
     Ok(format!("Added rule: {}/{} ({})", port, protocol, action))
 }
 
 pub async fn remove_firewall_rule(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     port: &str,
     protocol: &str,
     action: &str,
 ) -> Result<String, String> {
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(session_id, "command -v ufw && echo HAS_UFW; command -v firewall-cmd && echo HAS_FIREWALLD", 10)
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session, "command -v ufw && echo HAS_UFW; command -v firewall-cmd && echo HAS_FIREWALLD", 10)
         .await?;
 
     let cmd = if stdout.contains("HAS_UFW") {
@@ -3976,7 +3903,7 @@ pub async fn remove_firewall_rule(
         format!("iptables -D INPUT -p {} --dport {} -j {}", proto, port, target)
     };
 
-    let (stdout_out, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 15).await?;
+    let (stdout_out, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 15).await?;
     let combined = format!("{} {}", stdout_out, stderr);
     let has_real_error = combined.contains("ERROR") || combined.contains("denied")
         || combined.contains("failed") || combined.contains("iptables: ");
@@ -3986,47 +3913,43 @@ pub async fn remove_firewall_rule(
 
     // Reload if firewalld
     if cmd.starts_with("firewall-cmd") {
-        let _ = ssh_mgr.exec_with_output(session_id, "firewall-cmd --reload", 15).await;
+        let _ = crate::ssh::session_exec_with_output(session, "firewall-cmd --reload", 15).await;
     }
 
     Ok(format!("Removed rule: {}/{} ({})", port, protocol, action))
 }
 
 pub async fn toggle_firewall(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     enable: bool,
 ) -> Result<FirewallToggleResult, String> {
-    let (detect, _, _) = ssh_mgr
-        .exec_with_output(session_id, "command -v ufw && echo HAS_UFW; command -v firewall-cmd && echo HAS_FIREWALLD", 10)
+    let (detect, _, _) = crate::ssh::session_exec_with_output(session, "command -v ufw && echo HAS_UFW; command -v firewall-cmd && echo HAS_FIREWALLD", 10)
         .await?;
 
-    let ssh_port = ssh_mgr.get_connect_info(session_id).map(|i| i.port).unwrap_or(22);
+    let ssh_port = Some(session.connect_info.clone()).map(|i| i.port).unwrap_or(22);
     let mut ssh_port_auto_opened = false;
 
     let action = if enable { "enable" } else { "disable" };
 
     // firewalld: must start the service BEFORE adding rules (firewall-cmd fails if not running)
     if enable && detect.contains("HAS_FIREWALLD") && !detect.contains("HAS_UFW") {
-        let _ = ssh_mgr
-            .exec_with_output(session_id, "systemctl start firewalld", 15)
+        let _ = crate::ssh::session_exec_with_output(session, "systemctl start firewalld", 15)
             .await;
     }
 
     // Safety: when enabling, pre-allow the SSH port to prevent lockout
     if enable {
         if detect.contains("HAS_UFW") {
-            let (out, err, code) = ssh_mgr
-                .exec_with_output(session_id, &format!("ufw allow {}/tcp", ssh_port), 15)
+            let (out, err, code) = crate::ssh::session_exec_with_output(session, &format!("ufw allow {}/tcp", ssh_port), 15)
                 .await
                 .unwrap_or_else(|_| (String::new(), String::new(), 1));
             if code == 0 && !format!("{} {}", out, err).contains("ERROR") {
                 ssh_port_auto_opened = true;
             }
         } else if detect.contains("HAS_FIREWALLD") {
-            let (out, err, code) = ssh_mgr
-                .exec_with_output(
-                    session_id,
+            let (out, err, code) = crate::ssh::session_exec_with_output(session,
                     &format!("firewall-cmd --permanent --add-port={}/tcp", ssh_port),
                     15,
                 )
@@ -4044,7 +3967,7 @@ pub async fn toggle_firewall(
         } else {
             "ufw --force disable"
         };
-        ssh_mgr.exec_with_output(session_id, cmd, 15).await?
+        crate::ssh::session_exec_with_output(session, cmd, 15).await?
     } else if detect.contains("HAS_FIREWALLD") {
         let cmd = if enable {
             // firewalld was already started above; just enable for boot persistence
@@ -4052,14 +3975,14 @@ pub async fn toggle_firewall(
         } else {
             "systemctl stop firewalld && systemctl disable firewalld"
         };
-        ssh_mgr.exec_with_output(session_id, cmd, 15).await?
+        crate::ssh::session_exec_with_output(session, cmd, 15).await?
     } else {
         return Err("No supported firewall found".to_string());
     };
 
     // firewalld: reload to apply the pre-added SSH port rule
     if enable && ssh_port_auto_opened && detect.contains("HAS_FIREWALLD") {
-        let _ = ssh_mgr.exec_with_output(session_id, "firewall-cmd --reload", 15).await;
+        let _ = crate::ssh::session_exec_with_output(session, "firewall-cmd --reload", 15).await;
     }
 
     let combined = format!("{} {}", stdout, stderr);
@@ -4089,11 +4012,12 @@ pub struct SoftwareInfo {
 
 /// Get list of available software and their install status
 pub async fn get_software_list(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<Vec<SoftwareInfo>, String> {
     // ponytail: cache software list for connection lifetime (changes only on install/uninstall)
-    if let Some(cached) = ssh_mgr.cache.get(session_id, "software_list", 0).await {
+    if let Some(cached) = cache.get(session_id, "software_list", 0) {
         if let Ok(list) = serde_json::from_str::<Vec<SoftwareInfo>>(&cached) {
             return Ok(list);
         }
@@ -4310,7 +4234,7 @@ else
 fi
 "#;
 
-    let (stdout, stderr, _) = ssh_mgr.exec_with_output(session_id, cmd, 20).await?;
+    let (stdout, stderr, _) = crate::ssh::session_exec_with_output(session, cmd, 20).await?;
     let combined = format!("{}{}", stdout, stderr);
 
     let get = |key: &str| -> String {
@@ -4476,14 +4400,15 @@ fi
 
     // ponytail: cache software list
     if let Ok(json) = serde_json::to_string(&list) {
-        ssh_mgr.cache.put(session_id, "software_list", json).await;
+        cache.put(session_id, "software_list", json);
     }
     Ok(list)
 }
 
 /// Query available PHP versions from system package manager
 pub async fn get_available_php_versions(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<Vec<String>, String> {
     let cmd = r#"
@@ -4505,7 +4430,7 @@ else
 fi
 "#;
 
-    let (stdout, _stderr, _exit_code) = ssh_mgr.exec_with_output(session_id, cmd, 30).await?;
+    let (stdout, _stderr, _exit_code) = crate::ssh::session_exec_with_output(session, cmd, 30).await?;
 
     let mut versions: Vec<String> = stdout
         .lines()
@@ -4521,7 +4446,8 @@ fi
 
 /// Get list of removable package sources (third-party repos)
 pub async fn get_removable_sources(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<Vec<String>, String> {
     let cmd = r#"
@@ -4538,7 +4464,7 @@ else
 fi
 "#;
 
-    let (stdout, _stderr, _exit_code) = ssh_mgr.exec_with_output(session_id, cmd, 10).await?;
+    let (stdout, _stderr, _exit_code) = crate::ssh::session_exec_with_output(session, cmd, 10).await?;
     
     let mut sources: Vec<String> = stdout
         .lines()
@@ -4552,7 +4478,8 @@ fi
 
 /// Remove specified package sources
 pub async fn remove_sources(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     source_names: Vec<String>,
 ) -> Result<String, String> {
@@ -4575,13 +4502,14 @@ done
 echo "Sources removed successfully"
 "#, source_names.iter().map(|s| format!("\"{}\"", s)).collect::<Vec<_>>().join(" "));
 
-    let (_stdout, _stderr, _exit_code) = ssh_mgr.exec_with_output(session_id, &cmd, 10).await?;
+    let (_stdout, _stderr, _exit_code) = crate::ssh::session_exec_with_output(session, &cmd, 10).await?;
     Ok(format!("Removed {} source(s)", source_names.len()))
 }
 
 /// Clean and update package sources with streaming output
 pub async fn clean_and_update_sources(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     app_handle: &AppHandle,
 ) -> Result<String, String> {
@@ -4621,10 +4549,10 @@ fi
 "#;
 
     // Write script to remote server
-    ssh_mgr.write_file(session_id, "/tmp/clean-sources.sh", cmd).await?;
+    crate::ssh::session_write_file(session, "/tmp/clean-sources.sh", cmd).await?;
     
     // Execute with streaming output
-    let mut channel = ssh_mgr.open_channel(session_id).await?;
+    let mut channel = crate::ssh::session_open_channel(session).await?;
     channel
         .exec(true, "bash /tmp/clean-sources.sh")
         .await
@@ -4687,7 +4615,8 @@ fi
 
 /// Add a new package source
 pub async fn add_source(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     name: &str,
     url: &str,
@@ -4756,26 +4685,26 @@ EOF
 fi
 "#, name, name, url, gpg_key.unwrap_or(""), gpg_key.unwrap_or(""), name, name, name, name, name, name, url, gpg_key.unwrap_or(""));
 
-    let (_stdout, _stderr, _exit_code) = ssh_mgr.exec_with_output(session_id, &cmd, 15).await?;
+    let (_stdout, _stderr, _exit_code) = crate::ssh::session_exec_with_output(session, &cmd, 15).await?;
     Ok(format!("Package source '{}' added successfully", name))
 }
 
 /// Install or uninstall software via SSH with real-time output
 pub async fn software_action(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     software: &str,
     action: &str,
     options: &str,
     app_handle: &AppHandle,
 ) -> Result<String, String> {
-    let os = detect_os(ssh_mgr, session_id).await?;
+    let os = detect_os(session, cache, session_id).await?;
     let is_debian = os.family == "debian";
 
     let script = build_software_script(&os, software, action, options, is_debian);
 
-    ssh_mgr
-        .write_file(session_id, "/tmp/software-action.sh", &script)
+    crate::ssh::session_write_file(session, "/tmp/software-action.sh", &script)
         .await?;
 
     let event_name = "software-action-progress";
@@ -4797,7 +4726,7 @@ pub async fn software_action(
         "status": "running",
     }));
 
-    let mut channel = ssh_mgr.open_channel(session_id).await?;
+    let mut channel = crate::ssh::session_open_channel(session).await?;
     channel
         .exec(true, "bash /tmp/software-action.sh")
         .await
@@ -5441,12 +5370,13 @@ pub fn generate_ssh_keypair(algorithm: &str) -> Result<SshKeyPair, String> {
 
 /// Reboot the server
 pub async fn reboot_server(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     force: bool,
 ) -> Result<String, String> {
     let cmd = if force { "reboot -f" } else { "reboot" };
-    let (_, stderr, code) = ssh_mgr.exec_with_output(session_id, cmd, 10).await?;
+    let (_, stderr, code) = crate::ssh::session_exec_with_output(session, cmd, 10).await?;
     // reboot may kill SSH before returning exit code, so treat timeout/connection loss as success
     if code != 0 && !stderr.is_empty() && !stderr.contains("Connection") && !stderr.contains("closed") {
         return Err(format!("Reboot failed: {}", stderr.trim()));
@@ -5456,12 +5386,12 @@ pub async fn reboot_server(
 
 /// Get server boot time and uptime duration
 pub async fn get_server_uptime(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<(String, String), String> {
     // Get boot time as ISO timestamp
-    let (boot_stdout, _, boot_code) = ssh_mgr
-        .exec_with_output(session_id, "date -d \"$(uptime -s)\" +\"%Y-%m-%d %H:%M:%S\" 2>/dev/null || who -b 2>/dev/null | awk '{print $3, $4}' || echo 'unknown'", 5)
+    let (boot_stdout, _, boot_code) = crate::ssh::session_exec_with_output(session, "date -d \"$(uptime -s)\" +\"%Y-%m-%d %H:%M:%S\" 2>/dev/null || who -b 2>/dev/null | awk '{print $3, $4}' || echo 'unknown'", 5)
         .await?;
     let boot_time = boot_stdout.trim().to_string();
     if boot_code != 0 || boot_time.is_empty() || boot_time == "unknown" {
@@ -5469,8 +5399,7 @@ pub async fn get_server_uptime(
     }
 
     // Get uptime duration using /proc/uptime (seconds)
-    let (up_stdout, _, _) = ssh_mgr
-        .exec_with_output(session_id, "cat /proc/uptime 2>/dev/null | awk '{print int($1)}'", 5)
+    let (up_stdout, _, _) = crate::ssh::session_exec_with_output(session, "cat /proc/uptime 2>/dev/null | awk '{print int($1)}'", 5)
         .await?;
     let total_secs: u64 = up_stdout.trim().parse().unwrap_or(0);
     let days = total_secs / 86400;
@@ -5489,7 +5418,8 @@ pub async fn get_server_uptime(
 
 /// Change SSH user password
 pub async fn change_ssh_password(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     username: &str,
     new_password: &str,
@@ -5497,7 +5427,7 @@ pub async fn change_ssh_password(
     // Escape single quotes in password to prevent shell injection
     let safe_password = new_password.replace('\'', "'\\''");
     let cmd = format!("echo '{}:{}' | chpasswd", username, safe_password);
-    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 15).await?;
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 15).await?;
     if code != 0 {
         return Err(format!("Failed to change password: {}", stderr.trim()));
     }
@@ -5507,7 +5437,8 @@ pub async fn change_ssh_password(
 
 /// Deploy SSH public key to remote server's authorized_keys
 pub async fn deploy_ssh_pubkey(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     pubkey: &str,
 ) -> Result<String, String> {
@@ -5517,7 +5448,7 @@ pub async fn deploy_ssh_pubkey(
         "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo \"{}\" >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && echo KEY_DEPLOYED",
         safe_key
     );
-    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 15).await?;
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 15).await?;
     if code != 0 || !stdout.contains("KEY_DEPLOYED") {
         return Err(format!("Failed to deploy public key: {}", stderr.trim()));
     }
@@ -5526,11 +5457,12 @@ pub async fn deploy_ssh_pubkey(
 
 /// Get SSH authentication mode from sshd_config
 pub async fn get_ssh_auth_mode(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<SshAuthMode, String> {
     // ponytail: cache SSH auth mode for connection lifetime
-    if let Some(cached) = ssh_mgr.cache.get(session_id, "ssh_auth_mode", 0).await {
+    if let Some(cached) = cache.get(session_id, "ssh_auth_mode", 0) {
         if let Ok(mode) = serde_json::from_str::<SshAuthMode>(&cached) {
             return Ok(mode);
         }
@@ -5540,7 +5472,7 @@ grep -E '^\s*PasswordAuthentication' /etc/ssh/sshd_config 2>/dev/null | tail -1
 grep -E '^\s*PubkeyAuthentication' /etc/ssh/sshd_config 2>/dev/null | tail -1
 echo "DONE"
 "#;
-    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, cmd, 10).await?;
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, cmd, 10).await?;
     if code != 0 && !stderr.is_empty() && !stdout.contains("DONE") {
         return Err(format!("Failed to read sshd_config: {}", stderr.trim()));
     }
@@ -5560,14 +5492,15 @@ echo "DONE"
     let result = SshAuthMode { password, pubkey };
     // ponytail: cache SSH auth mode
     if let Ok(json) = serde_json::to_string(&result) {
-        ssh_mgr.cache.put(session_id, "ssh_auth_mode", json).await;
+        cache.put(session_id, "ssh_auth_mode", json);
     }
     Ok(result)
 }
 
 /// Set SSH authentication mode by modifying sshd_config and restarting sshd
 pub async fn set_ssh_auth_mode(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     password_enabled: bool,
     pubkey_enabled: bool,
@@ -5602,7 +5535,7 @@ echo "MODE_UPDATED"
         pw_val, pw_val, pw_val, pk_val, pk_val, pk_val
     );
 
-    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 20).await?;
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 20).await?;
     if !stdout.contains("MODE_UPDATED") {
         return Err(format!("Failed to update SSH auth mode: {}", stderr.trim()));
     }
@@ -5619,11 +5552,12 @@ pub struct BbrStatus {
 
 /// Get BBR congestion control status
 pub async fn get_bbr_status(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<BbrStatus, String> {
     // ponytail: cache BBR status for connection lifetime
-    if let Some(cached) = ssh_mgr.cache.get(session_id, "bbr_status", 0).await {
+    if let Some(cached) = cache.get(session_id, "bbr_status", 0) {
         if let Ok(status) = serde_json::from_str::<BbrStatus>(&cached) {
             return Ok(status);
         }
@@ -5634,7 +5568,7 @@ QD=$(sysctl -n net.core.default_qdisc 2>/dev/null || echo unknown)
 echo "CC=$CC"
 echo "QD=$QD"
 "#;
-    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, cmd, 10).await?;
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, cmd, 10).await?;
     if code != 0 && stderr.contains("No such file") {
         return Ok(BbrStatus { enabled: false, congestion_control: "unknown".into(), qdisc: "unknown".into() });
     }
@@ -5651,14 +5585,15 @@ echo "QD=$QD"
     };
     // ponytail: cache BBR status
     if let Ok(json) = serde_json::to_string(&result) {
-        ssh_mgr.cache.put(session_id, "bbr_status", json).await;
+        cache.put(session_id, "bbr_status", json);
     }
     Ok(result)
 }
 
 /// Enable or disable BBR congestion control
 pub async fn set_bbr_status(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     enable: bool,
 ) -> Result<String, String> {
@@ -5702,7 +5637,7 @@ echo "BBR_DISABLED"
 "#
     };
 
-    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, cmd, 15).await?;
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, cmd, 15).await?;
     if stdout.contains("BBR_ERROR") {
         let err_msg = stdout.lines()
             .find(|l| l.contains("BBR_ERROR"))
@@ -5732,7 +5667,8 @@ pub struct SiteLogInfo {
 
 /// Get available log files for a site
 pub async fn get_site_logs(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     domain: &str,
 ) -> Result<Vec<SiteLogInfo>, String> {
@@ -5767,7 +5703,7 @@ done
 echo "DONE"
 "#, safe_domain = safe_domain);
 
-    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 15).await?;
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 15).await?;
     if code != 0 && !stdout.contains("DONE") {
         return Err(format!("Failed to get site logs: {}", stderr.trim()));
     }
@@ -5791,7 +5727,8 @@ echo "DONE"
 
 /// Read last N lines of a log file, optionally filtered by date range
 pub async fn read_site_log(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     log_path: &str,
     lines: usize,
@@ -5825,7 +5762,7 @@ pub async fn read_site_log(
     } else {
         format!("{} '{}' | tail -n {}", read_cmd, safe_path, lines.min(10000))
     };
-    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 30).await?;
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 30).await?;
     if code != 0 {
         let err_msg = if !stderr.trim().is_empty() { stderr.trim() } else { stdout.trim() };
         return Err(format!("Failed to read log: {}", err_msg));
@@ -5865,18 +5802,17 @@ pub struct DockerImage {
 
 /// Check Docker installation status
 pub async fn check_docker(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<DockerStatus, String> {
     // ponytail: cache Docker status for connection lifetime
-    if let Some(cached) = ssh_mgr.cache.get(session_id, "docker_status", 0).await {
+    if let Some(cached) = cache.get(session_id, "docker_status", 0) {
         if let Ok(status) = serde_json::from_str::<DockerStatus>(&cached) {
             return Ok(status);
         }
     }
-    let (stdout, _, _) = ssh_mgr
-        .exec_with_output(
-            session_id,
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
 if command -v docker &>/dev/null; then
     echo "INSTALLED=true"
@@ -5922,20 +5858,21 @@ fi
 
     // ponytail: cache Docker status
     if let Ok(json) = serde_json::to_string(&status) {
-        ssh_mgr.cache.put(session_id, "docker_status", json).await;
+        cache.put(session_id, "docker_status", json);
     }
     Ok(status)
 }
 
 /// Helper: run an SSH command with streaming output via Tauri events
 async fn docker_stream_exec(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     cmd: &str,
     timeout_secs: u64,
     app_handle: &AppHandle,
 ) -> Result<String, String> {
-    let mut channel = ssh_mgr.open_channel(session_id).await?;
+    let mut channel = crate::ssh::session_open_channel(session).await?;
     channel
         .exec(true, cmd)
         .await
@@ -6003,14 +5940,15 @@ async fn docker_stream_exec(
 
 /// Generic helper: stream SSH command output via a custom event name
 async fn stream_ssh_command(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     cmd: &str,
     timeout_secs: u64,
     app_handle: &AppHandle,
     event_name: &str,
 ) -> Result<(String, i32), String> {
-    let mut channel = ssh_mgr.open_channel(session_id).await?;
+    let mut channel = crate::ssh::session_open_channel(session).await?;
     channel
         .exec(true, cmd)
         .await
@@ -6070,7 +6008,8 @@ async fn stream_ssh_command(
 
 /// Install Docker
 pub async fn install_docker(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     use_mirror: bool,
     app_handle: &AppHandle,
@@ -6106,7 +6045,7 @@ echo "Docker installed successfully: $(docker --version)"
 "#
     };
 
-    let output = docker_stream_exec(ssh_mgr, session_id, script, 300, app_handle).await
+    let output = docker_stream_exec(session, cache, session_id, script, 300, app_handle).await
         .map_err(|e| format!("Docker installation failed: {}", e))?;
 
     let _ = app_handle.emit("docker-action-progress", serde_json::json!({
@@ -6120,7 +6059,8 @@ echo "Docker installed successfully: $(docker --version)"
 
 /// Uninstall Docker
 pub async fn uninstall_docker(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     app_handle: &AppHandle,
 ) -> Result<String, String> {
@@ -6149,7 +6089,7 @@ systemctl daemon-reload 2>/dev/null || true
 echo "Docker uninstalled successfully"
 "#;
 
-    let output = docker_stream_exec(ssh_mgr, session_id, script, 120, app_handle).await
+    let output = docker_stream_exec(session, cache, session_id, script, 120, app_handle).await
         .map_err(|e| format!("Docker uninstall failed: {}", e))?;
 
     let _ = app_handle.emit("docker-action-progress", serde_json::json!({
@@ -6163,11 +6103,12 @@ echo "Docker uninstalled successfully"
 
 /// List Docker containers
 pub async fn docker_container_list(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<Vec<DockerContainer>, String> {
     let cmd = r#"docker ps -a --format '{{.ID}}|||{{.Names}}|||{{.Image}}|||{{.Status}}|||{{.State}}|||{{.Ports}}|||{{.CreatedAt}}'"#;
-    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, cmd, 30).await?;
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, cmd, 30).await?;
 
     let mut containers = Vec::new();
     for line in stdout.lines() {
@@ -6207,7 +6148,8 @@ pub async fn docker_container_list(
 
 /// Perform action on a container (start/stop/restart/pause/unpause)
 pub async fn docker_container_action(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     container_id: &str,
     action: &str,
@@ -6219,7 +6161,7 @@ pub async fn docker_container_action(
 
     let safe_id = container_id.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect::<String>();
     let cmd = format!("docker {} {}", action, safe_id);
-    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 30).await?;
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 30).await?;
     // ponytail: exit_code -1 means ExitStatus not received (russh behavior)
     if code > 0 {
         let err = if !stderr.trim().is_empty() {
@@ -6239,7 +6181,8 @@ pub async fn docker_container_action(
 
 /// Remove a container
 pub async fn docker_container_remove(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     container_id: &str,
     force: bool,
@@ -6250,7 +6193,7 @@ pub async fn docker_container_remove(
     } else {
         format!("docker rm {}", safe_id)
     };
-    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 30).await?;
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 30).await?;
     // ponytail: exit_code -1 means ExitStatus not received (russh behavior)
     if code > 0 {
         let err = if !stderr.trim().is_empty() {
@@ -6267,14 +6210,15 @@ pub async fn docker_container_remove(
 
 /// Get container logs
 pub async fn docker_container_logs(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     container_id: &str,
     lines: usize,
 ) -> Result<String, String> {
     let safe_id = container_id.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect::<String>();
     let cmd = format!("docker logs --tail {} {} 2>&1", lines.min(5000), safe_id);
-    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 30).await?;
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 30).await?;
     if code != 0 {
         return Err(format!(
             "Failed to get logs: {}",
@@ -6286,11 +6230,12 @@ pub async fn docker_container_logs(
 
 /// List Docker images
 pub async fn docker_image_list(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<Vec<DockerImage>, String> {
     let cmd = r#"docker images --format '{{.ID}}|||{{.Repository}}|||{{.Tag}}|||{{.Size}}|||{{.CreatedAt}}'"#;
-    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, cmd, 30).await?;
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, cmd, 30).await?;
 
     let mut images = Vec::new();
     for line in stdout.lines() {
@@ -6328,7 +6273,8 @@ pub async fn docker_image_list(
 
 /// Pull a Docker image
 pub async fn docker_image_pull(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     image_name: &str,
     app_handle: &AppHandle,
@@ -6341,7 +6287,7 @@ pub async fn docker_image_pull(
     // ponytail: Docker requires lowercase repository names, auto-convert to avoid user error
     let image_name_lower = image_name.to_lowercase();
     let cmd = format!("docker pull {}", image_name_lower);
-    let output = docker_stream_exec(ssh_mgr, session_id, &cmd, 600, app_handle).await
+    let output = docker_stream_exec(session, cache, session_id, &cmd, 600, app_handle).await
         .map_err(|e| format!("Failed to pull image: {}", e))?;
 
     let _ = app_handle.emit("docker-action-progress", serde_json::json!({
@@ -6355,13 +6301,14 @@ pub async fn docker_image_pull(
 
 /// Remove a Docker image
 pub async fn docker_image_remove(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     image_id: &str,
 ) -> Result<String, String> {
     let safe_id = image_id.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_' || *c == ':' || *c == '/' || *c == '.').collect::<String>();
     let cmd = format!("docker rmi {}", safe_id);
-    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &cmd, 30).await?;
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 30).await?;
     // ponytail: exit_code -1 means ExitStatus not received (russh behavior)
     if code > 0 {
         let err = if !stderr.trim().is_empty() {
@@ -6378,7 +6325,8 @@ pub async fn docker_image_remove(
 
 /// Run a container from an image
 pub async fn docker_image_run(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     image_name: &str,
     run_args: &str,
@@ -6404,7 +6352,7 @@ pub async fn docker_image_run(
         format!("docker run {} {}", run_args.trim(), image_lower)
     };
 
-    let output = docker_stream_exec(ssh_mgr, session_id, &cmd, 600, app_handle).await
+    let output = docker_stream_exec(session, cache, session_id, &cmd, 600, app_handle).await
         .map_err(|e| format!("Failed to run container: {}", e))?;
 
     let _ = app_handle.emit("docker-action-progress", serde_json::json!({
@@ -6418,11 +6366,12 @@ pub async fn docker_image_run(
 
 /// Get Docker mirror/registry configuration
 pub async fn docker_get_mirror_config(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<Vec<String>, String> {
     let cmd = r#"cat /etc/docker/daemon.json 2>/dev/null | python3 -c "import sys,json;d=json.load(sys.stdin);print('\n'.join(d.get('registry-mirrors',[])))" 2>/dev/null || echo """#;
-    let (stdout, _, _) = ssh_mgr.exec_with_output(session_id, cmd, 10).await?;
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session, cmd, 10).await?;
     let mirrors: Vec<String> = stdout
         .lines()
         .map(|l| l.trim().to_string())
@@ -6433,7 +6382,8 @@ pub async fn docker_get_mirror_config(
 
 /// Set Docker mirror/registry configuration
 pub async fn docker_set_mirror_config(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     mirrors: &[String],
 ) -> Result<String, String> {
@@ -6453,7 +6403,7 @@ systemctl restart docker
 echo "Docker mirror configured: {mirrors}"
 "#, mirrors = mirrors_array);
 
-    let (stdout, stderr, code) = ssh_mgr.exec_with_output(session_id, &script, 30).await?;
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &script, 30).await?;
     if code != 0 {
         return Err(format!(
             "Failed to configure mirror: {}",
@@ -6480,10 +6430,9 @@ pub struct BackupInfo {
 
 /// Try to get a mysql command prefix with credentials.
 /// Tries multiple authentication methods in order of preference.
-async fn get_mysql_cmd(ssh_mgr: &SshManager, session_id: &str) -> String {
+async fn get_mysql_cmd(session: &SshSession, cache: &SshCache, session_id: &str) -> String {
     // Method 1: Check /root/.my.cnf for password
-    let (cnf, _, _) = ssh_mgr
-        .exec_with_output(session_id, "cat /root/.my.cnf 2>/dev/null", 5)
+    let (cnf, _, _) = crate::ssh::session_exec_with_output(session, "cat /root/.my.cnf 2>/dev/null", 5)
         .await
         .unwrap_or((String::new(), String::new(), -1));
     
@@ -6499,8 +6448,7 @@ async fn get_mysql_cmd(ssh_mgr: &SshManager, session_id: &str) -> String {
     }
     
     // Method 1.5: Check /tmp/mysql_root_password.txt (written by our install script)
-    let (tmp_pw, _, _) = ssh_mgr
-        .exec_with_output(session_id, "cat /tmp/mysql_root_password.txt 2>/dev/null", 5)
+    let (tmp_pw, _, _) = crate::ssh::session_exec_with_output(session, "cat /tmp/mysql_root_password.txt 2>/dev/null", 5)
         .await
         .unwrap_or((String::new(), String::new(), -1));
     let pw = tmp_pw.trim().to_string();
@@ -6509,8 +6457,7 @@ async fn get_mysql_cmd(ssh_mgr: &SshManager, session_id: &str) -> String {
     }
 
     // Method 2: Try debian-sys-maint user (Debian/Ubuntu specific)
-    let (debian_cnf, _, _) = ssh_mgr
-        .exec_with_output(session_id, "cat /etc/mysql/debian.cnf 2>/dev/null", 5)
+    let (debian_cnf, _, _) = crate::ssh::session_exec_with_output(session, "cat /etc/mysql/debian.cnf 2>/dev/null", 5)
         .await
         .unwrap_or((String::new(), String::new(), -1));
     
@@ -6531,8 +6478,7 @@ async fn get_mysql_cmd(ssh_mgr: &SshManager, session_id: &str) -> String {
     
     // Method 3: Try plain mysql (works if socket auth is configured or running as root)
     // Test it first
-    let (_, _, test_code) = ssh_mgr
-        .exec_with_output(session_id, "mysql -e 'SELECT 1' 2>&1", 5)
+    let (_, _, test_code) = crate::ssh::session_exec_with_output(session, "mysql -e 'SELECT 1' 2>&1", 5)
         .await
         .unwrap_or((String::new(), String::new(), -1));
     
@@ -6547,26 +6493,25 @@ async fn get_mysql_cmd(ssh_mgr: &SshManager, session_id: &str) -> String {
 
 /// List all user databases (excluding system databases)
 pub async fn list_databases(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<Vec<DbInfo>, String> {
     // Check cache first (30 seconds TTL for database list)
-    if let Some(cached) = ssh_mgr.cache.get(session_id, "database_list", 30).await {
+    if let Some(cached) = cache.get(session_id, "database_list", 30) {
         // Parse cached JSON
         if let Ok(dbs) = serde_json::from_str::<Vec<DbInfo>>(&cached) {
             return Ok(dbs);
         }
     }
 
-    let mysql_cmd = get_mysql_cmd(ssh_mgr, session_id).await;
+    let mysql_cmd = get_mysql_cmd(session, cache, session_id).await;
 
     // Use SQL query to directly get user databases only (excludes system databases)
     // This avoids parsing issues with SHOW DATABASES output format variations
     let query = r#"SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') ORDER BY SCHEMA_NAME"#;
     
-    let (stdout, stderr, code) = ssh_mgr
-        .exec_with_output(
-            session_id,
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session,
             &format!("{} --batch --skip-column-names -e \"{}\"", mysql_cmd, query),
             5,
         )
@@ -6589,7 +6534,7 @@ pub async fn list_databases(
     if !dbs.is_empty() {
         // Cache result for 60 seconds to speed up repeated loads
         if let Ok(json) = serde_json::to_string(&dbs) {
-            ssh_mgr.cache.put(session_id, "database_list", json).await;
+            cache.put(session_id, "database_list", json);
         }
         return Ok(dbs);
     }
@@ -6674,7 +6619,8 @@ fn is_valid_ipv4(ip: &str) -> bool {
 
 /// Create a database with user and grant privileges
 pub async fn create_database(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     db_name: &str,
     db_user: &str,
@@ -6741,25 +6687,23 @@ pub async fn create_database(
     
     sql.push_str("FLUSH PRIVILEGES;\n");
 
-    let mysql_cmd = get_mysql_cmd(ssh_mgr, session_id).await;
+    let mysql_cmd = get_mysql_cmd(session, cache, session_id).await;
 
     // Write SQL via SFTP (reliable escaping, same pattern as create_site)
     let tmp_sql = "/tmp/db_setup.sql";
-    ssh_mgr.write_file(session_id, tmp_sql, &sql).await?;
+    crate::ssh::session_write_file(session, tmp_sql, &sql).await?;
 
-    let (db_out, db_err, db_code) = ssh_mgr
-        .exec_with_output(session_id, &format!("{} < {} 2>&1", mysql_cmd, tmp_sql), 30)
+    let (db_out, db_err, db_code) = crate::ssh::session_exec_with_output(session, &format!("{} < {} 2>&1", mysql_cmd, tmp_sql), 30)
         .await?;
 
     // Verify database was created
     let verify_cmd = format!("{} -e 'SHOW DATABASES' 2>&1 | grep -iw '{}'", mysql_cmd, safe_db.replace('\'', ""));
-    let (verify_out, _, _) = ssh_mgr
-        .exec_with_output(session_id, &verify_cmd, 10)
+    let (verify_out, _, _) = crate::ssh::session_exec_with_output(session, &verify_cmd, 10)
         .await?;
     let db_exists = !verify_out.trim().is_empty();
 
     // Cleanup temp file
-    let _ = ssh_mgr.exec_with_output(session_id, &format!("rm -f {}", tmp_sql), 5).await;
+    let _ = crate::ssh::session_exec_with_output(session, &format!("rm -f {}", tmp_sql), 5).await;
 
     if db_code != 0 && !db_exists {
         let full_output = format!("{} {}", db_out, db_err).trim().to_string();
@@ -6771,13 +6715,14 @@ pub async fn create_database(
     }
 
     // Invalidate database list cache so next list reflects the new db
-    ssh_mgr.cache.invalidate(session_id, &["database_list"]).await;
+    cache.invalidate(session_id, &["database_list"]);
     Ok(format!("Database '{}' created successfully", db_name))
 }
 
 /// Delete a database and its associated user
 pub async fn delete_database(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     db_name: &str,
     db_user: &str,
@@ -6791,16 +6736,15 @@ pub async fn delete_database(
         safe_db, safe_user
     );
 
-    let mysql_cmd = get_mysql_cmd(ssh_mgr, session_id).await;
+    let mysql_cmd = get_mysql_cmd(session, cache, session_id).await;
 
     let tmp_sql = "/tmp/db_drop.sql";
-    ssh_mgr.write_file(session_id, tmp_sql, &sql).await?;
+    crate::ssh::session_write_file(session, tmp_sql, &sql).await?;
 
-    let (db_out, db_err, db_code) = ssh_mgr
-        .exec_with_output(session_id, &format!("{} < {} 2>&1", mysql_cmd, tmp_sql), 30)
+    let (db_out, db_err, db_code) = crate::ssh::session_exec_with_output(session, &format!("{} < {} 2>&1", mysql_cmd, tmp_sql), 30)
         .await?;
 
-    let _ = ssh_mgr.exec_with_output(session_id, &format!("rm -f {}", tmp_sql), 5).await;
+    let _ = crate::ssh::session_exec_with_output(session, &format!("rm -f {}", tmp_sql), 5).await;
 
     // Any non-zero exit code = error
     if db_code != 0 {
@@ -6813,13 +6757,14 @@ pub async fn delete_database(
     }
 
     // Invalidate database list cache so next list reflects the deletion
-    ssh_mgr.cache.invalidate(session_id, &["database_list"]).await;
+    cache.invalidate(session_id, &["database_list"]);
     Ok(format!("Database '{}' deleted successfully", db_name))
 }
 
 /// Change database access permission
 pub async fn change_db_access(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     db_name: &str,
     db_user: &str,
@@ -6877,16 +6822,15 @@ pub async fn change_db_access(
     
     sql.push_str("FLUSH PRIVILEGES;\n");
 
-    let mysql_cmd = get_mysql_cmd(ssh_mgr, session_id).await;
+    let mysql_cmd = get_mysql_cmd(session, cache, session_id).await;
 
     let tmp_sql = "/tmp/db_access.sql";
-    ssh_mgr.write_file(session_id, tmp_sql, &sql).await?;
+    crate::ssh::session_write_file(session, tmp_sql, &sql).await?;
 
-    let (db_out, db_err, db_code) = ssh_mgr
-        .exec_with_output(session_id, &format!("{} < {} 2>&1", mysql_cmd, tmp_sql), 30)
+    let (db_out, db_err, db_code) = crate::ssh::session_exec_with_output(session, &format!("{} < {} 2>&1", mysql_cmd, tmp_sql), 30)
         .await?;
 
-    let _ = ssh_mgr.exec_with_output(session_id, &format!("rm -f {}", tmp_sql), 5).await;
+    let _ = crate::ssh::session_exec_with_output(session, &format!("rm -f {}", tmp_sql), 5).await;
 
     // Any non-zero exit code = error
     if db_code != 0 {
@@ -6921,12 +6865,12 @@ pub struct RedisDbSize {
 /// Check if Redis is installed and running
 /// Returns: Ok(true) if running, Ok(false) if installed but stopped, Err("not_installed") if not installed
 pub async fn check_redis_status(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<bool, String> {
     // Try redis-cli ping directly
-    let (out, stderr, code) = ssh_mgr
-        .exec_with_output(session_id, "redis-cli ping 2>&1", 5)
+    let (out, stderr, code) = crate::ssh::session_exec_with_output(session, "redis-cli ping 2>&1", 5)
         .await?;
 
     log::info!("[REDIS] ping => stdout='{}' stderr='{}' exit_code={}", out, stderr, code);
@@ -6950,8 +6894,7 @@ pub async fn check_redis_status(
 
     // redis-cli exists but ping failed (connection refused, auth required, etc.)
     // Fallback: check if redis-server process is running
-    let (p_out, _, _) = ssh_mgr
-        .exec_with_output(session_id, "pgrep -x redis-server || pgrep redis-server", 3)
+    let (p_out, _, _) = crate::ssh::session_exec_with_output(session, "pgrep -x redis-server || pgrep redis-server", 3)
         .await?;
     log::info!("[REDIS] pgrep output='{}'", p_out);
 
@@ -6968,11 +6911,11 @@ pub async fn check_redis_status(
 
 /// Get Redis version
 pub async fn get_redis_version(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<String, String> {
-    let (out, _, code) = ssh_mgr
-        .exec_with_output(session_id, "redis-cli --version 2>&1", 5)
+    let (out, _, code) = crate::ssh::session_exec_with_output(session, "redis-cli --version 2>&1", 5)
         .await?;
     
     if code != 0 {
@@ -6991,11 +6934,11 @@ pub async fn get_redis_version(
 /// Get sizes of all databases (0-15)
 /// ponytail: single INFO keyspace call replaces 16 redis-cli DBSIZE processes
 pub async fn redis_dbsize_all(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<Vec<RedisDbSize>, String> {
-    let (out, _, code) = ssh_mgr
-        .exec_with_output(session_id, "redis-cli INFO keyspace", 5)
+    let (out, _, code) = crate::ssh::session_exec_with_output(session, "redis-cli INFO keyspace", 5)
         .await?;
 
     if code != 0 {
@@ -7029,7 +6972,8 @@ pub async fn redis_dbsize_all(
 /// Scan keys in a database with pattern matching and pagination
 /// ponytail: redis-cli pipeline mode replaces ~4N redis-cli processes with 3 (SCAN + 2 pipelines)
 pub async fn redis_scan_keys(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     db_index: u8,
     pattern: &str,
@@ -7044,10 +6988,10 @@ pub async fn redis_scan_keys(
     let run_pipeline = |cmds: String| {
         let b64 = B64.encode(cmds.as_bytes());
         let cmd = format!("printf '%s' '{}' | base64 -d | redis-cli --raw -n {}", b64, db_index);
-        let mgr_clone = ssh_mgr;
+        let sess = session.clone();
         let sid = session_id.to_string();
         async move {
-            let (out, _, code) = mgr_clone.exec_with_output(&sid, &cmd, 30).await?;
+            let (out, _, code) = crate::ssh::session_exec_with_output(&sess, &cmd, 30).await?;
             if code != 0 {
                 return Err(format!("Pipeline failed: {}", out));
             }
@@ -7061,7 +7005,7 @@ pub async fn redis_scan_keys(
         "redis-cli --raw -n {} SCAN {} MATCH '{}' COUNT {}",
         db_index, cursor, scan_match, count
     );
-    let (scan_out, _, code) = ssh_mgr.exec_with_output(session_id, &scan_cmd, 15).await?;
+    let (scan_out, _, code) = crate::ssh::session_exec_with_output(session, &scan_cmd, 15).await?;
     if code != 0 {
         return Err(format!("Failed to scan keys: {}", scan_out));
     }
@@ -7214,7 +7158,8 @@ pub async fn redis_scan_keys(
 
 /// Set or update a key-value pair
 pub async fn redis_set_key(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     db_index: u8,
     key: &str,
@@ -7230,7 +7175,7 @@ pub async fn redis_set_key(
         format!("redis-cli -n {} SET '{}' '{}'", db_index, escaped_key, escaped_value)
     };
     
-    let (out, err, code) = ssh_mgr.exec_with_output(session_id, &cmd, 10).await?;
+    let (out, err, code) = crate::ssh::session_exec_with_output(session, &cmd, 10).await?;
     
     if code != 0 || !out.trim().to_lowercase().contains("ok") {
         return Err(format!("Failed to set key: {} {}", out, err));
@@ -7241,7 +7186,8 @@ pub async fn redis_set_key(
 
 /// Delete one or more keys
 pub async fn redis_del_key(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     db_index: u8,
     keys: &[String],
@@ -7261,7 +7207,7 @@ pub async fn redis_del_key(
         escaped_keys.iter().map(|k| format!("'{}'", k)).collect::<Vec<_>>().join(" ")
     );
     
-    let (out, _, code) = ssh_mgr.exec_with_output(session_id, &cmd, 10).await?;
+    let (out, _, code) = crate::ssh::session_exec_with_output(session, &cmd, 10).await?;
     
     if code != 0 {
         return Err(format!("Failed to delete keys: {}", out));
@@ -7273,12 +7219,13 @@ pub async fn redis_del_key(
 
 /// Flush a database (delete all keys)
 pub async fn redis_flushdb(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     db_index: u8,
 ) -> Result<String, String> {
     let cmd = format!("redis-cli -n {} FLUSHDB", db_index);
-    let (out, err, code) = ssh_mgr.exec_with_output(session_id, &cmd, 10).await?;
+    let (out, err, code) = crate::ssh::session_exec_with_output(session, &cmd, 10).await?;
     
     if code != 0 {
         return Err(format!("Failed to flush database: {} {}", out, err));
@@ -7289,12 +7236,12 @@ pub async fn redis_flushdb(
 
 /// Create a backup using BGSAVE
 pub async fn redis_save_backup(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<String, String> {
     // Trigger background save
-    let (out, _, code) = ssh_mgr
-        .exec_with_output(session_id, "redis-cli BGSAVE 2>&1", 10)
+    let (out, _, code) = crate::ssh::session_exec_with_output(session, "redis-cli BGSAVE 2>&1", 10)
         .await?;
     
     if code != 0 {
@@ -7305,14 +7252,12 @@ pub async fn redis_save_backup(
     std::thread::sleep(std::time::Duration::from_secs(2));
     
     // Find latest RDB file
-    let (ls_out, _, _) = ssh_mgr
-        .exec_with_output(session_id, "ls -lht /var/lib/redis/*.rdb 2>/dev/null | head -1", 5)
+    let (ls_out, _, _) = crate::ssh::session_exec_with_output(session, "ls -lht /var/lib/redis/*.rdb 2>/dev/null | head -1", 5)
         .await?;
     
     if ls_out.trim().is_empty() {
         // Try alternative location
-        let (alt_out, _, _) = ssh_mgr
-            .exec_with_output(session_id, "find /var -name '*.rdb' -type f -mmin -5 2>/dev/null | head -1", 5)
+        let (alt_out, _, _) = crate::ssh::session_exec_with_output(session, "find /var -name '*.rdb' -type f -mmin -5 2>/dev/null | head -1", 5)
             .await?;
         
         if alt_out.trim().is_empty() {
@@ -7333,11 +7278,11 @@ pub async fn redis_save_backup(
 
 /// List available backup files
 pub async fn redis_list_backups(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<Vec<BackupInfo>, String> {
-    let (out, _, code) = ssh_mgr
-        .exec_with_output(session_id, "ls -lh /var/lib/redis/*.rdb 2>/dev/null", 5)
+    let (out, _, code) = crate::ssh::session_exec_with_output(session, "ls -lh /var/lib/redis/*.rdb 2>/dev/null", 5)
         .await?;
     
     if code != 0 || out.trim().is_empty() {
@@ -7386,7 +7331,8 @@ fn parse_size_string(size_str: &str) -> u64 {
 
 /// Change MySQL root password
 pub async fn change_mysql_root_password(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     new_password: &str,
 ) -> Result<String, String> {
@@ -7398,14 +7344,13 @@ pub async fn change_mysql_root_password(
     
     // Write SQL via SFTP
     let tmp_sql = "/tmp/mysql_change_root_pw.sql";
-    ssh_mgr.write_file(session_id, tmp_sql, &sql).await?;
+    crate::ssh::session_write_file(session, tmp_sql, &sql).await?;
     
-    let (out, err, code) = ssh_mgr
-        .exec_with_output(session_id, &format!("{} < {} 2>&1", mysql_cmd, tmp_sql), 30)
+    let (out, err, code) = crate::ssh::session_exec_with_output(session, &format!("{} < {} 2>&1", mysql_cmd, tmp_sql), 30)
         .await?;
     
     // Cleanup temp file
-    let _ = ssh_mgr.exec_with_output(session_id, &format!("rm -f {}", tmp_sql), 5).await;
+    let _ = crate::ssh::session_exec_with_output(session, &format!("rm -f {}", tmp_sql), 5).await;
     
     if code != 0 {
         let combined = format!("{} {}", out, err).trim().to_string();
@@ -7421,7 +7366,8 @@ pub async fn change_mysql_root_password(
 
 /// Change MySQL database user password
 pub async fn change_db_user_password(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     db_user: &str,
     new_password: &str,
@@ -7457,15 +7403,14 @@ pub async fn change_db_user_password(
     }
     sql.push_str("FLUSH PRIVILEGES;\n");
 
-    let mysql_cmd = get_mysql_cmd(ssh_mgr, session_id).await;
+    let mysql_cmd = get_mysql_cmd(session, cache, session_id).await;
     let tmp_sql = "/tmp/db_change_pw.sql";
-    ssh_mgr.write_file(session_id, tmp_sql, &sql).await?;
+    crate::ssh::session_write_file(session, tmp_sql, &sql).await?;
 
-    let (out, err, code) = ssh_mgr
-        .exec_with_output(session_id, &format!("{} < {} 2>&1", mysql_cmd, tmp_sql), 30)
+    let (out, err, code) = crate::ssh::session_exec_with_output(session, &format!("{} < {} 2>&1", mysql_cmd, tmp_sql), 30)
         .await?;
 
-    let _ = ssh_mgr.exec_with_output(session_id, &format!("rm -f {}", tmp_sql), 5).await;
+    let _ = crate::ssh::session_exec_with_output(session, &format!("rm -f {}", tmp_sql), 5).await;
 
     if code != 0 {
         let combined = format!("{} {}", out, err).trim().to_string();
@@ -7483,7 +7428,8 @@ pub async fn change_db_user_password(
 
 /// Save database remark to SQLite
 pub async fn save_db_remark(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     db_name: &str,
     remark: &str,
@@ -7493,8 +7439,7 @@ pub async fn save_db_remark(
     let conn = db_conn.lock().map_err(|_| "DB lock failed".to_string())?;
     
     // Get server host from session
-    let server_host = ssh_mgr.get_host(session_id)
-        .ok_or(format!("Session not found: {}", session_id))?;
+    let server_host = session.connect_info.host.clone();
     
     crate::db::DbRemarksManager::save(&conn, &server_host, db_name, remark)?;
     
@@ -7503,7 +7448,8 @@ pub async fn save_db_remark(
 
 /// Get all database remarks for a server
 pub async fn get_db_remarks(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<Vec<(String, String)>, String> {
     let db_conn = crate::db::init_db()
@@ -7511,8 +7457,7 @@ pub async fn get_db_remarks(
     let conn = db_conn.lock().map_err(|_| "DB lock failed".to_string())?;
     
     // Get server host from session
-    let server_host = ssh_mgr.get_host(session_id)
-        .ok_or(format!("Session not found: {}", session_id))?;
+    let server_host = session.connect_info.host.clone();
     
     Ok(crate::db::DbRemarksManager::list_for_server(&conn, &server_host))
 }
@@ -7521,7 +7466,8 @@ pub async fn get_db_remarks(
 
 /// Save database credentials (password, access_type, allowed_ip)
 pub async fn save_db_credentials(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     db_name: &str,
     password: &str,
@@ -7531,42 +7477,42 @@ pub async fn save_db_credentials(
     let db_conn = crate::db::init_db()
         .map_err(|e| format!("Failed to init DB: {}", e))?;
     let conn = db_conn.lock().map_err(|_| "DB lock failed".to_string())?;
-    let server_host = ssh_mgr.get_host(session_id)
-        .ok_or(format!("Session not found: {}", session_id))?;
+    let server_host = session.connect_info.host.clone();
     crate::db::DbCredentialsManager::save(&conn, &server_host, db_name, password, access_type, allowed_ip)?;
     Ok("Credentials saved".to_string())
 }
 
 /// List all database credentials for a server
 pub async fn get_db_credentials(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
 ) -> Result<Vec<crate::db::DbCredential>, String> {
     let db_conn = crate::db::init_db()
         .map_err(|e| format!("Failed to init DB: {}", e))?;
     let conn = db_conn.lock().map_err(|_| "DB lock failed".to_string())?;
-    let server_host = ssh_mgr.get_host(session_id)
-        .ok_or(format!("Session not found: {}", session_id))?;
+    let server_host = session.connect_info.host.clone();
     Ok(crate::db::DbCredentialsManager::list_for_server(&conn, &server_host))
 }
 
 /// Get credentials for a specific database
 pub async fn get_db_credential(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     db_name: &str,
 ) -> Result<Option<crate::db::DbCredential>, String> {
     let db_conn = crate::db::init_db()
         .map_err(|e| format!("Failed to init DB: {}", e))?;
     let conn = db_conn.lock().map_err(|_| "DB lock failed".to_string())?;
-    let server_host = ssh_mgr.get_host(session_id)
-        .ok_or(format!("Session not found: {}", session_id))?;
+    let server_host = session.connect_info.host.clone();
     Ok(crate::db::DbCredentialsManager::get(&conn, &server_host, db_name))
 }
 
 /// Update only the password for a database
 pub async fn update_db_credential_password(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     db_name: &str,
     password: &str,
@@ -7574,8 +7520,7 @@ pub async fn update_db_credential_password(
     let db_conn = crate::db::init_db()
         .map_err(|e| format!("Failed to init DB: {}", e))?;
     let conn = db_conn.lock().map_err(|_| "DB lock failed".to_string())?;
-    let server_host = ssh_mgr.get_host(session_id)
-        .ok_or(format!("Session not found: {}", session_id))?;
+    let server_host = session.connect_info.host.clone();
     if password.is_empty() {
         crate::db::DbCredentialsManager::clear_password(&conn, &server_host, db_name)?;
     } else {
@@ -7588,7 +7533,8 @@ pub async fn update_db_credential_password(
 
 /// Create a backup of the specified database using mysqldump
 pub async fn backup_database(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     db_name: &str,
     db_user: &str,
@@ -7605,8 +7551,7 @@ pub async fn backup_database(
 
     // Create backup directory if it doesn't exist
     let create_dir_cmd = "mkdir -p /tmp/db_backups";
-    let (_, _, code) = ssh_mgr
-        .exec_with_output(session_id, create_dir_cmd, 5)
+    let (_, _, code) = crate::ssh::session_exec_with_output(session, create_dir_cmd, 5)
         .await?;
     
     if code != 0 {
@@ -7630,8 +7575,7 @@ pub async fn backup_database(
         db_user, db_password, db_name, sql_path
     );
     
-    let (_stdout, stderr, code) = ssh_mgr
-        .exec_with_output(session_id, &dump_cmd, 300)
+    let (_stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &dump_cmd, 300)
         .await?;
     
     if code != 0 {
@@ -7640,8 +7584,7 @@ pub async fn backup_database(
 
     // Verify SQL file exists
     let verify_cmd = format!("test -f {} && echo 'exists'", sql_path);
-    let (verify_out, _, verify_code) = ssh_mgr
-        .exec_with_output(session_id, &verify_cmd, 5)
+    let (verify_out, _, verify_code) = crate::ssh::session_exec_with_output(session, &verify_cmd, 5)
         .await?;
     
     if verify_code != 0 || !verify_out.trim().contains("exists") {
@@ -7654,8 +7597,7 @@ pub async fn backup_database(
         zip_filename, sql_filename, sql_filename
     );
     
-    let (_, stderr, code) = ssh_mgr
-        .exec_with_output(session_id, &compress_cmd, 60)
+    let (_, stderr, code) = crate::ssh::session_exec_with_output(session, &compress_cmd, 60)
         .await?;
     
     if code != 0 {
@@ -7664,8 +7606,7 @@ pub async fn backup_database(
 
     // Verify zip file exists
     let verify_zip_cmd = format!("test -f {} && echo 'exists'", zip_path);
-    let (verify_zip_out, _, verify_zip_code) = ssh_mgr
-        .exec_with_output(session_id, &verify_zip_cmd, 5)
+    let (verify_zip_out, _, verify_zip_code) = crate::ssh::session_exec_with_output(session, &verify_zip_cmd, 5)
         .await?;
     
     if verify_zip_code != 0 || !verify_zip_out.trim().contains("exists") {
@@ -7677,7 +7618,8 @@ pub async fn backup_database(
 
 /// List all backup files for a specific database
 pub async fn list_db_backups(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     db_name: &str,
 ) -> Result<Vec<BackupInfo>, String> {
@@ -7690,8 +7632,7 @@ pub async fn list_db_backups(
     let pattern = format!("/tmp/db_backups/{}*", db_name);
     let cmd = format!("ls -lht {} 2>/dev/null | grep -E '\\.(sql|zip)$'", pattern);
     
-    let (out, _, code) = ssh_mgr
-        .exec_with_output(session_id, &cmd, 5)
+    let (out, _, code) = crate::ssh::session_exec_with_output(session, &cmd, 5)
         .await?;
     
     if code != 0 || out.trim().is_empty() {
@@ -7727,7 +7668,8 @@ pub async fn list_db_backups(
 
 /// Delete a specific backup file
 pub async fn delete_db_backup(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     backup_filename: &str,
 ) -> Result<String, String> {
@@ -7748,8 +7690,7 @@ pub async fn delete_db_backup(
     };
     let cmd = format!("rm -f {}", backup_path);
     
-    let (_, _, code) = ssh_mgr
-        .exec_with_output(session_id, &cmd, 5)
+    let (_, _, code) = crate::ssh::session_exec_with_output(session, &cmd, 5)
         .await?;
     
     if code != 0 {
@@ -7761,7 +7702,8 @@ pub async fn delete_db_backup(
 
 /// Download database backup file content as bytes
 pub async fn download_db_backup(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     backup_filename: &str,
 ) -> Result<Vec<u8>, String> {
@@ -7784,8 +7726,7 @@ pub async fn download_db_backup(
     
     // Check if file exists
     let check_cmd = format!("test -f {} && echo 'exists'", backup_path);
-    let (stdout, _, code) = ssh_mgr
-        .exec_with_output(session_id, &check_cmd, 5)
+    let (stdout, _, code) = crate::ssh::session_exec_with_output(session, &check_cmd, 5)
         .await?;
     
     if code != 0 || !stdout.trim().contains("exists") {
@@ -7794,8 +7735,7 @@ pub async fn download_db_backup(
     
     // Read file content using cat
     let read_cmd = format!("cat {}", backup_path);
-    let (content, _, code) = ssh_mgr
-        .exec_with_output(session_id, &read_cmd, 30)
+    let (content, _, code) = crate::ssh::session_exec_with_output(session, &read_cmd, 30)
         .await?;
     
     if code != 0 {
@@ -7808,7 +7748,8 @@ pub async fn download_db_backup(
 
 /// Import database from uploaded SQL content
 pub async fn import_database_from_file(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     db_name: &str,
     db_user: &str,
@@ -7834,8 +7775,7 @@ pub async fn import_database_from_file(
 
     // Write SQL content to temporary file
     let write_cmd = format!("cat > {} << 'SQLEOF'\n{}\nSQLEOF", temp_path, sql_content);
-    let (_stdout, stderr, code) = ssh_mgr
-        .exec_with_output(session_id, &write_cmd, 10)
+    let (_stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &write_cmd, 10)
         .await?;
     
     if code != 0 {
@@ -7848,12 +7788,11 @@ pub async fn import_database_from_file(
         db_user, db_password, db_name, temp_path
     );
     
-    let (_import_stdout, import_stderr, import_code) = ssh_mgr
-        .exec_with_output(session_id, &import_cmd, 300)
+    let (_import_stdout, import_stderr, import_code) = crate::ssh::session_exec_with_output(session, &import_cmd, 300)
         .await?;
     
     // Clean up temp file
-    let _ = ssh_mgr.exec_with_output(session_id, &format!("rm -f {}", temp_path), 5).await;
+    let _ = crate::ssh::session_exec_with_output(session, &format!("rm -f {}", temp_path), 5).await;
     
     if import_code != 0 {
         return Err(format!("Import failed: {}", import_stderr));
@@ -7864,7 +7803,8 @@ pub async fn import_database_from_file(
 
 /// Import database from existing backup file
 pub async fn import_database_from_backup(
-    ssh_mgr: &SshManager,
+    session: &SshSession,
+    cache: &SshCache,
     session_id: &str,
     db_name: &str,
     db_user: &str,
@@ -7892,8 +7832,7 @@ pub async fn import_database_from_backup(
     
     // Verify backup file exists
     let verify_cmd = format!("test -f {} && echo 'exists'", backup_path);
-    let (verify_out, _, verify_code) = ssh_mgr
-        .exec_with_output(session_id, &verify_cmd, 5)
+    let (verify_out, _, verify_code) = crate::ssh::session_exec_with_output(session, &verify_cmd, 5)
         .await?;
     
     if verify_code != 0 || !verify_out.trim().contains("exists") {
@@ -7908,8 +7847,7 @@ pub async fn import_database_from_backup(
             .as_secs());
         
         let unzip_cmd = format!("unzip -p {} > {}", backup_path, temp_sql);
-        let (_, stderr, code) = ssh_mgr
-            .exec_with_output(session_id, &unzip_cmd, 60)
+        let (_, stderr, code) = crate::ssh::session_exec_with_output(session, &unzip_cmd, 60)
             .await?;
         
         if code != 0 {
@@ -7926,13 +7864,12 @@ pub async fn import_database_from_backup(
         db_user, db_password, db_name, sql_path
     );
     
-    let (_import_stdout, import_stderr, import_code) = ssh_mgr
-        .exec_with_output(session_id, &import_cmd, 300)
+    let (_import_stdout, import_stderr, import_code) = crate::ssh::session_exec_with_output(session, &import_cmd, 300)
         .await?;
     
     // Clean up extracted SQL file if it was a zip
     if backup_filename.ends_with(".zip") {
-        let _ = ssh_mgr.exec_with_output(session_id, &format!("rm -f {}", sql_path), 5).await;
+        let _ = crate::ssh::session_exec_with_output(session, &format!("rm -f {}", sql_path), 5).await;
     }
     
     if import_code != 0 {

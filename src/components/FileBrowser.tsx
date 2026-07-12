@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, useImperativeHandle, forwardRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useTranslation } from 'react-i18next'
@@ -165,6 +165,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
   const [loading, setLoading] = useState(false)
   const [cacheTime, setCacheTime] = useState<number>(0) // ponytail: cached_at ms
   const initializedRef = useRef(false)
+  const uploadInputRef = useRef<HTMLInputElement>(null)
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
   const [lastClickedFile, setLastClickedFile] = useState<string | null>(null)
   const [rubberBand, setRubberBand] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null)
@@ -191,6 +192,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
   const [dragGhost, setDragGhost] = useState<{ name: string; isDir: boolean; x: number; y: number } | null>(null)
   const [draggingName, setDraggingName] = useState<string | null>(null)
   const [pathInputValue, setPathInputValue] = useState('/')
+  const [searchQuery, setSearchQuery] = useState('')
   const dragStartPos = useRef<{ x: number; y: number } | null>(null)
   const isDragging = useRef(false)
   const pathInputRef = useRef<HTMLInputElement>(null)
@@ -207,6 +209,13 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
   // Favorites management
   const [favorites, setFavorites] = useState<string[]>([])
   const [showFavoritesDropdown, setShowFavoritesDropdown] = useState(false)
+
+  // ponytail: client-side filename filter — no backend round-trip
+  const filteredFiles = useMemo(() => {
+    if (!searchQuery) return files
+    const q = searchQuery.toLowerCase()
+    return files.filter(f => f.name.toLowerCase().includes(q))
+  }, [files, searchQuery])
 
   // Helper: resolve full remote path for a file entry
   const resolvePath = useCallback((entry: FileEntry) =>
@@ -277,6 +286,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
 
   const navigateTo = useCallback(async (path: string, forceRefresh?: boolean) => {
     if (!sessionId) return
+    setSearchQuery('')
     setSelectedFiles(new Set())
     setLastClickedFile(null)
     const resolvedPath = path.startsWith('/')
@@ -500,14 +510,9 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     }
   }, [])
 
-  // Handle files dropped from local computer
-  const handleDropFiles = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setDropActive(false)
+  // Handle files dropped from local computer or selected via file picker
+  const handleUploadFiles = useCallback(async (items: FileList) => {
     if (!sessionId) return
-
-    const items = e.dataTransfer.files
     if (!items || items.length === 0) return
 
     const { ok, existingFiles } = await checkDirReady()
@@ -561,6 +566,14 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     onStartUpload?.(uploadFiles)
     navigateTo(currentPath)
   }, [sessionId, currentPath, checkDirReady, getUniqueName, navigateTo, showToast, showConflict, onStartUpload])
+
+  // Handle files dropped from local computer
+  const handleDropFiles = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDropActive(false)
+    await handleUploadFiles(e.dataTransfer.files)
+  }, [handleUploadFiles])
 
   // Track drag-enter/leave with a counter to avoid flicker on child elements
   const dragCounterRef = useRef(0)
@@ -1545,7 +1558,21 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
           </div>
         </div>
 
-        <div className="fb-count">{files.length} {t('files.items')}</div>
+        <div className="fb-search-box">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="#656d76"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242.656a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/></svg>
+          <input
+            className="fb-search-input"
+            placeholder={t('files.searchPlaceholder')}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button className="fb-search-clear" onClick={() => setSearchQuery('')}>✕</button>
+          )}
+        </div>
+        <div className="fb-count">
+          {searchQuery ? `${filteredFiles.length}/${files.length}` : files.length} {t('files.items')}
+        </div>
       </div>
 
       {/* File Grid */}
@@ -1573,9 +1600,9 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       >
         {dropActive && <div className="fb-drop-overlay"> {t('files.dropFilesHere')}</div>}
         {loading && <div className="fb-loading">{t('common.loading')}</div>}
-        {!loading && !jumpToPath && files.length === 0 && !dropActive && (
+        {!loading && !jumpToPath && filteredFiles.length === 0 && !dropActive && (
           <div className="fb-empty-container">
-            <div className="fb-empty">{t('files.emptyDir')}</div>
+            <div className="fb-empty">{searchQuery ? t('files.noSearchResults') : t('files.emptyDir')}</div>
             <button
               className="fb-btn fb-refresh-empty"
               onClick={() => navigateTo(currentPath, true)}
@@ -1585,7 +1612,13 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
             </button>
           </div>
         )}
-        {!loading && files.map((entry) => (
+        {searchQuery && !loading && filteredFiles.length > 0 && (
+          <div className="fb-search-hint">
+            {t('files.searchResultsHint')}
+            <button className="fb-search-hint-close" onClick={() => setSearchQuery('')}>✕</button>
+          </div>
+        )}
+        {!loading && filteredFiles.map((entry) => (
           <div
             key={entry.name}
             className={`fb-item ${selectedFiles.has(entry.name) ? 'selected' : ''} ${draggingName === entry.name ? 'fb-item-dragging' : ''} ${clipboard?.paths.includes(currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`) && clipboard.mode === 'cut' ? 'fb-item-cut' : ''} ${dragOverTarget === entry.name ? (entry.isDir ? 'fb-item-dragover fb-item-dropinto' : 'fb-item-dragover') : ''}`}
@@ -2164,6 +2197,27 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
           </span>
         </div>
       )}
+
+      {/* Hidden file input for upload button */}
+      <input
+        ref={uploadInputRef}
+        type="file"
+        multiple
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            handleUploadFiles(e.target.files)
+            e.target.value = '' // reset so same file can be selected again
+          }
+        }}
+      />
+
+      {/* Upload floating button */}
+      <button
+        className="fb-upload-btn"
+        onClick={() => uploadInputRef.current?.click()}
+        title={t('files.uploadFiles')}
+      >+</button>
 
       {/* Status Bar */}
       <div className="fb-status-bar">

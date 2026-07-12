@@ -4956,12 +4956,18 @@ echo "ACTION_SUCCESS"
 "#, action, action);
         }
         "docker" => {
+            // ponytail: dpkg lock wait — must run before get-docker.sh calls apt-get internally
+            let lock_wait = r#"for _i in $(seq 1 60); do
+    if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then break; fi
+    echo "Waiting for package manager lock... ($_i/60)"
+    sleep 1
+  done"#;
             let install_cmd = if options == "aliyun" {
                 // Download script and run with Aliyun mirror
-                r#"curl -fsSL https://get.docker.com -o /tmp/get-docker.sh && sh /tmp/get-docker.sh --mirror Aliyun && rm -f /tmp/get-docker.sh"#
+                format!("{} && curl -fsSL https://get.docker.com -o /tmp/get-docker.sh && sh /tmp/get-docker.sh --mirror Aliyun && rm -f /tmp/get-docker.sh", lock_wait)
             } else {
                 // Direct pipe for official source
-                r#"curl -fsSL https://get.docker.com | sh"#
+                format!("{} && curl -fsSL https://get.docker.com | sh", lock_wait)
             };
             return format!(r#"#!/bin/bash
 echo "=== {} Docker ==="

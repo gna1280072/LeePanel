@@ -50,6 +50,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
 
   // PHP version selection modal state
   const [phpVersionModalOpen, setPhpVersionModalOpen] = useState(false)
+  const [sourceCompile, setSourceCompile] = useState(false)
   const [dockerSourceModal, setDockerSourceModal] = useState<SoftwareInfo | null>(null)
   const [dockerSourceSelected, setDockerSourceSelected] = useState<'official' | 'aliyun'>('official')
   const [availableVersions, setAvailableVersions] = useState<string[]>([])
@@ -75,6 +76,26 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
   const [addSourceLoading, setAddSourceLoading] = useState(false)
   const [addSourceError, setAddSourceError] = useState('')
 
+  // Custom software state
+  const [customSoftware, setCustomSoftware] = useState<SoftwareInfo[]>([])
+  const [addCustomModalOpen, setAddCustomModalOpen] = useState(false)
+  const [addCustomName, setAddCustomName] = useState('')
+  const [addCustomDisplay, setAddCustomDisplay] = useState('')
+  const [addCustomCategory, setAddCustomCategory] = useState('other')
+  const [addCustomLoading, setAddCustomLoading] = useState(false)
+  const [addCustomError, setAddCustomError] = useState('')
+  const [customConfirmAction, setCustomConfirmAction] = useState<{ sw: SoftwareInfo; action: 'install' | 'uninstall' | 'remove' } | null>(null)
+
+  const loadCustomSoftware = async () => {
+    if (!sessionId) return
+    try {
+      const list = await invoke<SoftwareInfo[]>('custom_software_list', { sessionId })
+      setCustomSoftware(list)
+    } catch {
+      // ponytail: silently ignore — custom software is supplementary
+    }
+  }
+
   const loadSoftware = async () => {
     if (!sessionId) return
     setState('loading')
@@ -87,6 +108,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
       setError(String(e))
       setState('error')
     }
+    loadCustomSoftware()
   }
 
   useEffect(() => { loadSoftware() }, [sessionId])
@@ -272,16 +294,72 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
   const handleConfirmPHPInstall = async () => {
     if (!sessionId || !selectedVersion) return
     setPhpVersionModalOpen(false)
+    // ponytail: source compile mode passes "source:X.Y" as options
+    const opts = sourceCompile ? `source:${selectedVersion}` : selectedVersion
     setState('running')
-    setLogs([`${t('software.installingPHPVersion', { version: selectedVersion })}`])
+    setLogs([`${sourceCompile ? t('software.compilingPHPSource', { version: selectedVersion }) : t('software.installingPHPVersion', { version: selectedVersion })}`])
     setLogStatus('running')
-    setActionLabel(`${t('software.installingPHPVersion', { version: selectedVersion })}`)
+    setActionLabel(`${sourceCompile ? t('software.compilingPHPSource', { version: selectedVersion }) : t('software.installingPHPVersion', { version: selectedVersion })}`)
     try {
       await invoke('server_software_action', {
         sessionId,
         software: 'php',
         action: 'install',
-        options: selectedVersion,
+        options: opts,
+      })
+      setLogStatus('done')
+    } catch (e) {
+      const msg = String(e)
+      setLogs(prev => [...prev, msg.length > 300 ? msg.slice(0, 300) + '...' : msg])
+      setLogStatus('error')
+    }
+  }
+
+  const handleAddCustomSoftware = async () => {
+    if (!sessionId || !addCustomName.trim()) return
+    setAddCustomLoading(true)
+    setAddCustomError('')
+    try {
+      const displayName = addCustomDisplay.trim() || addCustomName.trim()
+      await invoke('custom_software_add', {
+        sessionId,
+        packageName: addCustomName.trim(),
+        displayName,
+        category: addCustomCategory,
+      })
+      setAddCustomModalOpen(false)
+      setAddCustomName('')
+      setAddCustomDisplay('')
+      setAddCustomCategory('other')
+      loadCustomSoftware()
+    } catch (e) {
+      setAddCustomError(String(e).slice(0, 300))
+    } finally {
+      setAddCustomLoading(false)
+    }
+  }
+
+  const handleRemoveCustomTracking = async (packageName: string) => {
+    if (!sessionId) return
+    try {
+      await invoke('custom_software_remove', { sessionId, packageName })
+      loadCustomSoftware()
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  const handleCustomAction = async (sw: SoftwareInfo, action: 'install' | 'uninstall') => {
+    if (!sessionId) return
+    setState('running')
+    setLogs([`${action === 'install' ? 'Installing' : 'Uninstalling'} ${sw.display_name}...`])
+    setLogStatus('running')
+    setActionLabel(`${action === 'install' ? 'Installing' : 'Uninstalling'} ${sw.display_name}`)
+    try {
+      await invoke('custom_software_action', {
+        sessionId,
+        packageName: sw.name,
+        action,
       })
       setLogStatus('done')
     } catch (e) {
@@ -361,6 +439,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
     { key: 'database', label: t('software.database') },
     { key: 'runtime', label: t('software.runtime') },
     { key: 'container', label: t('software.container') },
+    { key: 'custom', label: t('software.customCategory') },
   ]
 
   return (
@@ -373,6 +452,9 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
               ← {t('common.back', 'Back')}
             </button>
           )}
+          <button className="sw-action-btn small primary" onClick={() => { setAddCustomModalOpen(true); setAddCustomError('') }} disabled={state === 'running'}>
+            + {t('software.addCustomSoftware')}
+          </button>
           <button className="sp-refresh-btn" onClick={loadSoftware} disabled={state === 'loading' || state === 'running'}>
             {state === 'loading' ? t('common.loading') : t('common.refresh')}
           </button>
@@ -541,8 +623,11 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
       {(state === 'ready' || state === 'error') && software.length > 0 && (
         <div className="sw-categories">
           {categories.map(cat => {
-            const items = software.filter(s => s.category === cat.key)
-            if (items.length === 0 && cat.key !== 'web') return null
+            const items = cat.key === 'custom'
+              ? customSoftware
+              : software.filter(s => s.category === cat.key)
+            if (items.length === 0 && cat.key !== 'web' && cat.key !== 'custom') return null
+            if (cat.key === 'custom' && items.length === 0) return null
             return (
               <div key={cat.key} className="sw-category">
                 <div className="sw-category-title">{cat.label}</div>
@@ -557,7 +642,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                       <div className="sw-card-info">
                         {sw.installed ? (
                           <>
-                            <span className="sw-version">{sw.version || t('software.installed')}</span>
+                            <span className="sw-version">{sw.name === 'php' ? t('software.installMultiplePHP') : (sw.version || t('software.installed'))}</span>
                             <span className={`sw-state-label ${sw.running ? 'running' : 'stopped'}`}>
                               {sw.running ? t('software.runningLabel') : sw.service_name ? t('software.stoppedLabel') : t('software.installedLabel')}
                             </span>
@@ -568,7 +653,28 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                       </div>
 
                       <div className="sw-card-actions">
-                        {(sw.installed && sw.name !== 'php') ? (
+                        {cat.key === 'custom' ? (
+                          <>
+                            {sw.installed && sw.service_name && (
+                              <>
+                                <button className="sw-action-btn small" onClick={() => handleServiceAction(sw, 'start')} disabled={sw.running}>{t('common.start')}</button>
+                                <button className="sw-action-btn small" onClick={() => handleServiceAction(sw, 'stop')} disabled={!sw.running}>{t('common.stop')}</button>
+                                <button className="sw-action-btn small" onClick={() => handleServiceAction(sw, 'restart')} disabled={!sw.running}>{t('common.restart')}</button>
+                              </>
+                            )}
+                            {sw.installed ? (
+                              <>
+                                <button className="sw-action-btn small danger" onClick={() => setCustomConfirmAction({ sw, action: 'uninstall' })}>{t('common.uninstall')}</button>
+                                <button className="sw-action-btn small" onClick={() => setCustomConfirmAction({ sw, action: 'remove' })} title={t('software.removeFromList')}>✕</button>
+                              </>
+                            ) : (
+                              <>
+                                <button className="sw-action-btn small primary" onClick={() => setCustomConfirmAction({ sw, action: 'install' })}>{t('common.install')}</button>
+                                <button className="sw-action-btn small" onClick={() => setCustomConfirmAction({ sw, action: 'remove' })} title={t('software.removeFromList')}>✕</button>
+                              </>
+                            )}
+                          </>
+                        ) : (sw.installed && sw.name !== 'php') ? (
                           <>
                             {sw.service_name && (
                               <>
@@ -675,6 +781,17 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
               <div className="sw-confirm-warning" style={{ color: '#e74c3c' }}>{versionsError}</div>
             ) : (
               <>
+                {/* Install method toggle */}
+                <div style={{ marginBottom: '12px', display: 'flex', gap: '8px' }}>
+                  <label style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '6px', border: `1px solid ${!sourceCompile ? '#238636' : '#30363d'}`, background: !sourceCompile ? 'rgba(35,134,54,0.1)' : 'transparent', cursor: 'pointer' }}>
+                    <input type="radio" name="phpInstallMethod" checked={!sourceCompile} onChange={() => setSourceCompile(false)} />
+                    <span style={{ fontSize: '13px' }}>{t('software.installMethodPackage')}</span>
+                  </label>
+                  <label style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '6px', border: `1px solid ${sourceCompile ? '#238636' : '#30363d'}`, background: sourceCompile ? 'rgba(35,134,54,0.1)' : 'transparent', cursor: 'pointer' }}>
+                    <input type="radio" name="phpInstallMethod" checked={sourceCompile} onChange={() => setSourceCompile(true)} />
+                    <span style={{ fontSize: '13px' }}>{t('software.installMethodSource')}</span>
+                  </label>
+                </div>
                 <div style={{ marginBottom: '16px' }}>
                   <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
                     {t('software.availableVersionsLabel')}:
@@ -715,7 +832,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                 className="sw-action-btn primary"
                 onClick={handleConfirmPHPInstall}
                 disabled={versionsLoading || !!versionsError || !selectedVersion}
-              >{t('software.installPHPVersion', { version: selectedVersion })}</button>
+              >{sourceCompile ? t('software.compilePHPVersion', { version: selectedVersion }) : t('software.installPHPVersion', { version: selectedVersion })}</button>
             </div>
           </div>
         </div>
@@ -890,6 +1007,120 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                 disabled={addSourceLoading || !addSourceName.trim() || !addSourceUrl.trim()}
               >
                 {addSourceLoading ? t('software.addingSource') : t('software.addSource')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Software Confirm Dialog */}
+      {customConfirmAction && (
+        <div className="sw-confirm-overlay" onClick={() => setCustomConfirmAction(null)}>
+          <div className="sw-confirm-dialog" onClick={e => e.stopPropagation()}>
+            <div className="sw-confirm-title">
+              {customConfirmAction.action === 'install' && t('software.installTitle', { name: customConfirmAction.sw.display_name })}
+              {customConfirmAction.action === 'uninstall' && t('software.uninstallTitle', { name: customConfirmAction.sw.display_name })}
+              {customConfirmAction.action === 'remove' && t('software.removeCustomTitle', { name: customConfirmAction.sw.display_name })}
+            </div>
+            {customConfirmAction.action === 'uninstall' && (
+              <div className="sw-confirm-warning">
+                {t('software.uninstallCustomWarning', { name: customConfirmAction.sw.display_name })}
+              </div>
+            )}
+            {customConfirmAction.action === 'remove' && (
+              <div className="sw-confirm-warning">
+                {t('software.removeCustomWarning')}
+              </div>
+            )}
+            <div className="sw-confirm-actions">
+              <button className="sw-action-btn" onClick={() => setCustomConfirmAction(null)}>{t('common.cancel')}</button>
+              <button
+                className={`sw-action-btn ${customConfirmAction.action === 'uninstall' ? 'danger' : customConfirmAction.action === 'remove' ? '' : 'primary'}`}
+                onClick={() => {
+                  if (customConfirmAction.action === 'remove') {
+                    handleRemoveCustomTracking(customConfirmAction.sw.name)
+                  } else {
+                    handleCustomAction(customConfirmAction.sw, customConfirmAction.action)
+                  }
+                  setCustomConfirmAction(null)
+                }}
+              >
+                {customConfirmAction.action === 'install' ? t('common.install') : customConfirmAction.action === 'uninstall' ? t('common.uninstall') : t('software.remove')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Custom Software Modal */}
+      {addCustomModalOpen && (
+        <div className="sw-confirm-overlay" onClick={() => setAddCustomModalOpen(false)}>
+          <div className="sw-confirm-dialog" onClick={e => e.stopPropagation()}>
+            <div className="sw-confirm-title">{t('software.addCustomSoftwareTitle')}</div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>{t('software.packageNameLabel')}</label>
+                <input
+                  type="text"
+                  value={addCustomName}
+                  onChange={e => setAddCustomName(e.target.value)}
+                  placeholder={t('software.packageNamePlaceholder')}
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: '4px',
+                    border: '1px solid #ccc', fontSize: '14px',
+                    background: 'var(--bg-secondary, #fff)', color: 'var(--text-primary, #000)',
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>{t('software.displayNameLabel')}</label>
+                <input
+                  type="text"
+                  value={addCustomDisplay}
+                  onChange={e => setAddCustomDisplay(e.target.value)}
+                  placeholder={t('software.displayNamePlaceholder')}
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: '4px',
+                    border: '1px solid #ccc', fontSize: '14px',
+                    background: 'var(--bg-secondary, #fff)', color: 'var(--text-primary, #000)',
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>{t('software.categoryLabel')}</label>
+                <select
+                  value={addCustomCategory}
+                  onChange={e => setAddCustomCategory(e.target.value)}
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: '4px',
+                    border: '1px solid #ccc', fontSize: '14px',
+                    background: 'var(--bg-secondary, #fff)', color: 'var(--text-primary, #000)',
+                  }}
+                >
+                  <option value="other">{t('software.catOther')}</option>
+                  <option value="web">{t('software.webServer')}</option>
+                  <option value="database">{t('software.database')}</option>
+                  <option value="runtime">{t('software.runtime')}</option>
+                  <option value="container">{t('software.container')}</option>
+                </select>
+              </div>
+            </div>
+
+            {addCustomError && (
+              <div className="sw-confirm-warning" style={{ color: '#e74c3c' }}>{addCustomError}</div>
+            )}
+
+            <div className="sw-confirm-actions">
+              <button className="sw-action-btn" onClick={() => setAddCustomModalOpen(false)} disabled={addCustomLoading}>
+                {t('common.cancel')}
+              </button>
+              <button
+                className="sw-action-btn primary"
+                onClick={handleAddCustomSoftware}
+                disabled={addCustomLoading || !addCustomName.trim()}
+              >
+                {addCustomLoading ? t('common.loading') : t('software.addCustomSoftware')}
               </button>
             </div>
           </div>

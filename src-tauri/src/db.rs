@@ -79,6 +79,14 @@ pub fn init_db() -> Result<Mutex<SqliteConn>, String> {
             domain TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             PRIMARY KEY(server_host, domain)
+        );
+
+        CREATE TABLE IF NOT EXISTS custom_software (
+            server_host TEXT NOT NULL,
+            package_name TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT 'other',
+            PRIMARY KEY(server_host, package_name)
         );"
     ).map_err(|e| format!("Failed to create tables: {}", e))?;
 
@@ -365,6 +373,50 @@ impl DbRemarksManager {
             "DELETE FROM db_remarks WHERE server_host = ?1 AND db_name = ?2",
             rusqlite::params![server_host, db_name],
         ).map_err(|e| format!("Failed to delete db remark: {}", e))?;
+        Ok(())
+    }
+}
+
+// ===== Custom Software =====
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CustomSoftwareEntry {
+    pub package_name: String,
+    pub display_name: String,
+    pub category: String,
+}
+
+pub struct CustomSoftwareManager;
+
+impl CustomSoftwareManager {
+    pub fn list(conn: &SqliteConn, server_host: &str) -> Vec<CustomSoftwareEntry> {
+        let mut stmt = conn.prepare(
+            "SELECT package_name, display_name, category FROM custom_software WHERE server_host = ?1 ORDER BY package_name"
+        ).unwrap();
+        stmt.query_map([server_host], |row| {
+            Ok(CustomSoftwareEntry {
+                package_name: row.get(0)?,
+                display_name: row.get(1)?,
+                category: row.get(2)?,
+            })
+        }).unwrap()
+        .filter_map(|r| r.ok())
+        .collect()
+    }
+
+    pub fn add(conn: &SqliteConn, server_host: &str, package_name: &str, display_name: &str, category: &str) -> Result<(), String> {
+        conn.execute(
+            "INSERT OR REPLACE INTO custom_software (server_host, package_name, display_name, category) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![server_host, package_name, display_name, category],
+        ).map_err(|e| format!("Failed to add custom software: {}", e))?;
+        Ok(())
+    }
+
+    pub fn remove(conn: &SqliteConn, server_host: &str, package_name: &str) -> Result<(), String> {
+        conn.execute(
+            "DELETE FROM custom_software WHERE server_host = ?1 AND package_name = ?2",
+            rusqlite::params![server_host, package_name],
+        ).map_err(|e| format!("Failed to remove custom software: {}", e))?;
         Ok(())
     }
 }

@@ -4405,6 +4405,214 @@ fi
     Ok(list)
 }
 
+/// Detect status of user-added custom software packages
+pub async fn detect_custom_software(
+    session: &SshSession,
+    packages: &[String],
+) -> Result<Vec<SoftwareInfo>, String> {
+    if packages.is_empty() {
+        return Ok(Vec::new());
+    }
+    // ponytail: single SSH call checks all custom packages
+    let mut script = String::from("#!/bin/bash\n");
+    for pkg in packages {
+        // Sanitize: only allow alphanumeric, dash, dot, underscore, plus
+        let safe: String = pkg.chars().filter(|c| c.is_alphanumeric() || "-._+".contains(*c)).collect();
+        if safe.is_empty() || safe != *pkg { continue; }
+        script.push_str(&format!(
+            r#"
+# Check {safe}
+if dpkg -l {safe} 2>/dev/null | grep -q '^ii' || rpm -q {safe} &>/dev/null; then
+  echo "CUSTOM_{safe}_INSTALLED=1"
+  _ver=$(dpkg -l {safe} 2>/dev/null | grep '^ii' | awk '{{print $3}}' | head -1 || rpm -q --qf '%{{VERSION}}' {safe} 2>/dev/null || echo '')
+  echo "CUSTOM_{safe}_VERSION=$_ver"
+else
+  echo "CUSTOM_{safe}_INSTALLED=0"
+fi
+_svc=$(systemctl list-unit-files --type=service 2>/dev/null | grep -oP '^{safe}(?=[\d._-]*\.service)' | head -1 || echo '')
+if [ -n "$_svc" ]; then
+  echo "CUSTOM_{safe}_SERVICE=$_svc"
+  echo "CUSTOM_{safe}_RUNNING=$(systemctl is-active $_svc 2>/dev/null || echo inactive)"
+else
+  echo "CUSTOM_{safe}_SERVICE="
+  echo "CUSTOM_{safe}_RUNNING=inactive"
+fi
+"#,
+            safe = safe
+        ));
+    }
+
+    let (stdout, stderr, _) = crate::ssh::session_exec_with_output(session, &script, 15).await?;
+    let combined = format!("{}{}", stdout, stderr);
+
+    let get = |key: &str| -> String {
+        combined.lines()
+            .find(|l| l.starts_with(key))
+            .map(|l| l.split('=').nth(1).unwrap_or("").trim().to_string())
+            .unwrap_or_default()
+    };
+
+    let mut list = Vec::new();
+    for pkg in packages {
+        let safe: String = pkg.chars().filter(|c| c.is_alphanumeric() || "-._+".contains(*c)).collect();
+        if safe.is_empty() || safe != *pkg { continue; }
+        let prefix = format!("CUSTOM_{}_", safe);
+        list.push(SoftwareInfo {
+            name: pkg.clone(),
+            display_name: pkg.clone(),
+            category: "custom".to_string(),
+            installed: get(&format!("{}INSTALLED", prefix)) == "1",
+            version: get(&format!("{}VERSION", prefix)),
+            service_name: get(&format!("{}SERVICE", prefix)),
+            running: get(&format!("{}RUNNING", prefix)) == "active",
+        });
+    }
+    Ok(list)
+}
+
+/// Install or uninstall a custom software package
+pub async fn custom_software_action(
+    session: &SshSession,
+    cache: &SshCache,
+    session_id: &str,
+    package_name: &str,
+    action: &str,
+    app_handle: &AppHandle,
+) -> Result<String, String> {
+    // ponytail: sanitize package name — only allow safe chars
+    let safe: String = package_name.chars().filter(|c| c.is_alphanumeric() || "-._+".contains(*c)).collect();
+    if safe.is_empty() || safe != package_name {
+        return Err("Invalid package name".to_string());
+    }
+
+    let script = format!(r#"#!/bin/bash
+echo "=== {} {} ==="
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+fi
+if [ "{}" = "install" ]; then
+  echo "Installing {}..."
+  for i in $(seq 1 60); do
+    if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1 && ! fuser /var/run/yum.pid >/dev/null 2>&1 && ! fuser /var/run/dnf.pid >/dev/null 2>&1; then
+      break
+    fi
+    echo "Waiting for package manager lock... ($i/60)"
+    sleep 1
+  done
+  if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    apt-get update -qq || true
+    apt-get install -y {} 2>&1
+  else
+    yum install -y --nogpgcheck --assumeyes {} 2>&1
+  fi
+  # Try to enable and start service if exists
+  _svc=$(systemctl list-unit-files --type=service 2>/dev/null | grep -oP '^{}[\d._-]*\.service' | head -1 | sed 's/.service$//')
+  if [ -n "$_svc" ]; then
+    systemctl enable "$_svc" 2>/dev/null && systemctl start "$_svc" 2>/dev/null
+    echo "Service $_svc enabled and started"
+  fi
+else
+  echo "Removing {}..."
+  _svc=$(systemctl list-unit-files --type=service 2>/dev/null | grep -oP '^{}[\d._-]*\.service' | head -1 | sed 's/.service$//')
+  if [ -n "$_svc" ]; then
+    systemctl stop "$_svc" 2>/dev/null || true
+    systemctl disable "$_svc" 2>/dev/null || true
+  fi
+  if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    DEBIAN_FRONTEND=noninteractive apt-get purge -y {} 2>/dev/null || true
+    apt-get autoremove -y 2>/dev/null || true
+  else
+    yum remove -y --assumeyes {} 2>/dev/null || true
+  fi
+fi
+echo "ACTION_SUCCESS"
+"#,
+        action, safe, action, safe, safe, safe, safe, safe, safe, safe, safe
+    );
+
+    crate::ssh::session_write_file(session, "/tmp/software-action.sh", &script).await?;
+
+    let event_name = "software-action-progress";
+    let _ = app_handle.emit(event_name, serde_json::json!({
+        "sessionId": session_id,
+        "line": format!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"),
+        "status": "running",
+    }));
+    let _ = app_handle.emit(event_name, serde_json::json!({
+        "sessionId": session_id,
+        "line": format!("Executing: bash /tmp/software-action.sh"),
+        "status": "running",
+    }));
+    let _ = app_handle.emit(event_name, serde_json::json!({
+        "sessionId": session_id,
+        "line": format!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"),
+        "status": "running",
+    }));
+
+    let mut channel = crate::ssh::session_open_channel(session).await?;
+    channel.exec(true, "bash /tmp/software-action.sh").await
+        .map_err(|e| format!("Failed to start script: {}", e))?;
+
+    let mut full_output = String::new();
+    let mut exit_code: i32 = -1;
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(600);
+
+    loop {
+        tokio::select! {
+            msg = channel.wait() => {
+                match msg {
+                    Some(russh::ChannelMsg::Data { data }) => {
+                        let text = String::from_utf8_lossy(&data);
+                        full_output.push_str(&text);
+                        for line in text.lines() {
+                            if !line.trim().is_empty() {
+                                let _ = app_handle.emit(event_name, serde_json::json!({
+                                    "sessionId": session_id,
+                                    "line": line,
+                                    "status": "running",
+                                }));
+                            }
+                        }
+                    }
+                    Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
+                        exit_code = exit_status as i32;
+                    }
+                    Some(russh::ChannelMsg::Eof) | Some(russh::ChannelMsg::Close) => break,
+                    None => break,
+                    _ => {}
+                }
+            }
+            _ = tokio::time::sleep_until(deadline) => {
+                let _ = app_handle.emit(event_name, serde_json::json!({
+                    "sessionId": session_id,
+                    "line": "Operation timed out (10 minutes)",
+                    "status": "error",
+                }));
+                break;
+            }
+        }
+    }
+    channel.close().await.ok();
+
+    cache.invalidate(session_id, &["software_list", "service_statuses"]);
+
+    if full_output.contains("ACTION_SUCCESS") {
+        let _ = app_handle.emit(event_name, serde_json::json!({
+            "sessionId": session_id,
+            "line": "Done",
+            "status": "done",
+        }));
+        Ok("OK".to_string())
+    } else {
+        let _ = app_handle.emit(event_name, serde_json::json!({
+            "sessionId": session_id,
+            "line": "Operation failed",
+            "status": "error",
+        }));
+        Err(format!("Exit code: {}\n{}", exit_code, full_output))
+    }
+}
+
 /// Query available PHP versions from system package manager
 pub async fn get_available_php_versions(
     session: &SshSession,
@@ -4859,6 +5067,313 @@ pub async fn software_action(
     }
 }
 
+/// Generate a PHP source compilation script (BT Panel style)
+fn build_php_source_compile_script(php_ver: &str, action: &str) -> String {
+    // ponytail: PHP source URLs — pinned to specific patch versions for reproducibility
+    let source_url = match php_ver {
+        "7.4" => "https://www.php.net/distributions/php-7.4.33.tar.gz",
+        "8.0" => "https://www.php.net/distributions/php-8.0.30.tar.gz",
+        "8.1" => "https://www.php.net/distributions/php-8.1.31.tar.gz",
+        "8.2" => "https://www.php.net/distributions/php-8.2.27.tar.gz",
+        "8.3" => "https://www.php.net/distributions/php-8.3.15.tar.gz",
+        "8.4" => "https://www.php.net/distributions/php-8.4.2.tar.gz",
+        _ => "https://www.php.net/distributions/php-8.3.15.tar.gz",
+    };
+    let full_ver = source_url.rsplit('/').next().unwrap().replace(".tar.gz", "").replace("php-", "");
+
+    format!(r#"#!/bin/bash
+# PHP source compile — dynamic detection (BT Panel style)
+# no set -e: extension failures must not abort the install
+PHP_VER="{php_ver}"
+PHP_FULL="{full_ver}"
+PHP_PREFIX="/www/server/php/$PHP_VER"
+PHP_SRC_URL="{source_url}"
+PHP_SRC_DIR="/tmp/php-build"
+SKIPPED=""
+MISSING=""
+
+echo "=== {action} PHP $PHP_VER (source compile) ==="
+
+# Detect OS
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+fi
+OS_ID="${{ID:-unknown}}"
+OS_VER="${{VERSION_ID:-0}}"
+
+install_deps() {{
+  echo "Installing build dependencies..."
+  if [ "$OS_ID" = "ubuntu" ] || [ "$OS_ID" = "debian" ]; then
+    for i in $(seq 1 60); do
+      if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then break; fi
+      echo "Waiting for package manager lock... ($i/60)"
+      sleep 1
+    done
+    apt-get update -qq
+    # Core build tools (always install)
+    apt-get install -y build-essential autoconf pkg-config libtool re2c bison flex
+    # Each lib individually — failures recorded but not fatal
+    for pkg in libxml2-dev libssl-dev libcurl4-openssl-dev libsqlite3-dev \
+               libpng-dev libjpeg-dev libfreetype6-dev libzip-dev \
+               libonig-dev libsodium-dev libreadline-dev libxslt1-dev \
+               zlib1g-dev libbz2-dev libicu-dev libgmp-dev \
+               libwebp-dev libtidy-dev libmemcached-dev \
+               libenchant-dev libavif-dev; do
+      apt-get install -y "$pkg" 2>/dev/null || MISSING="$MISSING $pkg"
+    done
+  else
+    # CentOS / RHEL / Alma / Rocky
+    if command -v dnf >/dev/null 2>&1; then
+      PM="dnf"
+      # Enable CRB / PowerTools for devel packages
+      dnf install -y dnf-plugins-core 2>/dev/null
+      dnf config-manager --set-enabled crb 2>/dev/null \
+        || dnf config-manager --set-enabled powertools 2>/dev/null \
+        || dnf config-manager --set-enabled PowerTools 2>/dev/null || true
+    else
+      PM="yum"
+    fi
+    $PM install -y --nogpgcheck epel-release 2>/dev/null || true
+    # Core build tools
+    $PM install -y --nogpgcheck gcc gcc-c++ make autoconf automake libtool re2c bison flex pkgconf-pkg-config
+    # Each lib individually — CentOS 9 compatible names
+    for pkg in libxml2-devel openssl-devel libcurl-devel sqlite-devel \
+               libpng-devel libjpeg-devel freetype-devel libzip-devel \
+               oniguruma-devel libsodium-devel readline-devel libxslt-devel \
+               zlib-devel bzip2-devel libicu-devel gmp-devel \
+               libwebp-devel libtidy-devel enchant2-devel; do
+      $PM install -y --nogpgcheck "$pkg" 2>/dev/null || MISSING="$MISSING $pkg"
+    done
+  fi
+  [ -n "$MISSING" ] && echo "INFO: Some packages not available (non-fatal):$MISSING"
+}}
+
+# ponytail: detect lib availability — returns 0 if any marker found
+check_lib() {{
+  local name="$1"; shift
+  for f in "$@"; do
+    [ -f "$f" ] && return 0
+  done
+  pkg-config --exists "$name" 2>/dev/null && return 0
+  return 1
+}}
+
+if [ "{action}" = "install" ]; then
+  # Check if already installed
+  if [ -x "$PHP_PREFIX/sbin/php-fpm" ]; then
+    echo "PHP $PHP_VER is already installed at $PHP_PREFIX"
+    echo "ACTION_SUCCESS"
+    exit 0
+  fi
+
+  # Download source
+  echo "Downloading PHP $PHP_FULL source..."
+  mkdir -p "$PHP_SRC_DIR"
+  cd "$PHP_SRC_DIR"
+  if [ ! -f "php-$PHP_FULL.tar.gz" ]; then
+    curl -fSL "$PHP_SRC_URL" -o "php-$PHP_FULL.tar.gz" || {{ echo "ERROR: download failed"; exit 1; }}
+  fi
+  tar xzf "php-$PHP_FULL.tar.gz"
+  cd "php-$PHP_FULL"
+
+  # Build configure flags dynamically based on detected libraries
+  echo "Detecting available libraries..."
+  install_deps
+
+  CF="--prefix=$PHP_PREFIX"
+  CF="$CF --with-config-file-path=$PHP_PREFIX/etc"
+  CF="$CF --with-config-file-scan-dir=$PHP_PREFIX/etc/php.d"
+  CF="$CF --enable-fpm --with-fpm-user=www --with-fpm-group=www"
+  # Core extensions (always available, compiled into PHP)
+  CF="$CF --with-mysqli --with-pdo-mysql --enable-opcache"
+  CF="$CF --enable-bcmath --enable-calendar --enable-exif --enable-ftp"
+  CF="$CF --enable-pcntl --enable-shmop --enable-soap"
+  CF="$CF --enable-sysvmsg --enable-sysvsem --enable-sysvshm"
+  CF="$CF --enable-sockets --with-gettext --with-mhash"
+  # Optional: openssl
+  check_lib openssl /usr/include/openssl/ssl.h /usr/local/include/openssl/ssl.h \
+    && CF="$CF --with-openssl" || echo "SKIP: openssl"
+  # Optional: curl
+  check_lib libcurl /usr/include/curl/curl.h /usr/local/include/curl/curl.h \
+    && CF="$CF --with-curl" || echo "SKIP: curl"
+  # Optional: zlib
+  check_lib zlib /usr/include/zlib.h /usr/local/include/zlib.h \
+    && CF="$CF --with-zlib" || echo "SKIP: zlib"
+  # Optional: bz2 — explicit path for CentOS 9
+  check_lib bz2 /usr/include/bzlib.h /usr/local/include/bzlib.h \
+    && CF="$CF --with-bz2=/usr" || echo "SKIP: bz2"
+  # Optional: readline
+  check_lib readline /usr/include/readline/readline.h /usr/local/include/readline/readline.h \
+    && CF="$CF --with-readline" || echo "SKIP: readline"
+  # Optional: mbstring (needs oniguruma)
+  check_lib oniguruma /usr/include/oniguruma.h /usr/local/include/oniguruma.h \
+    && CF="$CF --enable-mbstring" || echo "SKIP: mbstring"
+  # Optional: zip
+  check_lib libzip /usr/include/zip.h /usr/local/include/zip.h \
+    && CF="$CF --with-zip" || echo "SKIP: zip"
+  # Optional: intl (needs ICU)
+  (check_lib icu-uc /usr/include/unicode/utypes.h /usr/local/include/unicode/utypes.h \
+    || [ -f /usr/bin/icu-config ]) \
+    && CF="$CF --enable-intl" || echo "SKIP: intl"
+  # Optional: xsl
+  check_lib libxslt /usr/include/libxslt/xslt.h /usr/local/include/libxslt/xslt.h \
+    && CF="$CF --with-xsl" || echo "SKIP: xsl"
+  # Optional: sodium
+  check_lib libsodium /usr/include/sodium.h /usr/local/include/sodium.h \
+    && CF="$CF --with-sodium" || echo "SKIP: sodium"
+  # Optional: tidy
+  check_lib tidy /usr/include/tidy.h /usr/include/tidy/tidybuffio.h /usr/local/include/tidy.h \
+    && CF="$CF --with-tidy" || echo "SKIP: tidy"
+  # Optional: enchant
+  (check_lib enchant-2 /usr/include/enchant-2/enchant.h /usr/local/include/enchant-2/enchant.h \
+    || check_lib enchant /usr/include/enchant.h /usr/local/include/enchant.h) \
+    && CF="$CF --enable-enchant" || echo "SKIP: enchant"
+  # Optional: avif (PHP 8.1+)
+  if [ "$PHP_VER" != "7.4" ] && [ "$PHP_VER" != "8.0" ]; then
+    check_lib libavif /usr/include/avif/avif.h /usr/local/include/avif/avif.h \
+      && CF="$CF --with-avif" || echo "SKIP: avif"
+  fi
+  # Optional: gmp
+  check_lib gmp /usr/include/gmp.h /usr/include/x86_64-linux-gnu/gmp.h /usr/local/include/gmp.h \
+    && CF="$CF --with-gmp" || echo "SKIP: gmp"
+  # GD + image libs — version-dependent flags
+  if check_lib libpng /usr/include/png.h /usr/include/libpng16/png.h /usr/local/include/png.h; then
+    if [ "$PHP_VER" = "7.4" ]; then
+      CF="$CF --with-gd --enable-gd-native-ttf"
+      [ -f /usr/include/jpeglib.h ] && CF="$CF --with-jpeg-dir=/usr"
+      [ -f /usr/include/freetype2/freetype/freetype.h ] || [ -f /usr/include/freetype/freetype.h ] \
+        && CF="$CF --with-freetype-dir=/usr"
+      check_lib libwebp /usr/include/webp/encode.h /usr/local/include/webp/encode.h \
+        && CF="$CF --with-webp-dir=/usr" || true
+    else
+      CF="$CF --enable-gd --with-jpeg --with-freetype"
+      check_lib libwebp /usr/include/webp/encode.h /usr/local/include/webp/encode.h \
+        && CF="$CF --with-webp" || echo "SKIP: webp"
+    fi
+  else
+    echo "SKIP: gd"
+  fi
+
+  echo "Configuring PHP $PHP_FULL..."
+  echo "Configure flags: $CF"
+  eval ./configure $CF 2>&1 | tail -10
+  if [ ${{PIPESTATUS[0]}} -ne 0 ]; then
+    echo "ERROR: configure failed"
+    exit 1
+  fi
+
+  # Compile & install
+  echo "Compiling PHP $PHP_FULL (this may take 5-15 minutes)..."
+  make -j$(nproc)
+  if [ $? -ne 0 ]; then
+    echo "ERROR: make failed"
+    exit 1
+  fi
+  make install
+  if [ $? -ne 0 ]; then
+    echo "ERROR: make install failed"
+    exit 1
+  fi
+
+  # Create user/group if not exists
+  id -u www &>/dev/null || useradd -r -s /sbin/nologin www
+
+  # Setup config files
+  echo "Setting up configuration..."
+  mkdir -p "$PHP_PREFIX/etc/php.d"
+  cp php.ini-production "$PHP_PREFIX/etc/php.ini"
+  cp "$PHP_PREFIX/etc/php-fpm.conf.default" "$PHP_PREFIX/etc/php-fpm.conf"
+  mkdir -p "$PHP_PREFIX/etc/php-fpm.d"
+  cp sapi/fpm/php-fpm.conf "$PHP_PREFIX/etc/php-fpm.conf" 2>/dev/null || true
+  cat > "$PHP_PREFIX/etc/php-fpm.d/www.conf" << 'WCONF'
+[www]
+user = www
+group = www
+listen = /tmp/php-cgi-VER.sock
+listen.owner = www
+listen.group = www
+pm = dynamic
+pm.max_children = 50
+pm.start_servers = 5
+pm.min_spare_servers = 2
+pm.max_spare_servers = 10
+pm.max_requests = 500
+request_terminate_timeout = 300
+WCONF
+  sed -i "s/VER.sock/$PHP_VER.sock/g" "$PHP_PREFIX/etc/php-fpm.d/www.conf"
+
+  # Create systemd service
+  SVC_NAME="php$(echo $PHP_VER | tr -d '.')-fpm"
+  cat > "/etc/systemd/system/$SVC_NAME.service" << SVCEOF
+[Unit]
+Description=PHP $PHP_VER FPM (source compile)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=$PHP_PREFIX/sbin/php-fpm --nodaemonize --fpm-config $PHP_PREFIX/etc/php-fpm.conf
+ExecReload=/bin/kill -USR2 $MAINPID
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+  systemctl daemon-reload
+  systemctl enable "$SVC_NAME"
+  systemctl start "$SVC_NAME"
+  echo "PHP $PHP_VER installed to $PHP_PREFIX"
+
+  # Install PECL extensions (each one independent, failures are non-fatal)
+  echo "Installing PECL extensions..."
+  export PATH="$PHP_PREFIX/bin:$PHP_PREFIX/sbin:$PATH"
+  "$PHP_PREFIX/bin/pecl" channel-update pecl.php.net 2>/dev/null || true
+
+  for ext in redis imagick swoole memcached mongodb; do
+    echo "--- Installing $ext ---"
+    if yes | "$PHP_PREFIX/bin/pecl" install "$ext" 2>&1 | tail -5; then
+      SO_FILE=$(find "$PHP_PREFIX/lib/php/extensions" -name "${{ext}}.so" 2>/dev/null | head -1)
+      if [ -n "$SO_FILE" ]; then
+        echo "extension=$SO_FILE" >> "$PHP_PREFIX/etc/php.ini"
+        echo "OK: $ext installed"
+      else
+        echo "SKIP: $ext .so not found after install"
+        SKIPPED="$SKIPPED $ext"
+      fi
+    else
+      echo "SKIP: $ext install failed"
+      SKIPPED="$SKIPPED $ext"
+    fi
+  done
+
+  # Enable opcache in php.ini
+  grep -q 'zend_extension.*opcache' "$PHP_PREFIX/etc/php.ini" 2>/dev/null || {{
+    OP_SO=$(find "$PHP_PREFIX/lib/php/extensions" -name "opcache.so" 2>/dev/null | head -1)
+    [ -n "$OP_SO" ] && echo "zend_extension=$OP_SO" >> "$PHP_PREFIX/etc/php.ini"
+  }}
+
+  # Restart to load extensions
+  systemctl restart "$SVC_NAME"
+
+  [ -n "$SKIPPED" ] && echo "WARNING: skipped extensions:$SKIPPED"
+  echo "PHP $PHP_VER source compile complete"
+else
+  # Uninstall
+  echo "Removing PHP $PHP_VER (source compile)..."
+  SVC_NAME="php$(echo $PHP_VER | tr -d '.')-fpm"
+  systemctl stop "$SVC_NAME" 2>/dev/null || true
+  systemctl disable "$SVC_NAME" 2>/dev/null || true
+  rm -f "/etc/systemd/system/$SVC_NAME.service"
+  systemctl daemon-reload
+  rm -rf "$PHP_PREFIX"
+  rm -rf /tmp/php-build
+  echo "PHP $PHP_VER removed"
+fi
+echo "ACTION_SUCCESS"
+"#, php_ver = php_ver, full_ver = full_ver, source_url = source_url, action = action)
+}
+
 fn build_software_script(
     _os: &OsInfo,
     software: &str,
@@ -5127,6 +5642,10 @@ echo "ACTION_SUCCESS"
             return script.replace("__ACTION__", action);
         }
         "php" => {
+            // ponytail: source compile mode — options = "source:X.Y" e.g. "source:8.3"
+            if let Some(php_ver) = options.strip_prefix("source:") {
+                return build_php_source_compile_script(php_ver, action);
+            }
             // ponytail: generic PHP — options contains version (e.g. "8.2"), empty means default
             let version = if options.is_empty() {
                 "".to_string()

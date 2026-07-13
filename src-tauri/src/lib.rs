@@ -2029,6 +2029,83 @@ async fn server_cache_invalidate(
     Ok(())
 }
 
+// ===== Custom Software Commands =====
+
+#[tauri::command]
+async fn custom_software_list(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    db: tauri::State<'_, DbPool>,
+    session_id: &str,
+) -> Result<Vec<SoftwareInfo>, String> {
+    let mgr = ssh_mgr.lock().await;
+    let host = mgr.get_host(session_id).unwrap_or_default();
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    // ponytail: read DB synchronously, drop guard before any .await
+    let entries = {
+        let conn = db.lock().map_err(|e| e.to_string())?;
+        db::CustomSoftwareManager::list(&conn, &host)
+    };
+    if entries.is_empty() {
+        return Ok(Vec::new());
+    }
+    let packages: Vec<String> = entries.iter().map(|e| e.package_name.clone()).collect();
+    let mut detected = server::detect_custom_software(&session, &packages).await?;
+    // ponytail: merge display_name and category from DB into detected results
+    for d in &mut detected {
+        if let Some(entry) = entries.iter().find(|e| e.package_name == d.name) {
+            d.display_name = entry.display_name.clone();
+            d.category = entry.category.clone();
+        }
+    }
+    Ok(detected)
+}
+
+#[tauri::command]
+async fn custom_software_add(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    db: tauri::State<'_, DbPool>,
+    session_id: &str,
+    package_name: &str,
+    display_name: &str,
+    category: &str,
+) -> Result<(), String> {
+    let mgr = ssh_mgr.lock().await;
+    let host = mgr.get_host(session_id).unwrap_or_default();
+    drop(mgr);
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    db::CustomSoftwareManager::add(&conn, &host, package_name, display_name, category)
+}
+
+#[tauri::command]
+async fn custom_software_remove(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    db: tauri::State<'_, DbPool>,
+    session_id: &str,
+    package_name: &str,
+) -> Result<(), String> {
+    let mgr = ssh_mgr.lock().await;
+    let host = mgr.get_host(session_id).unwrap_or_default();
+    drop(mgr);
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    db::CustomSoftwareManager::remove(&conn, &host, package_name)
+}
+
+#[tauri::command]
+async fn custom_software_action(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    app: tauri::AppHandle,
+    session_id: &str,
+    package_name: &str,
+    action: &str,
+) -> Result<String, String> {
+    let mgr = ssh_mgr.lock().await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::custom_software_action(&session, &cache, session_id, package_name, action, &app).await
+}
+
 // ===== App Entry =====
 
 pub fn run() {
@@ -2126,6 +2203,8 @@ pub fn run() {
             server_backup_database, server_list_db_backups, server_delete_db_backup,
             server_download_db_backup, server_save_db_backup_to_local,
             server_import_database_from_file, server_import_database_from_backup,
+            // Custom Software
+            custom_software_list, custom_software_add, custom_software_remove, custom_software_action,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

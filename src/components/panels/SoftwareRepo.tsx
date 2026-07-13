@@ -33,6 +33,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
   const [logs, setLogs] = useState<string[]>([])
   const [logStatus, setLogStatus] = useState<LogStatus | null>(null)
+  const [rawOutput, setRawOutput] = useState('')
   const [actionLabel, setActionLabel] = useState('')
   const logEndRef = useRef<HTMLDivElement>(null)
 
@@ -103,6 +104,19 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
         } else if (event.payload.status === 'error') {
           setLogStatus('error')
         }
+      }
+    )
+    return () => { unlisten.then(fn => fn()) }
+  }, [sessionId])
+
+  // Listen for raw terminal output
+  useEffect(() => {
+    if (!sessionId) return
+    const unlisten = listen<{ sessionId: string; rawOutput: string }>(
+      'software-action-raw-output',
+      (event) => {
+        if (event.payload.sessionId !== sessionId) return
+        setRawOutput(event.payload.rawOutput)
       }
     )
     return () => { unlisten.then(fn => fn()) }
@@ -353,9 +367,16 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
     <div className="sw-panel">
       <div className="sw-header">
         <h2>{t('software.title')}</h2>
-        <button className="sp-refresh-btn" onClick={loadSoftware} disabled={state === 'loading' || state === 'running'}>
-          {state === 'loading' ? t('common.loading') : t('common.refresh')}
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {state === 'running' && (
+            <button className="sw-action-btn primary" onClick={() => { setState('ready'); setLogs([]); setLogStatus(null); setRawOutput(''); loadSoftware() }}>
+              ← {t('common.back', 'Back')}
+            </button>
+          )}
+          <button className="sp-refresh-btn" onClick={loadSoftware} disabled={state === 'loading' || state === 'running'}>
+            {state === 'loading' ? t('common.loading') : t('common.refresh')}
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -409,25 +430,25 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
             <div ref={logEndRef} />
           </div>
           
-          {/* Error details collapsible section */}
+          {/* Raw terminal output collapsible section */}
           {logStatus === 'error' && (
             <details className="sw-error-details">
               <summary className="sw-error-details-summary">
                  {t('software.viewFullOutput')}
               </summary>
               <pre className="sw-error-details-content">
-                {logs.join('\n')}
+                {rawOutput || logs.join('\n')}
               </pre>
             </details>
           )}
           
           {logStatus === 'done' && (
-            <button className="sw-action-btn primary" onClick={() => { setState('ready'); loadSoftware() }}>
+            <button className="sw-action-btn primary" onClick={() => { setState('ready'); setRawOutput(''); loadSoftware() }}>
               {t('software.doneRefresh')}
             </button>
           )}
           {logStatus === 'error' && (
-            <button className="sw-action-btn" onClick={() => { setState('ready'); loadSoftware() }}>
+            <button className="sw-action-btn" onClick={() => { setState('ready'); setRawOutput(''); loadSoftware() }}>
               {t('common.close')}
             </button>
           )}

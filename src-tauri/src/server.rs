@@ -3268,7 +3268,7 @@ pub async fn setup_ssl(
         let install_cmd = if os.family == "debian" {
             "apt-get install -y certbot python3-certbot-nginx"
         } else {
-            "yum install -y certbot python3-certbot-nginx || dnf install -y certbot python3-certbot-nginx"
+            "yum install -y --nogpgcheck --assumeyes certbot python3-certbot-nginx || dnf install -y --nogpgcheck --assumeyes certbot python3-certbot-nginx"
         };
         // Stream certbot install output
         let mut install_channel = crate::ssh::session_open_channel(session).await?;
@@ -4776,6 +4776,11 @@ pub async fn software_action(
                 }
             }
             _ = tokio::time::sleep_until(deadline) => {
+                // Emit raw output even on timeout
+                let _ = app_handle.emit("software-action-raw-output", serde_json::json!({
+                    "sessionId": session_id,
+                    "rawOutput": full_output,
+                }));
                 return Err("Operation timed out (10 minutes)".to_string());
             }
         }
@@ -4783,6 +4788,12 @@ pub async fn software_action(
 
     // ponytail: russh exit code unreliable, use output marker as fallback
     let success = full_output.contains("ACTION_SUCCESS");
+
+    // Emit raw (unfiltered) terminal output for "view full output" collapsible section
+    let _ = app_handle.emit("software-action-raw-output", serde_json::json!({
+        "sessionId": session_id,
+        "rawOutput": full_output,
+    }));
 
     if exit_code == 0 || success {
         let _ = app_handle.emit(event_name, serde_json::json!({
@@ -4858,7 +4869,7 @@ fn build_software_script(
     let (pkg_mgr, pkg_install, pkg_remove) = if is_debian {
         ("apt-get", "apt-get install -y", "apt-get purge -y")
     } else {
-        ("yum", "yum install -y", "yum remove -y")
+        ("yum", "yum install -y --nogpgcheck --assumeyes", "yum remove -y --assumeyes")
     };
 
     let (packages, service_name, post_install, post_remove) = match software {
@@ -4888,8 +4899,8 @@ if [ "{}" = "install" ]; then
     apt-get update -qq
     apt-get install -y redis-server
   else
-    yum install -y epel-release
-    yum install -y redis
+    yum install -y --nogpgcheck --assumeyes epel-release
+    yum install -y --nogpgcheck --assumeyes redis
   fi
   systemctl enable redis-server && systemctl start redis-server 2>/dev/null || systemctl enable redis && systemctl start redis
 else
@@ -4937,7 +4948,7 @@ if [ "{}" = "install" ]; then
       apt-get update -qq
       apt-get install -y nodejs npm
     else
-      yum install -y nodejs npm
+      yum install -y --nogpgcheck --assumeyes nodejs npm
     fi
   fi
 else
@@ -4974,10 +4985,10 @@ echo "ACTION_SUCCESS"
     apt-get update -qq
     apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
   else
-    yum install -y yum-utils
+    yum install -y --nogpgcheck --assumeyes yum-utils
     yum-config-manager --add-repo https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
     sed -i 's+download.docker.com+mirrors.aliyun.com/docker-ce+' /etc/yum.repos.d/docker-ce.repo
-    yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    yum install -y --nogpgcheck --assumeyes docker-ce docker-ce-cli containerd.io docker-compose-plugin
   fi"#, lock_wait)
             } else {
                 // Direct pipe for official source
@@ -5055,10 +5066,10 @@ if [ "__ACTION__" = "install" ]; then
     fi
   else
     if yum list available mysql-server &>/dev/null; then
-      yum install -y mysql-server
+      yum install -y --nogpgcheck --assumeyes mysql-server
       SVC_NAME="mysqld"
     else
-      yum install -y mariadb-server
+      yum install -y --nogpgcheck --assumeyes mariadb-server
       SVC_NAME="mariadb"
     fi
   fi
@@ -5157,17 +5168,17 @@ if [ "__ACTION__" = "install" ]; then
     fi
     SVC=$(systemctl list-units --type=service | grep -E 'php[0-9.]*-fpm' | awk '{print $1}' | head -1 | sed 's/.service//')
   else
-    yum install -y epel-release 2>/dev/null || true
+    yum install -y --nogpgcheck --assumeyes epel-release 2>/dev/null || true
     if [ -n "__VERSION__" ]; then
       VER_NODOT=$(echo "__VERSION__" | tr -d '.')
-      yum install -y php${VER_NODOT}-php-fpm || { echo "ERROR: php${VER_NODOT}-php-fpm install failed"; exit 1; }
+      yum install -y --nogpgcheck --assumeyes php${VER_NODOT}-php-fpm || { echo "ERROR: php${VER_NODOT}-php-fpm install failed"; exit 1; }
       for pkg in php${VER_NODOT}-php-mysqlnd php${VER_NODOT}-php-curl php${VER_NODOT}-php-mbstring php${VER_NODOT}-php-xml php${VER_NODOT}-php-zip php${VER_NODOT}-php-gd php${VER_NODOT}-php-bcmath php${VER_NODOT}-php-opcache; do
-        yum install -y "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
+        yum install -y --nogpgcheck --assumeyes "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
       done
     else
-      yum install -y php-fpm || { echo "ERROR: php-fpm install failed"; exit 1; }
+      yum install -y --nogpgcheck --assumeyes php-fpm || { echo "ERROR: php-fpm install failed"; exit 1; }
       for pkg in php-mysqlnd php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache; do
-        yum install -y "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
+        yum install -y --nogpgcheck --assumeyes "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
       done
     fi
     SVC=$(systemctl list-units --type=service | grep -E 'php' | awk '{print $1}' | head -1 | sed 's/.service//')
@@ -5231,12 +5242,12 @@ if [ \"__ACTION__\" = \"install\" ]; then\n\
       apt-get install -y \"$pkg\" || { echo \"SKIP: $pkg not available\"; SKIPPED=\"$SKIPPED $pkg\"; }\n\
     done\n\
   else\n\
-    yum install -y epel-release 2>/dev/null || true\n\
-    yum install -y https://rpms.remirepo.net/enterprise/remi-release-$(rpm -E %{rhel}).rpm 2>/dev/null || true\n\
+    yum install -y --nogpgcheck --assumeyes epel-release 2>/dev/null || true\n\
+    yum install -y --nogpgcheck --assumeyes https://rpms.remirepo.net/enterprise/remi-release-$(rpm -E %{rhel}).rpm 2>/dev/null || true\n\
     yum module enable -y php:remi-__VER__ 2>/dev/null || true\n\
-    yum install -y php__VER__-fpm || { echo \"ERROR: php__VER__-fpm install failed\"; exit 1; }\n\
+    yum install -y --nogpgcheck --assumeyes php__VER__-fpm || { echo \"ERROR: php__VER__-fpm install failed\"; exit 1; }\n\
     for pkg in php__VER__-mysqlnd php__VER__-curl php__VER__-mbstring php__VER__-xml php__VER__-zip php__VER__-gd php__VER__-bcmath php__VER__-opcache; do\n\
-      yum install -y \"$pkg\" || { echo \"SKIP: $pkg not available\"; SKIPPED=\"$SKIPPED $pkg\"; }\n\
+      yum install -y --nogpgcheck --assumeyes \"$pkg\" || { echo \"SKIP: $pkg not available\"; SKIPPED=\"$SKIPPED $pkg\"; }\n\
     done\n\
   fi\n\
   systemctl enable __SVC__ && systemctl start __SVC__\n\
@@ -5319,7 +5330,7 @@ if [ "{}" = "install" ]; then
     apt-get update -qq
     apt-get install -y postgresql postgresql-contrib
   else
-    yum install -y postgresql-server postgresql-contrib
+    yum install -y --nogpgcheck --assumeyes postgresql-server postgresql-contrib
     postgresql-setup --initdb 2>/dev/null || true
   fi
   systemctl enable postgresql && systemctl start postgresql
@@ -5344,16 +5355,15 @@ echo "ACTION_SUCCESS"
     };
 
     format!(r#"#!/bin/bash
-set -e
 echo "=== {} {} ==="
 if [ "{}" = "install" ]; then
   if command -v {} &>/dev/null || dpkg -l {} 2>/dev/null | grep -q ^ii; then
     echo "{} is already installed"
   else
     echo "Installing {}..."
-    # Wait for apt/yum lock to be released (max 60s)
+    # Wait for apt/yum/dnf/rpm lock to be released (max 60s)
     for i in $(seq 1 60); do
-      if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then
+      if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1 && ! fuser /var/run/yum.pid >/dev/null 2>&1 && ! fuser /var/run/dnf.pid >/dev/null 2>&1 && ! fuser /var/cache/yum >/dev/null 2>&1 && ! fuser /var/lib/rpm/.rpm.lock >/dev/null 2>&1; then
         break
       fi
       echo "Waiting for package manager lock... ($i/60)"

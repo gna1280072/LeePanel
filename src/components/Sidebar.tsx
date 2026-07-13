@@ -52,7 +52,9 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
   const [creating, setCreating] = useState<NewConnectionData | null>(null)
   const [showCreatePassword, setShowCreatePassword] = useState(false)
   const [hasCheckedEmpty, setHasCheckedEmpty] = useState(false)
+  const [langDropdownOpen, setLangDropdownOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const langRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     loadConnections()
@@ -77,6 +79,18 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
       return () => window.removeEventListener('mousedown', handleClick)
     }
   }, [contextMenu])
+
+  // Close lang dropdown on click outside
+  useEffect(() => {
+    if (!langDropdownOpen) return
+    const handleClick = (e: MouseEvent) => {
+      if (langRef.current && !langRef.current.contains(e.target as Node)) {
+        setLangDropdownOpen(false)
+      }
+    }
+    window.addEventListener('mousedown', handleClick)
+    return () => window.removeEventListener('mousedown', handleClick)
+  }, [langDropdownOpen])
 
   const loadConnections = async () => {
     const list = await invoke<Connection[]>('config_list')
@@ -470,17 +484,41 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
         </div>
       )}
       {/* Language Switcher */}
-      <div className="sidebar-language-switcher">
+      <div className="sidebar-language-switcher" ref={langRef} style={{ position: 'relative' }}>
         <button
           className="lang-toggle-btn"
-          onClick={() => {
-            const newLang = i18n.language === 'zh-CN' ? 'en' : 'zh-CN'
-            i18n.changeLanguage(newLang)
-            invoke('ui_state_set', { key: 'language', value: newLang }).catch(() => {})
-          }}
+          onClick={() => setLangDropdownOpen(!langDropdownOpen)}
         >
-          🌐 {i18n.language === 'zh-CN' ? '中文' : 'EN'} ▾
+          🌐 Language ▾
         </button>
+        {langDropdownOpen && (
+          <div className="lang-dropdown">
+            {[
+              { code: 'en', label: 'English' },
+              { code: 'zh-CN', label: '简体中文' },
+              { code: 'zh-TW', label: '繁體中文' },
+              { code: 'ja', label: '日本語' },
+              { code: 'fr', label: 'Français' },
+              { code: 'de', label: 'Deutsch' },
+              { code: 'ru', label: 'Русский' },
+              { code: 'ar', label: 'العربية' },
+              { code: 'pt', label: 'Português' },
+              { code: 'ko', label: '한국어' },
+            ].map(l => (
+              <div
+                key={l.code}
+                className={`lang-dropdown-item${i18n.language === l.code ? ' active' : ''}`}
+                onClick={() => {
+                  i18n.changeLanguage(l.code)
+                  invoke('ui_state_set', { key: 'language', value: l.code }).catch(() => {})
+                  setLangDropdownOpen(false)
+                }}
+              >
+                {l.label}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

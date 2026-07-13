@@ -519,6 +519,36 @@ body {
   border-color: #58a6ff;
 }
 
+.lang-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 12px;
+  right: 12px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.lang-dropdown-item {
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #c9d1d9;
+  transition: background 0.15s;
+}
+
+.lang-dropdown-item:hover {
+  background: #30363d;
+}
+
+.lang-dropdown-item.active {
+  color: #58a6ff;
+  background: #1a2332;
+}
+
 /* ===== Main Area ===== */
 .main-area {
   flex: 1;

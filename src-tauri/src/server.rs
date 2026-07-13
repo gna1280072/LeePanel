@@ -4963,8 +4963,22 @@ echo "ACTION_SUCCESS"
     sleep 1
   done"#;
             let install_cmd = if options == "aliyun" {
-                // Download script and run with Aliyun mirror
-                format!("{} && curl -fsSL https://get.docker.com -o /tmp/get-docker.sh && sh /tmp/get-docker.sh --mirror Aliyun && rm -f /tmp/get-docker.sh", lock_wait)
+                // ponytail: bypass get.docker.com (blocked by GFW) — use Aliyun Docker CE repo directly
+                format!(r#"{} && . /etc/os-release
+  if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+    apt-get update -qq && apt-get install -y ca-certificates curl gnupg
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    chmod a+r /etc/apt/keyrings/docker.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://mirrors.aliyun.com/docker-ce/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
+    apt-get update -qq
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  else
+    yum install -y yum-utils
+    yum-config-manager --add-repo https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
+    sed -i 's+download.docker.com+mirrors.aliyun.com/docker-ce+' /etc/yum.repos.d/docker-ce.repo
+    yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  fi"#, lock_wait)
             } else {
                 // Direct pipe for official source
                 format!("{} && curl -fsSL https://get.docker.com | sh", lock_wait)

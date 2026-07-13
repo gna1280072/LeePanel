@@ -20,6 +20,7 @@ interface AppSettings {
   cache_ttl_hours: number
   cache_max_files: number
   cache_enabled: boolean
+  command_timeout_minutes: number
 }
 
 interface ServerSettingsPanelProps {
@@ -54,6 +55,7 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
   const [maxAttemptsInput, setMaxAttemptsInput] = useState<string>('')
   const [cacheLimitInput, setCacheLimitInput] = useState<string>('')
   const [cacheMaxFilesInput, setCacheMaxFilesInput] = useState<string>('')
+  const [commandTimeoutInput, setCommandTimeoutInput] = useState<string>('')
   const [settingsSaving, setSettingsSaving] = useState(false)
 
   // Update check state
@@ -145,6 +147,7 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
       setMaxAttemptsInput(String(appSettings.max_reconnect_attempts))
       setCacheLimitInput(String(appSettings.cache_ttl_hours))
       setCacheMaxFilesInput(String(appSettings.cache_max_files))
+      setCommandTimeoutInput(String(appSettings.command_timeout_minutes))
     }
   }, [appSettings])
 
@@ -155,7 +158,8 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
     const attempts = parseInt(maxAttemptsInput, 10)
     const ttl = parseInt(cacheLimitInput, 10)
     const maxFiles = parseInt(cacheMaxFilesInput, 10)
-    if (isNaN(interval) || isNaN(attempts) || isNaN(ttl) || isNaN(maxFiles) || interval < 1 || attempts < 1 || ttl < 1 || maxFiles < 1) return
+    const timeout = parseInt(commandTimeoutInput, 10)
+    if (isNaN(interval) || isNaN(attempts) || isNaN(ttl) || isNaN(maxFiles) || isNaN(timeout) || interval < 1 || attempts < 1 || ttl < 1 || maxFiles < 1 || timeout < 1) return
     setSettingsSaving(true)
     try {
       await onUpdateSettings({
@@ -163,6 +167,7 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
         max_reconnect_attempts: attempts,
         cache_ttl_hours: ttl,
         cache_max_files: maxFiles,
+        command_timeout_minutes: timeout,
       })
     } finally {
       setSettingsSaving(false)
@@ -328,6 +333,17 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
                   min="1"
                   value={maxAttemptsInput}
                   onChange={(e) => setMaxAttemptsInput(e.target.value)}
+                  className="create-input"
+                  disabled={!onUpdateSettings || settingsSaving}
+                />
+              </div>
+              <div className="edit-field">
+                <label>{t('settings.commandTimeout')} <span style={{ color: '#8b949e', fontWeight: 400 }}>— {t('settings.commandTimeoutHint')}</span></label>
+                <input
+                  type="number"
+                  min="1"
+                  value={commandTimeoutInput}
+                  onChange={(e) => setCommandTimeoutInput(e.target.value)}
                   className="create-input"
                   disabled={!onUpdateSettings || settingsSaving}
                 />

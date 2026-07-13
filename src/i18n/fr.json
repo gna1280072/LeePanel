@@ -521,6 +521,8 @@
     "autoReconnect": "Reconnexion SSH automatique",
     "reconnectInterval": "Intervalle de reconnexion (secondes)",
     "maxAttempts": "Nombre max de tentatives",
+    "commandTimeout": "Délai d'expiration (minutes)",
+    "commandTimeoutHint": "durée max d'exécution des scripts d'installation/désinstallation",
     "fileCache": "Cache des répertoires",
     "directories": "répertoires",
     "cacheTtl": "Durée de vie du cache (heures)",

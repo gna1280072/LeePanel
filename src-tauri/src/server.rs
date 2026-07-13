@@ -4478,6 +4478,7 @@ pub async fn custom_software_action(
     package_name: &str,
     action: &str,
     app_handle: &AppHandle,
+    timeout_secs: u64,
 ) -> Result<String, String> {
     // ponytail: sanitize package name — only allow safe chars
     let safe: String = package_name.chars().filter(|c| c.is_alphanumeric() || "-._+".contains(*c)).collect();
@@ -4555,7 +4556,7 @@ echo "ACTION_SUCCESS"
 
     let mut full_output = String::new();
     let mut exit_code: i32 = -1;
-    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(600);
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(timeout_secs);
 
     loop {
         tokio::select! {
@@ -4585,7 +4586,7 @@ echo "ACTION_SUCCESS"
             _ = tokio::time::sleep_until(deadline) => {
                 let _ = app_handle.emit(event_name, serde_json::json!({
                     "sessionId": session_id,
-                    "line": "Operation timed out (10 minutes)",
+                    "line": format!("Operation timed out ({} minutes)", timeout_secs / 60),
                     "status": "error",
                 }));
                 break;
@@ -4906,6 +4907,7 @@ pub async fn software_action(
     action: &str,
     options: &str,
     app_handle: &AppHandle,
+    timeout_secs: u64,
 ) -> Result<String, String> {
     let os = detect_os(session, cache, session_id).await?;
     let is_debian = os.family == "debian";
@@ -4942,7 +4944,7 @@ pub async fn software_action(
 
     let mut full_output = String::new();
     let mut exit_code: i32 = -1;
-    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(600);
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(timeout_secs);
 
     loop {
         tokio::select! {
@@ -4989,7 +4991,7 @@ pub async fn software_action(
                     "sessionId": session_id,
                     "rawOutput": full_output,
                 }));
-                return Err("Operation timed out (10 minutes)".to_string());
+                return Err(format!("Operation timed out ({} minutes)", timeout_secs / 60));
             }
         }
     }

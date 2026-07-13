@@ -521,6 +521,8 @@
     "autoReconnect": "Авто-переподключение SSH",
     "reconnectInterval": "Интервал переподключения (секунды)",
     "maxAttempts": "Макс. попыток",
+    "commandTimeout": "Таймаут команды (мин)",
+    "commandTimeoutHint": "макс. время выполнения скриптов установки/удаления",
     "fileCache": "Кэш каталогов",
     "directories": "каталогов",
     "cacheTtl": "Срок жизни кэша (часы)",

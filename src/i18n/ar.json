@@ -521,6 +521,8 @@
     "autoReconnect": "إعادة اتصال SSH تلقائية",
     "reconnectInterval": "فاصل إعادة الاتصال (ثواني)",
     "maxAttempts": "الحد الأقصى للمحاولات",
+    "commandTimeout": "مهلة الأمر (دقائق)",
+    "commandTimeoutHint": "الحد الأقصى لوقت تنفيذ سكريبتات التثبيت/الإزالة",
     "fileCache": "ذاكرة التخزين المؤقت للأدلة",
     "directories": "أدلة",
     "cacheTtl": "مدة صلاحية الذاكرة المؤقتة (ساعات)",

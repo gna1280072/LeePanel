@@ -521,6 +521,8 @@
     "autoReconnect": "SSH 自動再接続",
     "reconnectInterval": "再接続間隔（秒）",
     "maxAttempts": "最大試行回数",
+    "commandTimeout": "コマンドタイムアウト（分）",
+    "commandTimeoutHint": "インストール/アンインストールスクリプトの最大実行時間",
     "fileCache": "ディレクトリキャッシュ",
     "directories": "ディレクトリ",
     "cacheTtl": "キャッシュ有効期限（時間）",

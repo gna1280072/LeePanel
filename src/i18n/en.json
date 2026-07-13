@@ -521,6 +521,8 @@
     "autoReconnect": "SSH Auto Reconnect",
     "reconnectInterval": "Reconnect Interval (seconds)",
     "maxAttempts": "Max Attempts",
+    "commandTimeout": "Command Timeout (minutes)",
+    "commandTimeoutHint": "max execution time for install/uninstall scripts",
     "fileCache": "Directory Cache",
     "directories": "directories",
     "cacheTtl": "Cache TTL (hours)",

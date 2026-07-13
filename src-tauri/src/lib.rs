@@ -1693,6 +1693,7 @@ async fn server_add_source(
 #[tauri::command]
 async fn server_software_action(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    db: tauri::State<'_, DbPool>,
     app: tauri::AppHandle,
     session_id: &str,
     software: &str,
@@ -1703,7 +1704,16 @@ async fn server_software_action(
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
     drop(mgr);
-    let result = server::software_action(&session, &cache, session_id, software, action, options, &app).await;
+    // ponytail: read command timeout from settings, default 30 min
+    let timeout_mins: u64 = {
+        let conn = db.lock().map_err(|e| e.to_string())?;
+        conn.query_row("SELECT value FROM settings WHERE key = 'command_timeout_minutes'", [], |r| r.get::<_, String>(0))
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30)
+    };
+    let timeout_secs = timeout_mins * 60;
+    let result = server::software_action(&session, &cache, session_id, software, action, options, &app, timeout_secs).await;
     // ponytail: invalidate software/service caches after install/uninstall
     cache.invalidate(session_id, &[
         "software_list", "service_statuses", "lnmp_status", "docker_status",
@@ -2094,6 +2104,7 @@ async fn custom_software_remove(
 #[tauri::command]
 async fn custom_software_action(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    db: tauri::State<'_, DbPool>,
     app: tauri::AppHandle,
     session_id: &str,
     package_name: &str,
@@ -2103,7 +2114,16 @@ async fn custom_software_action(
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
     drop(mgr);
-    server::custom_software_action(&session, &cache, session_id, package_name, action, &app).await
+    // ponytail: read command timeout from settings, default 30 min
+    let timeout_mins: u64 = {
+        let conn = db.lock().map_err(|e| e.to_string())?;
+        conn.query_row("SELECT value FROM settings WHERE key = 'command_timeout_minutes'", [], |r| r.get::<_, String>(0))
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30)
+    };
+    let timeout_secs = timeout_mins * 60;
+    server::custom_software_action(&session, &cache, session_id, package_name, action, &app, timeout_secs).await
 }
 
 // ===== App Entry =====

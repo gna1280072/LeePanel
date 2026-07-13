@@ -179,6 +179,8 @@ pub struct Settings {
     pub cache_max_files: u32,
     #[serde(default = "default_true")]
     pub cache_enabled: bool,
+    #[serde(default = "default_command_timeout")]
+    pub command_timeout_minutes: u32,
 }
 
 fn default_true() -> bool { true }
@@ -186,6 +188,7 @@ fn default_reconnect_interval() -> u32 { 5 }
 fn default_max_attempts() -> u32 { 10 }
 fn default_cache_ttl() -> u32 { 24 }
 fn default_cache_max_files() -> u32 { 500 }
+fn default_command_timeout() -> u32 { 30 }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -196,6 +199,7 @@ impl Default for Settings {
             cache_ttl_hours: 24,
             cache_max_files: 500,
             cache_enabled: true,
+            command_timeout_minutes: 30,
         }
     }
 }
@@ -224,6 +228,9 @@ impl SettingsManager {
         if let Ok(val) = Self::get(conn, "cache_enabled") {
             if let Ok(v) = val.parse::<bool>() { settings.cache_enabled = v; }
         }
+        if let Ok(val) = Self::get(conn, "command_timeout_minutes") {
+            if let Ok(v) = val.parse::<u32>() { settings.command_timeout_minutes = v; }
+        }
 
         settings
     }
@@ -235,6 +242,7 @@ impl SettingsManager {
         Self::set(conn, "cache_ttl_hours", &settings.cache_ttl_hours.to_string())?;
         Self::set(conn, "cache_max_files", &settings.cache_max_files.to_string())?;
         Self::set(conn, "cache_enabled", &settings.cache_enabled.to_string())?;
+        Self::set(conn, "command_timeout_minutes", &settings.command_timeout_minutes.to_string())?;
         Ok(())
     }
 

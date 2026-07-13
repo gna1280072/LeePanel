@@ -521,6 +521,8 @@
     "autoReconnect": "SSH 斷線自動重連",
     "reconnectInterval": "重連間隔（秒）",
     "maxAttempts": "最大嘗試次數",
+    "commandTimeout": "命令逾時（分鐘）",
+    "commandTimeoutHint": "安裝/卸載腳本的最大執行時間",
     "fileCache": "檔案目錄快取",
     "directories": "個目錄",
     "cacheTtl": "快取有效期（小時）",

@@ -521,6 +521,8 @@
     "autoReconnect": "SSH 자동 재연결",
     "reconnectInterval": "재연결 간격 (초)",
     "maxAttempts": "최대 시도 횟수",
+    "commandTimeout": "명령 시간 초과 (분)",
+    "commandTimeoutHint": "설치/제거 스크립트의 최대 실행 시간",
     "fileCache": "디렉토리 캐시",
     "directories": "개 디렉토리",
     "cacheTtl": "캐시 TTL (시간)",

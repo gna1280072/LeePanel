@@ -44,6 +44,7 @@ interface Settings {
   cache_ttl_hours: number
   cache_max_files: number
   cache_enabled: boolean
+  command_timeout_minutes: number
 }
 
 function App() {
@@ -59,7 +60,7 @@ function App() {
 
   // Settings
   const [settings, setSettings] = useState<Settings>({
-    auto_reconnect: true, reconnect_interval: 5, max_reconnect_attempts: 10, cache_ttl_hours: 24, cache_max_files: 500, cache_enabled: true
+    auto_reconnect: true, reconnect_interval: 5, max_reconnect_attempts: 10, cache_ttl_hours: 24, cache_max_files: 500, cache_enabled: true, command_timeout_minutes: 30
   })
   const [, setReconnecting] = useState(false)
   const reconnectAttemptRef = useRef(0)

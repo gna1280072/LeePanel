@@ -710,6 +710,7 @@
     "compilePHPVersion": "PHP {{version}} 소스 컴파일",
     "installingPHPVersion": "PHP {{version}} 설치 중...",
     "compilingPHPSource": "PHP {{version}} 소스 컴파일 중 (5-15분 소요될 수 있음)...",
+    "recoveringProgress": "설치 진행 상황 복구 중...",
     "installMethodPackage": "패키지 (빠름)",
     "installMethodSource": "소스 컴파일 (BT Panel 스타일)",
     "availableVersionsLabel": "시스템 저장소에서 사용 가능한 PHP 버전",

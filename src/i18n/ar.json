@@ -710,6 +710,7 @@
     "compilePHPVersion": "تجميع PHP {{version}} من المصدر",
     "installingPHPVersion": "تثبيت PHP {{version}}...",
     "compilingPHPSource": "تجميع PHP {{version}} من المصدر (قد يستغرق 5-15 دقيقة)...",
+    "recoveringProgress": "جاري استعادة تقدم التثبيت...",
     "installMethodPackage": "حزمة (سريع)",
     "installMethodSource": "تجميع من المصدر (نمط BT Panel)",
     "availableVersionsLabel": "إصدارات PHP المتاحة في مستودعات النظام",

@@ -710,6 +710,7 @@
     "compilePHPVersion": "Скомпилировать PHP {{version}} из исходников",
     "installingPHPVersion": "Установка PHP {{version}}...",
     "compilingPHPSource": "Компиляция PHP {{version}} из исходников (может занять 5-15 минут)...",
+    "recoveringProgress": "Восстановление хода установки...",
     "installMethodPackage": "Пакет (быстро)",
     "installMethodSource": "Компиляция из исходников (стиль BT Panel)",
     "availableVersionsLabel": "Доступные версии PHP в системных репозиториях",

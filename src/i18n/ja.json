@@ -710,6 +710,7 @@
     "compilePHPVersion": "PHP {{version}} をソースからコンパイル",
     "installingPHPVersion": "PHP {{version}} をインストール中...",
     "compilingPHPSource": "PHP {{version}} をソースからコンパイル中（5〜15分かかる場合があります）...",
+    "recoveringProgress": "インストール進捗を復元中...",
     "installMethodPackage": "パッケージ（高速）",
     "installMethodSource": "ソースコンパイル（BT Panel スタイル）",
     "availableVersionsLabel": "システムリポジトリで利用可能な PHP バージョン",

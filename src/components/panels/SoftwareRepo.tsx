@@ -36,6 +36,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
   const [rawOutput, setRawOutput] = useState('')
   const [actionLabel, setActionLabel] = useState('')
   const logEndRef = useRef<HTMLDivElement>(null)
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Config editor state
   const [configEditorOpen, setConfigEditorOpen] = useState(false)
@@ -111,7 +112,45 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
     loadCustomSoftware()
   }
 
-  useEffect(() => { loadSoftware() }, [sessionId])
+  // ponytail: polling function for installation recovery
+  const startPolling = () => {
+    if (pollingRef.current) return
+    pollingRef.current = setInterval(async () => {
+      if (!sessionId) return
+      try {
+        const result = await invoke<{ running: boolean; log: string }>('server_check_installation', { sessionId })
+        if (result.running) {
+          const lines = result.log.split('\n').filter(l => l.trim())
+          setLogs(lines)
+        } else {
+          if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null }
+          setLogStatus('done')
+          loadSoftware()
+        }
+      } catch { /* ignore */ }
+    }, 3000)
+  }
+
+  useEffect(() => {
+    if (!sessionId) return
+    // ponytail: check for running installation before loading software list
+    invoke<{ running: boolean; log: string }>('server_check_installation', { sessionId })
+      .then(result => {
+        if (result.running && result.log) {
+          setLogs(result.log.split('\n').filter(l => l.trim()))
+          setLogStatus('running')
+          setActionLabel(t('software.recoveringProgress'))
+          setState('running')
+          startPolling()
+        } else {
+          loadSoftware()
+        }
+      })
+      .catch(() => { loadSoftware() })
+    return () => {
+      if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null }
+    }
+  }, [sessionId])
 
   // Listen for progress events
   useEffect(() => {

@@ -710,6 +710,7 @@
     "compilePHPVersion": "PHP {{version}} aus Quellcode kompilieren",
     "installingPHPVersion": "PHP {{version}} wird installiert...",
     "compilingPHPSource": "PHP {{version}} wird aus Quellcode kompiliert (kann 5-15 Minuten dauern)...",
+    "recoveringProgress": "Installationsfortschritt wird wiederhergestellt...",
     "installMethodPackage": "Paket (schnell)",
     "installMethodSource": "Quellcode-Kompilierung (BT Panel-Stil)",
     "availableVersionsLabel": "Im System-Repository verfügbare PHP-Versionen",

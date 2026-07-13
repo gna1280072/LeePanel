@@ -2126,6 +2126,33 @@ async fn custom_software_action(
     server::custom_software_action(&session, &cache, session_id, package_name, action, &app, timeout_secs).await
 }
 
+#[tauri::command]
+async fn server_check_installation(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+) -> Result<serde_json::Value, String> {
+    let mgr = ssh_mgr.lock().await;
+    let session = mgr.get_session(session_id)?;
+    drop(mgr);
+    // ponytail: check PID file exists + process alive
+    let (pid_out, _, _) = ssh::session_exec_with_output(
+        &session,
+        "test -f /tmp/taichi-install.pid && kill -0 $(cat /tmp/taichi-install.pid) 2>/dev/null && echo RUNNING || echo IDLE",
+        5,
+    ).await?;
+    let running = pid_out.trim().contains("RUNNING");
+    // ponytail: read log file if running
+    let log = if running {
+        ssh::session_exec_with_output(&session, "cat /tmp/taichi-install.log 2>/dev/null || true", 10)
+            .await
+            .map(|(out, _, _)| out)
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    Ok(serde_json::json!({ "running": running, "log": log }))
+}
+
 // ===== App Entry =====
 
 pub fn run() {
@@ -2225,6 +2252,7 @@ pub fn run() {
             server_import_database_from_file, server_import_database_from_backup,
             // Custom Software
             custom_software_list, custom_software_add, custom_software_remove, custom_software_action,
+            server_check_installation,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

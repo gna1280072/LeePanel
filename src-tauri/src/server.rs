@@ -4551,7 +4551,7 @@ echo "ACTION_SUCCESS"
     }));
 
     let mut channel = crate::ssh::session_open_channel(session).await?;
-    channel.exec(true, "bash /tmp/software-action.sh").await
+    channel.exec(true, "echo $$ > /tmp/taichi-install.pid; bash /tmp/software-action.sh 2>&1 | tee /tmp/taichi-install.log; rm -f /tmp/taichi-install.pid").await
         .map_err(|e| format!("Failed to start script: {}", e))?;
 
     let mut full_output = String::new();
@@ -4594,6 +4594,9 @@ echo "ACTION_SUCCESS"
         }
     }
     channel.close().await.ok();
+
+    // ponytail: cleanup remote PID file (in case tee pipe didn't finish)
+    crate::ssh::session_exec_with_output(session, "rm -f /tmp/taichi-install.pid", 5).await.ok();
 
     cache.invalidate(session_id, &["software_list", "service_statuses"]);
 
@@ -4938,7 +4941,7 @@ pub async fn software_action(
 
     let mut channel = crate::ssh::session_open_channel(session).await?;
     channel
-        .exec(true, "bash /tmp/software-action.sh")
+        .exec(true, "echo $$ > /tmp/taichi-install.pid; bash /tmp/software-action.sh 2>&1 | tee /tmp/taichi-install.log; rm -f /tmp/taichi-install.pid")
         .await
         .map_err(|e| format!("Failed to start script: {}", e))?;
 
@@ -4995,6 +4998,9 @@ pub async fn software_action(
             }
         }
     }
+
+    // ponytail: cleanup remote PID file (in case tee pipe didn't finish)
+    crate::ssh::session_exec_with_output(session, "rm -f /tmp/taichi-install.pid", 5).await.ok();
 
     // ponytail: russh exit code unreliable, use output marker as fallback
     let success = full_output.contains("ACTION_SUCCESS");

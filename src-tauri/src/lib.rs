@@ -2141,15 +2141,11 @@ async fn server_check_installation(
         5,
     ).await?;
     let running = pid_out.trim().contains("RUNNING");
-    // ponytail: read log file if running
-    let log = if running {
-        ssh::session_exec_with_output(&session, "cat /tmp/taichi-install.log 2>/dev/null || true", 10)
-            .await
-            .map(|(out, _, _)| out)
-            .unwrap_or_default()
-    } else {
-        String::new()
-    };
+    // ponytail: always read log (needed for final output when install just finished)
+    let log = ssh::session_exec_with_output(&session, "cat /tmp/taichi-install.log 2>/dev/null || true", 10)
+        .await
+        .map(|(out, _, _)| out)
+        .unwrap_or_default();
     Ok(serde_json::json!({ "running": running, "log": log }))
 }
 

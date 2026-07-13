@@ -115,19 +115,37 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
   // ponytail: polling function for installation recovery
   const startPolling = () => {
     if (pollingRef.current) return
+    let pollErrors = 0
     pollingRef.current = setInterval(async () => {
       if (!sessionId) return
       try {
         const result = await invoke<{ running: boolean; log: string }>('server_check_installation', { sessionId })
+        pollErrors = 0
         if (result.running) {
           const lines = result.log.split('\n').filter(l => l.trim())
           setLogs(lines)
         } else {
           if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null }
+          // ponytail: read final log when install completes
+          if (result.log) {
+            const finalLines = result.log.split('\n').filter(l => l.trim())
+            setLogs(prev => {
+              const combined = [...prev, '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', ...finalLines]
+              return combined.filter((v, i, a) => a.indexOf(v) === i || i > prev.length)
+            })
+          }
+          setLogs(prev => [...prev, '✅ Installation process ended'])
           setLogStatus('done')
           loadSoftware()
         }
-      } catch { /* ignore */ }
+      } catch {
+        pollErrors++
+        if (pollErrors >= 3) {
+          if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null }
+          setLogs(prev => [...prev, '⚠️ Connection lost during recovery, please check manually'])
+          setLogStatus('error')
+        }
+      }
     }, 3000)
   }
 

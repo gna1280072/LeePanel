@@ -152,33 +152,36 @@ function App() {
         try {
           let offset = 0
           while (offset < item.file.size) {
-            if (uploadStopRef.current) {
-              setUpload(prev => ({
-                ...prev, active: false, paused: false,
-                queue: prev.queue.map((q, j) => j === i ? { ...q, status: 'stopped' } : q)
-              }))
-              return
-            }
+            if (uploadStopRef.current) return
             while (uploadPauseRef.current) {
-              if (uploadStopRef.current) {
-                setUpload(prev => ({
-                  ...prev, active: false, paused: false,
-                  queue: prev.queue.map((q, j) => j === i ? { ...q, status: 'stopped' } : q)
-                }))
-                return
-              }
+              if (uploadStopRef.current) return
               await new Promise(r => setTimeout(r, 100))
             }
 
             const end = Math.min(offset + CHUNK_SIZE, item.file.size)
             const slice = item.file.slice(offset, end)
             const buffer = await slice.arrayBuffer()
-            await invoke('ssh_upload_chunk', {
-              sessionId: sid,
-              remotePath: item.remotePath,
-              data: new Uint8Array(buffer),
-              offset,
-            })
+            const chunkData = new Uint8Array(buffer)
+            try {
+              await invoke('ssh_upload_chunk', {
+                sessionId: sid,
+                remotePath: item.remotePath,
+                data: chunkData,
+                offset,
+              })
+            } catch (_chunkErr) {
+              if (uploadStopRef.current) return
+              // ponytail: SFTP session may be dead — reset cache and retry once
+              await invoke('ssh_sftp_reset', { sessionId: sid }).catch(() => {})
+              await new Promise(r => setTimeout(r, 500))
+              if (uploadStopRef.current) return
+              await invoke('ssh_upload_chunk', {
+                sessionId: sid,
+                remotePath: item.remotePath,
+                data: chunkData,
+                offset,
+              })
+            }
             uploadedBytes += (end - offset)
             offset = end
             updateSpeed()
@@ -188,6 +191,7 @@ function App() {
             queue: prev.queue.map((q, j) => j === i ? { ...q, status: 'done' } : q)
           }))
         } catch (err) {
+          if (uploadStopRef.current) return
           setUpload(prev => ({
             ...prev,
             queue: prev.queue.map((q, j) => j === i ? { ...q, status: 'error', error: String(err) } : q)
@@ -215,9 +219,11 @@ function App() {
     setUpload(prev => ({ ...prev, paused: false }))
   }, [])
 
+  // ponytail: stop = immediately clear UI + signal workers to exit silently
   const handleStopUpload = useCallback(() => {
     uploadStopRef.current = true
     uploadPauseRef.current = false
+    setUpload({ queue: [], totalBytes: 0, uploadedBytes: 0, speed: 0, active: false, paused: false })
   }, [])
 
   const handleDismissUpload = useCallback(() => {

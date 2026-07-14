@@ -330,6 +330,16 @@ async fn ssh_upload_chunk(
 }
 
 #[tauri::command]
+async fn ssh_sftp_reset(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+) -> Result<(), String> {
+    let mgr = ssh_mgr.lock().await;
+    mgr.sftp_reset(session_id);
+    Ok(())
+}
+
+#[tauri::command]
 async fn ssh_upload_files_batch(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
     app: tauri::AppHandle,
@@ -2287,7 +2297,7 @@ pub fn run() {
             ssh_get_cwd, ssh_list_dir, ssh_stat_file, ssh_read_file, ssh_write_file,
             ssh_delete_file, ssh_delete_files_batch, ssh_create_dir, ssh_rename_file, ssh_rename_files_batch,
             ssh_copy_file, ssh_copy_files_batch, ssh_copy_dir, ssh_set_permissions, ssh_set_permissions_batch,
-            ssh_check_space, ssh_upload, ssh_upload_chunk, ssh_upload_files_batch, ssh_create_dirs_batch, ssh_download_file,
+            ssh_check_space, ssh_upload, ssh_upload_chunk, ssh_sftp_reset, ssh_upload_files_batch, ssh_create_dirs_batch, ssh_download_file,
             ssh_download_to_local, ssh_save_as_local,
             ssh_compress, ssh_extract, ssh_reconnect,
             ssh_generate_keypair, save_key_to_local,

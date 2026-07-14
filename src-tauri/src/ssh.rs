@@ -333,6 +333,15 @@ impl SshManager {
         session_open_sftp(&session).await
     }
 
+    /// ponytail: invalidate cached SFTP session so next open_sftp creates a fresh one
+    pub fn sftp_reset(&self, session_id: &str) {
+        if let Ok(session) = self.get_session(session_id) {
+            if let Ok(mut cache) = session.sftp_cache.try_lock() {
+                *cache = None;
+            }
+        }
+    }
+
     pub async fn list_dir(&self, session_id: &str, path: &str) -> Result<String, String> {
         let sftp = self.open_sftp(session_id).await?;
         let entries = sftp.read_dir(path).await
@@ -1056,7 +1065,7 @@ impl SshManager {
         let config = russh_sftp::client::Config {
             max_packet_len: 64 * 1024,
             max_concurrent_writes: 8,
-            request_timeout_secs: 60,
+            request_timeout_secs: 15,
         };
         let sftp = russh_sftp::client::SftpSession::new_with_config(stream, config)
             .await
@@ -1533,7 +1542,7 @@ pub async fn session_open_sftp(session: &SshSession) -> Result<Arc<russh_sftp::c
     let config = russh_sftp::client::Config {
         max_packet_len: 64 * 1024,
         max_concurrent_writes: 8,
-        request_timeout_secs: 60,
+        request_timeout_secs: 15,
     };
     let sftp = russh_sftp::client::SftpSession::new_with_config(stream, config).await
         .map_err(|e| format!("SFTP init failed: {}", e))?;

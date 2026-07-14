@@ -11,7 +11,11 @@
     "dialog:default",
     "fs:default",
     {
-      "identifier": "fs:scope",
+      "identifier": "fs:allow-read-dir",
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "fs:allow-read-file",
       "allow": [{ "path": "**" }]
     },
     "updater:default",

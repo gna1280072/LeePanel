@@ -4552,11 +4552,13 @@ echo "ACTION_SUCCESS"
 
     let mut channel = crate::ssh::session_open_channel(session).await?;
     // ponytail: redirect output to log file (not SSH channel) so install survives disconnect
-    channel.exec(true, "echo $$ > /tmp/taichi-install.pid; > /tmp/taichi-install.log; bash /tmp/software-action.sh >> /tmp/taichi-install.log 2>&1; rm -f /tmp/taichi-install.pid").await
+    // write action info for recovery: "action:software"
+    let info_cmd: String = format!("echo $$ > /tmp/leepanel-install.pid; echo '{}:{}' > /tmp/leepanel-install.info; > /tmp/leepanel-install.log; bash /tmp/software-action.sh >> /tmp/leepanel-install.log 2>&1; rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info", action, package_name);
+    channel.exec(true, info_cmd).await
         .map_err(|e| format!("Failed to start script: {}", e))?;
     // ponytail: tail the log file for real-time output display
     let mut tail_channel = crate::ssh::session_open_channel(session).await?;
-    let _ = tail_channel.exec(true, "tail -f /tmp/taichi-install.log").await;
+    let _ = tail_channel.exec(true, "tail -f /tmp/leepanel-install.log").await;
     let mut full_output = String::new();
     let mut exit_code: i32 = -1;
     let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(timeout_secs);
@@ -4616,12 +4618,12 @@ echo "ACTION_SUCCESS"
     tail_channel.close().await.ok();
     channel.close().await.ok();
     // ponytail: read complete log file for final output
-    if let Ok((final_log, _, _)) = crate::ssh::session_exec_with_output(session, "cat /tmp/taichi-install.log 2>/dev/null || true", 10).await {
+    if let Ok((final_log, _, _)) = crate::ssh::session_exec_with_output(session, "cat /tmp/leepanel-install.log 2>/dev/null || true", 10).await {
         if !final_log.is_empty() {
             full_output = final_log;
         }
     }
-    crate::ssh::session_exec_with_output(session, "rm -f /tmp/taichi-install.pid", 5).await.ok();
+    crate::ssh::session_exec_with_output(session, "rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info", 5).await.ok();
 
     cache.invalidate(session_id, &["software_list", "service_statuses"]);
 
@@ -4966,13 +4968,15 @@ pub async fn software_action(
 
     let mut channel = crate::ssh::session_open_channel(session).await?;
     // ponytail: redirect output to log file (not SSH channel) so install survives disconnect
+    // write action info for recovery: "action:software"
+    let info_cmd: String = format!("echo $$ > /tmp/leepanel-install.pid; echo '{}:{}' > /tmp/leepanel-install.info; > /tmp/leepanel-install.log; bash /tmp/software-action.sh >> /tmp/leepanel-install.log 2>&1; rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info", action, software);
     channel
-        .exec(true, "echo $$ > /tmp/taichi-install.pid; > /tmp/taichi-install.log; bash /tmp/software-action.sh >> /tmp/taichi-install.log 2>&1; rm -f /tmp/taichi-install.pid")
+        .exec(true, info_cmd)
         .await
         .map_err(|e| format!("Failed to start script: {}", e))?;
     // ponytail: tail the log file for real-time output display
     let mut tail_channel = crate::ssh::session_open_channel(session).await?;
-    let _ = tail_channel.exec(true, "tail -f /tmp/taichi-install.log").await;
+    let _ = tail_channel.exec(true, "tail -f /tmp/leepanel-install.log").await;
 
     let mut full_output = String::new();
     let mut exit_code: i32 = -1;
@@ -5033,12 +5037,12 @@ pub async fn software_action(
     tail_channel.close().await.ok();
     channel.close().await.ok();
     // ponytail: read complete log file for final output
-    if let Ok((final_log, _, _)) = crate::ssh::session_exec_with_output(session, "cat /tmp/taichi-install.log 2>/dev/null || true", 10).await {
+    if let Ok((final_log, _, _)) = crate::ssh::session_exec_with_output(session, "cat /tmp/leepanel-install.log 2>/dev/null || true", 10).await {
         if !final_log.is_empty() {
             full_output = final_log;
         }
     }
-    crate::ssh::session_exec_with_output(session, "rm -f /tmp/taichi-install.pid", 5).await.ok();
+    crate::ssh::session_exec_with_output(session, "rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info", 5).await.ok();
 
     // ponytail: russh exit code unreliable, use output marker as fallback
     let success = full_output.contains("ACTION_SUCCESS");

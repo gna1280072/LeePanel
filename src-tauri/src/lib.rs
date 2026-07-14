@@ -2138,16 +2138,26 @@ async fn server_check_installation(
     // kill -0 alone is unreliable — stale PID may be reused by unrelated process
     let (pid_out, _, _) = ssh::session_exec_with_output(
         &session,
-        "test -f /tmp/taichi-install.pid && pgrep -P $(cat /tmp/taichi-install.pid) >/dev/null 2>&1 && test -f /tmp/taichi-install.log && test \"$(find /tmp/taichi-install.log -mmin -5 2>/dev/null)\" && echo RUNNING || (rm -f /tmp/taichi-install.pid; echo IDLE)",
+        "test -f /tmp/leepanel-install.pid && pgrep -P $(cat /tmp/leepanel-install.pid) >/dev/null 2>&1 && test -f /tmp/leepanel-install.log && test \"$(find /tmp/leepanel-install.log -mmin -5 2>/dev/null)\" && echo RUNNING || (rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info; echo IDLE)",
         8,
     ).await?;
     let running = pid_out.trim().contains("RUNNING");
     // ponytail: always read log (needed for final output when install just finished)
-    let log = ssh::session_exec_with_output(&session, "cat /tmp/taichi-install.log 2>/dev/null || true", 10)
+    let log = ssh::session_exec_with_output(&session, "cat /tmp/leepanel-install.log 2>/dev/null || true", 10)
         .await
         .map(|(out, _, _)| out)
         .unwrap_or_default();
-    Ok(serde_json::json!({ "running": running, "log": log }))
+    // ponytail: read action info for recovery label
+    let info = ssh::session_exec_with_output(&session, "cat /tmp/leepanel-install.info 2>/dev/null || true", 5)
+        .await
+        .map(|(out, _, _)| out.trim().to_string())
+        .unwrap_or_default();
+    let (action, software) = if let Some((a, s)) = info.split_once(':') {
+        (a.to_string(), s.to_string())
+    } else {
+        (String::new(), String::new())
+    };
+    Ok(serde_json::json!({ "running": running, "log": log, "action": action, "software": software }))
 }
 
 // ===== App Entry =====

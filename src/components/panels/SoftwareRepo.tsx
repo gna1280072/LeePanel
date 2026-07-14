@@ -119,7 +119,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
     pollingRef.current = setInterval(async () => {
       if (!sessionId) return
       try {
-        const result = await invoke<{ running: boolean; log: string }>('server_check_installation', { sessionId })
+        const result = await invoke<{ running: boolean; log: string; action: string; software: string }>('server_check_installation', { sessionId })
         pollErrors = 0
         if (result.running) {
           const lines = result.log.split('\n').filter(l => l.trim())
@@ -132,6 +132,9 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
           }
           setLogs(prev => [...prev, '✅ Installation process ended'])
           setLogStatus('done')
+          // ponytail: update actionLabel when recovery completes
+          const actionText = result.action === 'install' ? 'Installed' : 'Uninstalled'
+          setActionLabel(result.software ? `${actionText} ${result.software}` : 'Completed')
           loadSoftware()
         }
       } catch {
@@ -140,6 +143,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
           if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null }
           setLogs(prev => [...prev, '⚠️ Connection lost during recovery, please check manually'])
           setLogStatus('error')
+          setActionLabel('Connection lost')
         }
       }
     }, 3000)
@@ -148,7 +152,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
   useEffect(() => {
     if (!sessionId) return
     // ponytail: check for running installation before loading software list
-    invoke<{ running: boolean; log: string }>('server_check_installation', { sessionId })
+    invoke<{ running: boolean; log: string; action: string; software: string }>('server_check_installation', { sessionId })
       .then(result => {
         if (result.running) {
           if (result.log) {
@@ -157,7 +161,9 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
             setLogs([t('software.recoveringProgress')])
           }
           setLogStatus('running')
-          setActionLabel(t('software.recoveringProgress'))
+          // ponytail: build actionLabel from recovered action/software info
+          const actionText = result.action === 'install' ? 'Installing' : 'Uninstalling'
+          setActionLabel(result.software ? `${actionText} ${result.software}...` : t('software.recoveringProgress'))
           setState('running')
           startPolling()
         } else {

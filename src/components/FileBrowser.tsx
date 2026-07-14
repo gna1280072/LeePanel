@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useImperativeHandle, forwardRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { open as openDialog } from '@tauri-apps/plugin-dialog'
-import { readFile, readDir } from '@tauri-apps/plugin-fs'
+
 import { useTranslation } from 'react-i18next'
 
 interface FileEntry {
@@ -207,6 +206,8 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
   const operationLogRef = useRef<HTMLPreElement>(null)
   const favoritesDropdownRef = useRef<HTMLDivElement>(null)
   const fileBrowserRef = useRef<HTMLDivElement>(null)
+  const folderInputRef = useRef<HTMLInputElement>(null)
+  const filesInputRef = useRef<HTMLInputElement>(null)
 
   // Favorites management
   const [favorites, setFavorites] = useState<string[]>([])
@@ -569,27 +570,6 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     navigateTo(currentPath)
   }, [sessionId, currentPath, checkDirReady, getUniqueName, navigateTo, showToast, showConflict, onStartUpload])
 
- // ponytail: Tauri native dialog for folder upload — avoids webkitdirectory WebView2 issues
-  const walkDir = async (dir: string, relBase: string): Promise<{ files: { absPath: string; relPath: string }[]; dirs: string[] }> => {
-    const entries = await readDir(dir)
-    const files: { absPath: string; relPath: string }[] = []
-    const dirs: string[] = []
-    for (const entry of entries) {
-      if (!entry.name) continue
-      const absPath = dir + '/' + entry.name
-      const relPath = relBase ? relBase + '/' + entry.name : entry.name
-      if (entry.isDirectory) {
-        dirs.push(relPath)
-        const sub = await walkDir(absPath, relPath)
-        files.push(...sub.files)
-        dirs.push(...sub.dirs)
-      } else if (entry.isFile) {
-        files.push({ absPath, relPath })
-      }
-    }
-    return { files, dirs }
-  }
-
   // ponytail: shared folder upload logic — create dirs + upload files with relative paths
   const uploadFolderFiles = useCallback(async (files: { file: File; relPath: string }[], extraDirs: string[] = []) => {
     // Create directory structure on server
@@ -645,70 +625,55 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     return { files: [], dirs: [] }
   }
 
-  // ponytail: lazy file-like object — reads chunks from disk on demand instead of loading entire file into memory
-  const makeLazyFile = (absPath: string, fileSize: number): File => {
-    return {
-      size: fileSize,
-      name: absPath.split(/[\\/]/).pop() || '',
-      slice(start: number, end: number) {
-        const len = Math.min(end, fileSize) - start
-        return {
-          async arrayBuffer() {
-            const data = await invoke<Uint8Array>('read_file_chunk', { path: absPath, offset: start, length: len })
-            return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
-          }
-        }
-      },
-    } as unknown as File
-  }
+  // ponytail: native <input webkitdirectory> — same lazy File objects as drag-drop, no makeLazyFile needed
+  const handleUploadFolder = useCallback(() => {
+    folderInputRef.current?.click()
+  }, [])
 
-  const handleUploadFolder = useCallback(async () => {
-    if (!sessionId) return
-    const folderPath = await openDialog({ directory: true, multiple: false })
-    if (!folderPath || typeof folderPath !== 'string') return
-
-    // Extract folder name from path
-    const folderName = folderPath.split(/[\\/]/).pop()!
-    const { files: allFiles, dirs: allDirs } = await walkDir(folderPath, folderName)
-
-    // ponytail: get file sizes in parallel without reading contents — instant even for 4000 files
-    const sizeResults = await Promise.all(
-      allFiles.map(f => invoke<number>('get_local_file_size', { path: f.absPath }).catch(() => -1))
-    )
-
+  const handleFolderInputChange = useCallback(async () => {
+    const input = folderInputRef.current
+    if (!input?.files?.length) return
+    const fileList = input.files
     const files: { file: File; relPath: string }[] = []
-    for (let i = 0; i < allFiles.length; i++) {
-      const size = sizeResults[i]
-      if (size < 0) continue // skip files we can't stat
-      files.push({ file: makeLazyFile(allFiles[i].absPath, size), relPath: allFiles[i].relPath })
+    const dirsSet = new Set<string>()
+    for (let i = 0; i < fileList.length; i++) {
+      const f = fileList[i]
+      const relPath = f.webkitRelativePath
+      if (!relPath) continue
+      files.push({ file: f, relPath })
+      // collect intermediate directory paths
+      const parts = relPath.split('/')
+      for (let j = 1; j < parts.length; j++) {
+        dirsSet.add(parts.slice(0, j).join('/'))
+      }
     }
-    if (files.length > 0 || allDirs.length > 0) await uploadFolderFiles(files, allDirs)
-  }, [sessionId, currentPath, navigateTo, onStartUpload, uploadFolderFiles])
+    input.value = '' // reset so same folder can be re-selected
+    if (files.length > 0 || dirsSet.size > 0) {
+      await uploadFolderFiles(files, [...dirsSet])
+    }
+  }, [uploadFolderFiles])
 
-  // ponytail: Tauri native dialog for file upload — more reliable than hidden input.click() in WebView2
-  const handleUploadFilesBtn = useCallback(async () => {
-    if (!sessionId) return
-    const selected = await openDialog({ multiple: true, directory: false })
-    if (!selected) return
-    const paths = Array.isArray(selected) ? selected : [selected]
-    if (paths.length === 0) return
+  // ponytail: native <input multiple> for file upload — lazy File objects, zero memory preload
+  const handleUploadFilesBtn = useCallback(() => {
+    filesInputRef.current?.click()
+  }, [])
 
+  const handleFilesInputChange = useCallback(async () => {
+    const input = filesInputRef.current
+    if (!input?.files?.length) return
+    const fileList = input.files
     const uploadFiles: { file: File; fileName: string; remotePath: string }[] = []
-    for (const p of paths) {
-      try {
-        const fileName = p.split(/[\\/]/).pop()!
-        const bytes = await readFile(p)
-        const blob = new Blob([bytes])
-        const file = new File([blob], fileName, { type: 'application/octet-stream' })
-        const remotePath = currentPath === '/' ? `/${fileName}` : `${currentPath}/${fileName}`
-        uploadFiles.push({ file, fileName, remotePath })
-      } catch (_) { /* skip unreadable files */ }
+    for (let i = 0; i < fileList.length; i++) {
+      const f = fileList[i]
+      const remotePath = currentPath === '/' ? `/${f.name}` : `${currentPath}/${f.name}`
+      uploadFiles.push({ file: f, fileName: f.name, remotePath })
     }
-
-    if (uploadFiles.length === 0) return
-    onStartUpload?.(uploadFiles)
-    navigateTo(currentPath)
-  }, [sessionId, currentPath, navigateTo, onStartUpload])
+    input.value = ''
+    if (uploadFiles.length > 0) {
+      onStartUpload?.(uploadFiles)
+      navigateTo(currentPath)
+    }
+  }, [currentPath, navigateTo, onStartUpload])
 
   // Close upload menu on outside click
   useEffect(() => {
@@ -746,11 +711,16 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     }
     // Upload directories using Web API traversal + shared upload logic
     if (dirEntries.length > 0) {
+      // ponytail: merge all folder entries then call uploadFolderFiles once
+      const allFiles: { file: File; relPath: string }[] = []
+      const allDirs: string[] = []
       for (const entry of dirEntries) {
-        // ponytail: walkDragEntries tracks relPath manually and collects empty dirs
         const { files, dirs } = await walkDragEntries(entry)
-        if (files.length === 0 && dirs.length === 0) continue
-        await uploadFolderFiles(files, dirs)
+        allFiles.push(...files)
+        allDirs.push(...dirs)
+      }
+      if (allFiles.length > 0 || allDirs.length > 0) {
+        await uploadFolderFiles(allFiles, allDirs)
       }
     }
   }, [handleUploadFiles, uploadFolderFiles])
@@ -2389,6 +2359,10 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
           </div>
         </div>
       )}
+
+      {/* ponytail: hidden native inputs — same lazy File API as drag-drop */}
+      <input ref={folderInputRef} type="file" {...{ webkitdirectory: '', directory: '' } as any} style={{ display: 'none' }} onChange={handleFolderInputChange} />
+      <input ref={filesInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleFilesInputChange} />
 
       {/* Upload floating button */}
       <button

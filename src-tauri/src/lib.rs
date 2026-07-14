@@ -416,26 +416,6 @@ async fn ssh_create_dirs_batch(
     Ok(())
 }
 
-// ponytail: read a byte range from a local file — enables lazy chunked upload without loading entire file into memory
-#[tauri::command]
-async fn read_file_chunk(path: String, offset: u64, length: usize) -> Result<Vec<u8>, String> {
-    use std::io::{Read, Seek, SeekFrom};
-    let mut file = std::fs::File::open(&path).map_err(|e| format!("Failed to open file: {}", e))?;
-    file.seek(SeekFrom::Start(offset)).map_err(|e| format!("Seek failed: {}", e))?;
-    let mut buf = vec![0u8; length];
-    let n = file.read(&mut buf).map_err(|e| format!("Read failed: {}", e))?;
-    buf.truncate(n);
-    Ok(buf)
-}
-
-// ponytail: get local file size without reading contents — for lazy upload queue
-#[tauri::command]
-async fn get_local_file_size(path: String) -> Result<u64, String> {
-    std::fs::metadata(&path)
-        .map(|m| m.len())
-        .map_err(|e| format!("Failed to stat file: {}", e))
-}
-
 #[tauri::command]
 async fn ssh_download_file(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
@@ -2317,7 +2297,7 @@ pub fn run() {
             ssh_get_cwd, ssh_list_dir, ssh_stat_file, ssh_read_file, ssh_write_file,
             ssh_delete_file, ssh_delete_files_batch, ssh_create_dir, ssh_rename_file, ssh_rename_files_batch,
             ssh_copy_file, ssh_copy_files_batch, ssh_copy_dir, ssh_set_permissions, ssh_set_permissions_batch,
-            ssh_check_space, ssh_upload, ssh_upload_chunk, ssh_sftp_reset, ssh_upload_files_batch, ssh_create_dirs_batch, ssh_download_file, read_file_chunk, get_local_file_size,
+            ssh_check_space, ssh_upload, ssh_upload_chunk, ssh_sftp_reset, ssh_upload_files_batch, ssh_create_dirs_batch, ssh_download_file,
             ssh_download_to_local, ssh_save_as_local,
             ssh_compress, ssh_extract, ssh_reconnect,
             ssh_generate_keypair, save_key_to_local,

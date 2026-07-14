@@ -8070,10 +8070,10 @@ pub async fn change_mysql_root_password(
     session_id: &str,
     new_password: &str,
 ) -> Result<String, String> {
-    // Use sudo mysql directly (most reliable)
-    let mysql_cmd = "sudo mysql";
+    // ponytail: reuse get_mysql_cmd for reliable auth detection instead of hardcoded sudo mysql
+    let mysql_cmd = get_mysql_cmd(session, cache, session_id).await;
     
-    let safe_pw = new_password.replace('`', "").replace('\'', "\\'");
+    let safe_pw = new_password.replace('\'', "\\'");
     let sql = format!("ALTER USER 'root'@'localhost' IDENTIFIED BY '{}';\nFLUSH PRIVILEGES;\n", safe_pw);
     
     // Write SQL via SFTP
@@ -8094,6 +8094,14 @@ pub async fn change_mysql_root_password(
             combined
         });
     }
+    
+    // ponytail: update /root/.my.cnf so future get_mysql_cmd calls use the new password
+    let cnf = format!("[client]\nuser=root\npassword={}\n", new_password);
+    let _ = crate::ssh::session_exec_with_output(
+        session,
+        &format!("echo '{}' > /root/.my.cnf && chmod 600 /root/.my.cnf", cnf.replace('\'', "'\\''" )),
+        5,
+    ).await;
     
     Ok("MySQL root password changed successfully".to_string())
 }

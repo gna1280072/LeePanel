@@ -2806,6 +2806,14 @@ body.dragging-files * {
   border-top: 1px solid var(--border-color, #444);
 }
 
+.fb-upload-menu-hint {
+  padding: 6px 14px;
+  font-size: 11px;
+  color: #888;
+  border-top: 1px solid var(--border-color, #444);
+  white-space: nowrap;
+}
+
 /* Status Bar */
 .fb-status-bar {
   position: absolute;

@@ -135,7 +135,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
           // ponytail: update actionLabel when recovery completes
           const actionText = result.action === 'install' ? 'Installed' : 'Uninstalled'
           setActionLabel(result.displayName ? `${actionText} ${result.displayName}` : 'Completed')
-          loadSoftware()
+          // ponytail: don't call loadSoftware() here - let user click "Done - Refresh" button
         }
       } catch {
         pollErrors++

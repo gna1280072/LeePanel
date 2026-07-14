@@ -4551,16 +4551,18 @@ echo "ACTION_SUCCESS"
     }));
 
     let mut channel = crate::ssh::session_open_channel(session).await?;
-    channel.exec(true, "echo $$ > /tmp/taichi-install.pid; bash /tmp/software-action.sh 2>&1 | tee /tmp/taichi-install.log; rm -f /tmp/taichi-install.pid").await
+    // ponytail: redirect output to log file (not SSH channel) so install survives disconnect
+    channel.exec(true, "echo $$ > /tmp/taichi-install.pid; > /tmp/taichi-install.log; bash /tmp/software-action.sh >> /tmp/taichi-install.log 2>&1; rm -f /tmp/taichi-install.pid").await
         .map_err(|e| format!("Failed to start script: {}", e))?;
-
+    // ponytail: tail the log file for real-time output display
+    let mut tail_channel = crate::ssh::session_open_channel(session).await?;
+    let _ = tail_channel.exec(true, "tail -f /tmp/taichi-install.log").await;
     let mut full_output = String::new();
     let mut exit_code: i32 = -1;
     let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(timeout_secs);
-
     loop {
         tokio::select! {
-            msg = channel.wait() => {
+            msg = tail_channel.wait() => {
                 match msg {
                     Some(russh::ChannelMsg::Data { data }) => {
                         let text = String::from_utf8_lossy(&data);
@@ -4575,6 +4577,24 @@ echo "ACTION_SUCCESS"
                             }
                         }
                     }
+                    Some(russh::ChannelMsg::ExtendedData { data, ext }) if ext == 1 => {
+                        let text = String::from_utf8_lossy(&data);
+                        full_output.push_str(&text);
+                        for line in text.lines() {
+                            if !line.trim().is_empty() {
+                                let _ = app_handle.emit(event_name, serde_json::json!({
+                                    "sessionId": session_id,
+                                    "line": line,
+                                    "status": "running",
+                                }));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            msg = channel.wait() => {
+                match msg {
                     Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
                         exit_code = exit_status as i32;
                     }
@@ -4593,9 +4613,14 @@ echo "ACTION_SUCCESS"
             }
         }
     }
+    tail_channel.close().await.ok();
     channel.close().await.ok();
-
-    // ponytail: cleanup remote PID file (in case tee pipe didn't finish)
+    // ponytail: read complete log file for final output
+    if let Ok((final_log, _, _)) = crate::ssh::session_exec_with_output(session, "cat /tmp/taichi-install.log 2>/dev/null || true", 10).await {
+        if !final_log.is_empty() {
+            full_output = final_log;
+        }
+    }
     crate::ssh::session_exec_with_output(session, "rm -f /tmp/taichi-install.pid", 5).await.ok();
 
     cache.invalidate(session_id, &["software_list", "service_statuses"]);
@@ -4940,10 +4965,14 @@ pub async fn software_action(
     }));
 
     let mut channel = crate::ssh::session_open_channel(session).await?;
+    // ponytail: redirect output to log file (not SSH channel) so install survives disconnect
     channel
-        .exec(true, "echo $$ > /tmp/taichi-install.pid; bash /tmp/software-action.sh 2>&1 | tee /tmp/taichi-install.log; rm -f /tmp/taichi-install.pid")
+        .exec(true, "echo $$ > /tmp/taichi-install.pid; > /tmp/taichi-install.log; bash /tmp/software-action.sh >> /tmp/taichi-install.log 2>&1; rm -f /tmp/taichi-install.pid")
         .await
         .map_err(|e| format!("Failed to start script: {}", e))?;
+    // ponytail: tail the log file for real-time output display
+    let mut tail_channel = crate::ssh::session_open_channel(session).await?;
+    let _ = tail_channel.exec(true, "tail -f /tmp/taichi-install.log").await;
 
     let mut full_output = String::new();
     let mut exit_code: i32 = -1;
@@ -4951,7 +4980,7 @@ pub async fn software_action(
 
     loop {
         tokio::select! {
-            msg = channel.wait() => {
+            msg = tail_channel.wait() => {
                 match msg {
                     Some(russh::ChannelMsg::Data { data }) => {
                         let text = String::from_utf8_lossy(&data);
@@ -4966,21 +4995,24 @@ pub async fn software_action(
                             }
                         }
                     }
-                    Some(russh::ChannelMsg::ExtendedData { data, ext }) => {
-                        if ext == 1 {
-                            let text = String::from_utf8_lossy(&data);
-                            full_output.push_str(&text);
-                            for line in text.lines() {
-                                if !line.trim().is_empty() {
-                                    let _ = app_handle.emit(event_name, serde_json::json!({
-                                        "sessionId": session_id,
-                                        "line": line,
-                                        "status": "running",
-                                    }));
-                                }
+                    Some(russh::ChannelMsg::ExtendedData { data, ext }) if ext == 1 => {
+                        let text = String::from_utf8_lossy(&data);
+                        full_output.push_str(&text);
+                        for line in text.lines() {
+                            if !line.trim().is_empty() {
+                                let _ = app_handle.emit(event_name, serde_json::json!({
+                                    "sessionId": session_id,
+                                    "line": line,
+                                    "status": "running",
+                                }));
                             }
                         }
                     }
+                    _ => {}
+                }
+            }
+            msg = channel.wait() => {
+                match msg {
                     Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
                         exit_code = exit_status as i32;
                     }
@@ -4989,17 +5021,23 @@ pub async fn software_action(
                 }
             }
             _ = tokio::time::sleep_until(deadline) => {
-                // Emit raw output even on timeout
-                let _ = app_handle.emit("software-action-raw-output", serde_json::json!({
+                let _ = app_handle.emit(event_name, serde_json::json!({
                     "sessionId": session_id,
-                    "rawOutput": full_output,
+                    "line": format!("Operation timed out ({} minutes)", timeout_secs / 60),
+                    "status": "error",
                 }));
-                return Err(format!("Operation timed out ({} minutes)", timeout_secs / 60));
+                break;
             }
         }
     }
-
-    // ponytail: cleanup remote PID file (in case tee pipe didn't finish)
+    tail_channel.close().await.ok();
+    channel.close().await.ok();
+    // ponytail: read complete log file for final output
+    if let Ok((final_log, _, _)) = crate::ssh::session_exec_with_output(session, "cat /tmp/taichi-install.log 2>/dev/null || true", 10).await {
+        if !final_log.is_empty() {
+            full_output = final_log;
+        }
+    }
     crate::ssh::session_exec_with_output(session, "rm -f /tmp/taichi-install.pid", 5).await.ok();
 
     // ponytail: russh exit code unreliable, use output marker as fallback

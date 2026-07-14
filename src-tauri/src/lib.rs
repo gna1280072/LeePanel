@@ -2138,8 +2138,8 @@ async fn server_check_installation(
     // kill -0 alone is unreliable — stale PID may be reused by unrelated process
     let (pid_out, _, _) = ssh::session_exec_with_output(
         &session,
-        "test -f /tmp/taichi-install.pid && pgrep -P $(cat /tmp/taichi-install.pid) >/dev/null 2>&1 && echo RUNNING || echo IDLE",
-        5,
+        "test -f /tmp/taichi-install.pid && pgrep -P $(cat /tmp/taichi-install.pid) >/dev/null 2>&1 && test -f /tmp/taichi-install.log && test \"$(find /tmp/taichi-install.log -mmin -5 2>/dev/null)\" && echo RUNNING || (rm -f /tmp/taichi-install.pid; echo IDLE)",
+        8,
     ).await?;
     let running = pid_out.trim().contains("RUNNING");
     // ponytail: always read log (needed for final output when install just finished)

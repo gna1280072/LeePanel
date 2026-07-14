@@ -476,7 +476,7 @@ fn generate_install_script(os: &OsInfo, config: &LnmpInstallConfig) -> String {
     if os.family == "debian" {
         script.push_str("\n# Update package index\n");
         script.push_str("log 'Updating package index...'\n");
-        script.push_str("apt-get update -y\n");
+        script.push_str("apt-get update -y --allow-releaseinfo-change\n");
 
         if config.install_nginx {
             script.push_str("\n# Install Nginx\n");
@@ -4502,7 +4502,7 @@ if [ "{}" = "install" ]; then
     sleep 1
   done
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
-    apt-get update -qq || true
+    apt-get update -qq --allow-releaseinfo-change || true
     apt-get install -y {} 2>&1
   else
     yum install -y --nogpgcheck --assumeyes {} 2>&1
@@ -4764,7 +4764,7 @@ if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
   echo "Cache cleared"
   
   echo "=== Updating package sources ==="
-  apt-get update 2>&1 | tee /tmp/apt-update.log
+  apt-get update --allow-releaseinfo-change 2>&1 | tee /tmp/apt-update.log
   
   if [ $? -eq 0 ]; then
     echo "ACTION_SUCCESS"

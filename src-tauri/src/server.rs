@@ -7432,11 +7432,14 @@ pub async fn change_db_access(
     session_id: &str,
     db_name: &str,
     db_user: &str,
+    db_pass: &str,
     access_type: &str,
     allowed_ip: &str,
 ) -> Result<String, String> {
     let safe_db = db_name.replace('`', "");
     let safe_user = db_user.replace('`', "");
+    // ponytail: escape single quotes in password
+    let safe_pw = db_pass.replace('\'', "\\'");
     
     // Parse multiple IPs from allowed_ip (newline separated)
     let access_hosts: Vec<&str> = match access_type {
@@ -7465,14 +7468,15 @@ pub async fn change_db_access(
         _ => vec!["localhost"], // Default fallback
     };
     
-    // Build SQL to drop all old users and create new ones with different hosts
+    // ponytail: dynamic delete all old users + create new with correct password
     let mut sql = String::new();
-    
-    // Drop existing users for common hosts
     sql.push_str(&format!(
-        "DROP USER IF EXISTS '{}'@'localhost';\n\
-         DROP USER IF EXISTS '{}'@'%';\n",
-        safe_user, safe_user
+        "SET @drop_sql = (SELECT GROUP_CONCAT('DROP USER IF EXISTS ''', user, '''@''', host, '''') SEPARATOR ';\\n') FROM mysql.user WHERE user = '{}');\n\
+         SET @drop_sql = IFNULL(@drop_sql, 'SELECT 1');\n\
+         PREPARE stmt FROM @drop_sql;\n\
+         EXECUTE stmt;\n\
+         DEALLOCATE PREPARE stmt;\n",
+        safe_user
     ));
     
     // Create user and grant privileges for each new access host
@@ -7480,7 +7484,7 @@ pub async fn change_db_access(
         sql.push_str(&format!(
             "CREATE USER IF NOT EXISTS '{}'@'{}' IDENTIFIED BY '{}';\n\
              GRANT ALL PRIVILEGES ON `{}`.* TO '{}'@'{}';\n",
-            safe_user, host, "", safe_db, safe_user, host
+            safe_user, host, safe_pw, safe_db, safe_user, host
         ));
     }
     

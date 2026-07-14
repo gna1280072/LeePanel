@@ -287,10 +287,12 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
     setChangingAccess(true)
     setMsg('')
     try {
+      const existingCred = dbCredentials[accessTarget.name]
       const result = await invoke<string>('server_mysql_change_db_access', {
         sessionId,
         dbName: accessTarget.name,
         dbUser: accessTarget.user,
+        dbPass: existingCred?.password || '',
         accessType: newAccessType,
         allowedIp: newAccessType === 'ip' ? newAllowedIp.trim() : ''
       })
@@ -298,7 +300,6 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       
       // Save access permission to SQLite
       try {
-        const existingCred = dbCredentials[accessTarget.name]
         await invoke<string>('server_save_db_credentials', {
           sessionId,
           dbName: accessTarget.name,

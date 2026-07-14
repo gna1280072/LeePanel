@@ -740,6 +740,7 @@ async fn server_mysql_change_db_access(
     session_id: &str,
     db_name: &str,
     db_user: &str,
+    db_pass: &str,
     access_type: &str,
     allowed_ip: &str,
 ) -> Result<String, String> {
@@ -747,7 +748,7 @@ async fn server_mysql_change_db_access(
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
     drop(mgr);
-    server::change_db_access(&session, &cache, session_id, db_name, db_user, access_type, allowed_ip).await
+    server::change_db_access(&session, &cache, session_id, db_name, db_user, db_pass, access_type, allowed_ip).await
 }
 
 #[tauri::command]

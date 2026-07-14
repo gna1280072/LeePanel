@@ -418,13 +418,20 @@ function App() {
         console.log('Direct connect! sessionId:', sid, 'configId:', conn.id)
         setConnHost(`${conn.host}_${conn.port}`)
         manualDisconnectRef.current = false
-        // Show welcome modal on successful connection
-        setShowWelcome(true)
-        console.log('Showing welcome modal (direct connect)')
-        setTimeout(() => {
-          setShowWelcome(false)
-          console.log('Hiding welcome modal after 4 seconds')
-        }, 4000)
+        // Show welcome modal on successful connection (once per 6 hours)
+        const WELCOME_INTERVAL = 6 * 60 * 60 * 1000
+        const lastShown = Number(localStorage.getItem('welcome_last_shown') || 0)
+        if (Date.now() - lastShown >= WELCOME_INTERVAL) {
+          setShowWelcome(true)
+          localStorage.setItem('welcome_last_shown', String(Date.now()))
+          console.log('Showing welcome modal (direct connect)')
+          setTimeout(() => {
+            setShowWelcome(false)
+            console.log('Hiding welcome modal after 4 seconds')
+          }, 4000)
+        } else {
+          console.log('Welcome modal skipped, shown recently')
+        }
       }).catch(e => {
         const msg = String(e)
         const { type, message } = classifyError(msg)

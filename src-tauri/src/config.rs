@@ -181,6 +181,8 @@ pub struct Settings {
     pub cache_enabled: bool,
     #[serde(default = "default_command_timeout")]
     pub command_timeout_minutes: u32,
+    #[serde(default = "default_upload_workers")]
+    pub upload_workers: u32,
 }
 
 fn default_true() -> bool { true }
@@ -189,6 +191,7 @@ fn default_max_attempts() -> u32 { 10 }
 fn default_cache_ttl() -> u32 { 24 }
 fn default_cache_max_files() -> u32 { 500 }
 fn default_command_timeout() -> u32 { 30 }
+fn default_upload_workers() -> u32 { 3 }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -200,6 +203,7 @@ impl Default for Settings {
             cache_max_files: 500,
             cache_enabled: true,
             command_timeout_minutes: 30,
+            upload_workers: 3,
         }
     }
 }
@@ -231,6 +235,9 @@ impl SettingsManager {
         if let Ok(val) = Self::get(conn, "command_timeout_minutes") {
             if let Ok(v) = val.parse::<u32>() { settings.command_timeout_minutes = v; }
         }
+        if let Ok(val) = Self::get(conn, "upload_workers") {
+            if let Ok(v) = val.parse::<u32>() { settings.upload_workers = v; }
+        }
 
         settings
     }
@@ -243,6 +250,7 @@ impl SettingsManager {
         Self::set(conn, "cache_max_files", &settings.cache_max_files.to_string())?;
         Self::set(conn, "cache_enabled", &settings.cache_enabled.to_string())?;
         Self::set(conn, "command_timeout_minutes", &settings.command_timeout_minutes.to_string())?;
+        Self::set(conn, "upload_workers", &settings.upload_workers.to_string())?;
         Ok(())
     }
 

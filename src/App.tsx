@@ -45,6 +45,7 @@ interface Settings {
   cache_max_files: number
   cache_enabled: boolean
   command_timeout_minutes: number
+  upload_workers: number
 }
 
 function App() {
@@ -60,7 +61,7 @@ function App() {
 
   // Settings
   const [settings, setSettings] = useState<Settings>({
-    auto_reconnect: true, reconnect_interval: 5, max_reconnect_attempts: 10, cache_ttl_hours: 24, cache_max_files: 500, cache_enabled: true, command_timeout_minutes: 30
+    auto_reconnect: true, reconnect_interval: 5, max_reconnect_attempts: 10, cache_ttl_hours: 24, cache_max_files: 500, cache_enabled: true, command_timeout_minutes: 30, upload_workers: 3
   })
   const [, setReconnecting] = useState(false)
   const reconnectAttemptRef = useRef(0)
@@ -244,7 +245,7 @@ function App() {
           }
         }
       }
-      const batchWorkers = Array.from({ length: Math.min(3, dirEntries.length) }, () => batchWorker())
+      const batchWorkers = Array.from({ length: Math.min(settings.upload_workers || 3, dirEntries.length) }, () => batchWorker())
       await Promise.all(batchWorkers)
     }
 
@@ -262,7 +263,7 @@ function App() {
         })
       }))
 
-      const CONCURRENCY = Math.min(3, largeQueue.length)
+      const CONCURRENCY = Math.min(settings.upload_workers || 3, largeQueue.length)
       let nextIndex = 0
 
       const worker = async () => {
@@ -335,7 +336,7 @@ function App() {
       setUpload(prev => ({ ...prev, active: false, paused: false }))
       uploadCompleteRef.current?.()
     }
-  }, [sessionId])
+  }, [sessionId, settings.upload_workers])
 
   const handlePauseUpload = useCallback(() => {
     uploadPauseRef.current = true

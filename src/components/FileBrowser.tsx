@@ -2357,7 +2357,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
           <div className="fb-upload-menu-item" onClick={() => { handleUploadFolder(); setUploadMenuOpen(false) }}>
             📁 {t('files.uploadFolder')}
           </div>
-          <div className="fb-upload-menu-hint">已开启拖动文件上传功能</div>
+          <div className="fb-upload-menu-hint">{t('files.dragUploadEnabled')}</div>
         </div>
       )}
 

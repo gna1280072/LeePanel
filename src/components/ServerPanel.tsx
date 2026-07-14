@@ -31,6 +31,8 @@ interface AppSettings {
   cache_ttl_hours: number
   cache_max_files: number
   cache_enabled: boolean
+  command_timeout_minutes: number
+  upload_workers: number
 }
 
 interface ServerPanelProps {

@@ -21,6 +21,7 @@ interface AppSettings {
   cache_max_files: number
   cache_enabled: boolean
   command_timeout_minutes: number
+  upload_workers: number
 }
 
 interface ServerSettingsPanelProps {
@@ -56,6 +57,7 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
   const [cacheLimitInput, setCacheLimitInput] = useState<string>('')
   const [cacheMaxFilesInput, setCacheMaxFilesInput] = useState<string>('')
   const [commandTimeoutInput, setCommandTimeoutInput] = useState<string>('')
+  const [uploadWorkersInput, setUploadWorkersInput] = useState<string>('')
   const [settingsSaving, setSettingsSaving] = useState(false)
 
   // Update check state
@@ -148,6 +150,7 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
       setCacheLimitInput(String(appSettings.cache_ttl_hours))
       setCacheMaxFilesInput(String(appSettings.cache_max_files))
       setCommandTimeoutInput(String(appSettings.command_timeout_minutes))
+        setUploadWorkersInput(String(appSettings.upload_workers))
     }
   }, [appSettings])
 
@@ -159,7 +162,8 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
     const ttl = parseInt(cacheLimitInput, 10)
     const maxFiles = parseInt(cacheMaxFilesInput, 10)
     const timeout = parseInt(commandTimeoutInput, 10)
-    if (isNaN(interval) || isNaN(attempts) || isNaN(ttl) || isNaN(maxFiles) || isNaN(timeout) || interval < 1 || attempts < 1 || ttl < 1 || maxFiles < 1 || timeout < 1) return
+    const workers = parseInt(uploadWorkersInput, 10)
+    if (isNaN(interval) || isNaN(attempts) || isNaN(ttl) || isNaN(maxFiles) || isNaN(timeout) || isNaN(workers) || interval < 1 || attempts < 1 || ttl < 1 || maxFiles < 1 || timeout < 1 || workers < 1) return
     setSettingsSaving(true)
     try {
       await onUpdateSettings({
@@ -168,6 +172,7 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
         cache_ttl_hours: ttl,
         cache_max_files: maxFiles,
         command_timeout_minutes: timeout,
+        upload_workers: workers,
       })
     } finally {
       setSettingsSaving(false)
@@ -344,6 +349,18 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
                   min="1"
                   value={commandTimeoutInput}
                   onChange={(e) => setCommandTimeoutInput(e.target.value)}
+                  className="create-input"
+                  disabled={!onUpdateSettings || settingsSaving}
+                />
+              </div>
+              <div className="edit-field">
+                <label>{t('settings.uploadWorkers')} <span style={{ color: '#8b949e', fontWeight: 400 }}>— {t('settings.uploadWorkersHint')}</span></label>
+                <input
+                  type="number"
+                  min="1"
+                  max="16"
+                  value={uploadWorkersInput}
+                  onChange={(e) => setUploadWorkersInput(e.target.value)}
                   className="create-input"
                   disabled={!onUpdateSettings || settingsSaving}
                 />

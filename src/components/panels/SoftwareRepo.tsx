@@ -99,7 +99,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
 
   const loadSoftware = async () => {
     if (!sessionId) return
-    setState('loading')
+    // ponytail: don't setState('loading') here — keep old data visible during reload to avoid flash
     setError('')
     try {
       const list = await invoke<SoftwareInfo[]>('server_get_software_list', { sessionId })

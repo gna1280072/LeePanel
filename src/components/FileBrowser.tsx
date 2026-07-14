@@ -570,26 +570,30 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
   }, [sessionId, currentPath, checkDirReady, getUniqueName, navigateTo, showToast, showConflict, onStartUpload])
 
  // ponytail: Tauri native dialog for folder upload — avoids webkitdirectory WebView2 issues
-  const walkDir = async (dir: string, relBase: string): Promise<{ absPath: string; relPath: string }[]> => {
+  const walkDir = async (dir: string, relBase: string): Promise<{ files: { absPath: string; relPath: string }[]; dirs: string[] }> => {
     const entries = await readDir(dir)
-    const results: { absPath: string; relPath: string }[] = []
+    const files: { absPath: string; relPath: string }[] = []
+    const dirs: string[] = []
     for (const entry of entries) {
       if (!entry.name) continue
       const absPath = dir + '/' + entry.name
       const relPath = relBase ? relBase + '/' + entry.name : entry.name
       if (entry.isDirectory) {
-        results.push(...(await walkDir(absPath, relPath)))
+        dirs.push(relPath)
+        const sub = await walkDir(absPath, relPath)
+        files.push(...sub.files)
+        dirs.push(...sub.dirs)
       } else if (entry.isFile) {
-        results.push({ absPath, relPath })
+        files.push({ absPath, relPath })
       }
     }
-    return results
+    return { files, dirs }
   }
 
   // ponytail: shared folder upload logic — create dirs + upload files with relative paths
-  const uploadFolderFiles = useCallback(async (files: { file: File; relPath: string }[]) => {
+  const uploadFolderFiles = useCallback(async (files: { file: File; relPath: string }[], extraDirs: string[] = []) => {
     // Create directory structure on server
-    const dirsToCreate = new Set<string>()
+    const dirsToCreate = new Set<string>(extraDirs.map(d => currentPath === '/' ? '/' + d : currentPath + '/' + d))
     for (const f of files) {
       const parts = f.relPath.split('/')
       for (let j = 1; j < parts.length; j++) {
@@ -610,21 +614,22 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     }
     if (uploadList.length > 0) {
       onStartUpload?.(uploadList)
-      navigateTo(currentPath)
     }
+    navigateTo(currentPath)
   }, [sessionId, currentPath, navigateTo, onStartUpload])
 
   // ponytail: recursively traverse FileSystemDirectoryEntry from drag-drop
   const readEntries = (reader: FileSystemDirectoryReader): Promise<FileSystemEntry[]> =>
     new Promise((resolve, reject) => reader.readEntries(resolve, reject))
 
-  const walkDragEntries = async (entry: FileSystemEntry, prefix = ''): Promise<{ file: File; relPath: string }[]> => {
+  const walkDragEntries = async (entry: FileSystemEntry, prefix = ''): Promise<{ files: { file: File; relPath: string }[]; dirs: string[] }> => {
     if (entry.isFile) {
       return new Promise((resolve) => {
-        (entry as FileSystemFileEntry).file(f => resolve([{ file: f, relPath: prefix + entry.name }]), () => resolve([]))
+        (entry as FileSystemFileEntry).file(f => resolve({ files: [{ file: f, relPath: prefix + entry.name }], dirs: [] }), () => resolve({ files: [], dirs: [] }))
       })
     }
     if (entry.isDirectory) {
+      const dirPath = prefix + entry.name
       const reader = (entry as FileSystemDirectoryEntry).createReader()
       const allEntries: FileSystemEntry[] = []
       let batch: FileSystemEntry[]
@@ -632,10 +637,11 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
         batch = await readEntries(reader)
         allEntries.push(...batch)
       } while (batch.length > 0)
-      const results = await Promise.all(allEntries.map(e => walkDragEntries(e, prefix + entry.name + '/')))
-      return results.flat()
+      const results = await Promise.all(allEntries.map(e => walkDragEntries(e, dirPath + '/')))
+      // ponytail: include this dir itself so empty dirs get created
+      return { files: results.flatMap(r => r.files), dirs: [dirPath, ...results.flatMap(r => r.dirs)] }
     }
-    return []
+    return { files: [], dirs: [] }
   }
 
   const handleUploadFolder = useCallback(async () => {
@@ -645,8 +651,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
 
     // Extract folder name from path
     const folderName = folderPath.split(/[\\/]/).pop()!
-    const allFiles = await walkDir(folderPath, folderName)
-    if (allFiles.length === 0) return
+    const { files: allFiles, dirs: allDirs } = await walkDir(folderPath, folderName)
 
     // Read files from disk and create File objects
     const files: { file: File; relPath: string }[] = []
@@ -658,7 +663,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
         files.push({ file, relPath: f.relPath })
       } catch (_) { /* skip unreadable files */ }
     }
-    if (files.length > 0) await uploadFolderFiles(files)
+    if (files.length > 0 || allDirs.length > 0) await uploadFolderFiles(files, allDirs)
   }, [sessionId, currentPath, navigateTo, onStartUpload, uploadFolderFiles])
 
   // ponytail: Tauri native dialog for file upload — more reliable than hidden input.click() in WebView2
@@ -723,10 +728,10 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     // Upload directories using Web API traversal + shared upload logic
     if (dirEntries.length > 0) {
       for (const entry of dirEntries) {
-        // ponytail: walkDragEntries tracks relPath manually — don't rely on webkitRelativePath
-        const allFiles = await walkDragEntries(entry)
-        if (allFiles.length === 0) continue
-        await uploadFolderFiles(allFiles)
+        // ponytail: walkDragEntries tracks relPath manually and collects empty dirs
+        const { files, dirs } = await walkDragEntries(entry)
+        if (files.length === 0 && dirs.length === 0) continue
+        await uploadFolderFiles(files, dirs)
       }
     }
   }, [handleUploadFiles, uploadFolderFiles])

@@ -151,7 +151,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
 
   useEffect(() => {
     if (!sessionId) return
-    // ponytail: check for running installation before loading software list
+    // check for running installation before loading software list
     invoke<{ running: boolean; log: string; action: string; displayName: string }>('server_check_installation', { sessionId })
       .then(result => {
         if (result.running) {

@@ -195,8 +195,8 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
         <div style={{ display: activeSection === 'sites' ? 'block' : 'none', height: '100%' }}>
           <SitesPanel sessionId={sessionId} onOpenFolder={handleInternalOpenFolder} />
         </div>
-        {/* Software always mounted to preserve install progress state */}
-        <div style={{ display: activeSection === 'software' ? 'block' : 'none', height: '100%' }}>
+        {/* Software always mounted to preserve install progress state, key forces remount on server switch */}
+        <div key={sessionId} style={{ display: activeSection === 'software' ? 'block' : 'none', height: '100%' }}>
           <SoftwareRepo sessionId={sessionId} />
         </div>
         {activeSection !== 'terminal' && activeSection !== 'files' && activeSection !== 'sites' && activeSection !== 'software' && renderContent()}

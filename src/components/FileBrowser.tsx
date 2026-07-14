@@ -586,19 +586,11 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     return results
   }
 
-  const handleUploadFolder = useCallback(async () => {
-    if (!sessionId) return
-    const folderPath = await openDialog({ directory: true, multiple: false })
-    if (!folderPath || typeof folderPath !== 'string') return
-
-    // Extract folder name from path
-    const folderName = folderPath.split(/[\\/]/).pop()!
-    const allFiles = await walkDir(folderPath, folderName)
-    if (allFiles.length === 0) return
-
+  // ponytail: shared folder upload logic — create dirs + upload files with relative paths
+  const uploadFolderFiles = useCallback(async (files: { file: File; relPath: string }[]) => {
     // Create directory structure on server
     const dirsToCreate = new Set<string>()
-    for (const f of allFiles) {
+    for (const f of files) {
       const parts = f.relPath.split('/')
       for (let j = 1; j < parts.length; j++) {
         const dirPath = currentPath === '/'
@@ -611,23 +603,63 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     for (const dir of sortedDirs) {
       try { await invoke('ssh_create_dir', { sessionId, path: dir }) } catch (_) { /* may exist */ }
     }
+    const uploadList: { file: File; fileName: string; remotePath: string }[] = []
+    for (const f of files) {
+      const remotePath = currentPath === '/' ? `/${f.relPath}` : `${currentPath}/${f.relPath}`
+      uploadList.push({ file: f.file, fileName: f.relPath, remotePath })
+    }
+    if (uploadList.length > 0) {
+      onStartUpload?.(uploadList)
+      navigateTo(currentPath)
+    }
+  }, [sessionId, currentPath, navigateTo, onStartUpload])
+
+  // ponytail: recursively traverse FileSystemDirectoryEntry from drag-drop
+  const readEntries = (reader: FileSystemDirectoryReader): Promise<FileSystemEntry[]> =>
+    new Promise((resolve, reject) => reader.readEntries(resolve, reject))
+
+  const walkDragEntries = async (entry: FileSystemEntry): Promise<File[]> => {
+    if (entry.isFile) {
+      return new Promise((resolve) => {
+        (entry as FileSystemFileEntry).file(f => resolve([f]), () => resolve([]))
+      })
+    }
+    if (entry.isDirectory) {
+      const reader = (entry as FileSystemDirectoryEntry).createReader()
+      const allEntries: FileSystemEntry[] = []
+      let batch: FileSystemEntry[]
+      do {
+        batch = await readEntries(reader)
+        allEntries.push(...batch)
+      } while (batch.length > 0)
+      const results = await Promise.all(allEntries.map(e => walkDragEntries(e)))
+      return results.flat()
+    }
+    return []
+  }
+
+  const handleUploadFolder = useCallback(async () => {
+    if (!sessionId) return
+    const folderPath = await openDialog({ directory: true, multiple: false })
+    if (!folderPath || typeof folderPath !== 'string') return
+
+    // Extract folder name from path
+    const folderName = folderPath.split(/[\\/]/).pop()!
+    const allFiles = await walkDir(folderPath, folderName)
+    if (allFiles.length === 0) return
 
     // Read files from disk and create File objects
-    const uploadFiles: { file: File; fileName: string; remotePath: string }[] = []
+    const files: { file: File; relPath: string }[] = []
     for (const f of allFiles) {
       try {
         const bytes = await readFile(f.absPath)
         const blob = new Blob([bytes])
         const file = new File([blob], f.relPath, { type: 'application/octet-stream' })
-        const remotePath = currentPath === '/' ? `/${f.relPath}` : `${currentPath}/${f.relPath}`
-        uploadFiles.push({ file, fileName: f.relPath, remotePath })
+        files.push({ file, relPath: f.relPath })
       } catch (_) { /* skip unreadable files */ }
     }
-
-    if (uploadFiles.length === 0) return
-    onStartUpload?.(uploadFiles)
-    navigateTo(currentPath)
-  }, [sessionId, currentPath, navigateTo, onStartUpload])
+    if (files.length > 0) await uploadFolderFiles(files)
+  }, [sessionId, currentPath, navigateTo, onStartUpload, uploadFolderFiles])
 
   // ponytail: Tauri native dialog for file upload — more reliable than hidden input.click() in WebView2
   const handleUploadFilesBtn = useCallback(async () => {
@@ -662,13 +694,49 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     return () => document.removeEventListener('click', handleClick)
   }, [uploadMenuOpen])
 
-  // Handle files dropped from local computer
+  // Handle files/directories dropped from local computer
   const handleDropFiles = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setDropActive(false)
-    await handleUploadFiles(e.dataTransfer.files)
-  }, [handleUploadFiles])
+    // Check for directory entries via Web API
+    const dirEntries: FileSystemEntry[] = []
+    const fileItems: DataTransferItem[] = []
+    for (let i = 0; i < e.dataTransfer.items.length; i++) {
+      const item = e.dataTransfer.items[i]
+      const entry = item.webkitGetAsEntry?.()
+      if (entry?.isDirectory) {
+        dirEntries.push(entry)
+      } else {
+        fileItems.push(item)
+      }
+    }
+    // Upload regular files
+    if (fileItems.length > 0) {
+      const files = new DataTransfer()
+      for (const item of fileItems) {
+        const f = item.getAsFile()
+        if (f) files.items.add(f)
+      }
+      if (files.files.length > 0) await handleUploadFiles(files.files)
+    }
+    // Upload directories using Web API traversal + shared upload logic
+    if (dirEntries.length > 0) {
+      for (const entry of dirEntries) {
+        const allFiles = await walkDragEntries(entry)
+        if (allFiles.length === 0) continue
+        const folderName = entry.name
+        const prefix = folderName + '/'
+        const files = allFiles.map(f => ({
+          file: f,
+          relPath: f.webkitRelativePath.startsWith(prefix)
+            ? f.webkitRelativePath
+            : folderName + '/' + f.webkitRelativePath
+        }))
+        await uploadFolderFiles(files)
+      }
+    }
+  }, [handleUploadFiles, uploadFolderFiles])
 
   // Track drag-enter/leave with a counter to avoid flicker on child elements
   const dragCounterRef = useRef(0)

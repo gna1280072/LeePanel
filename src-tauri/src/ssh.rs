@@ -1294,8 +1294,11 @@ pub async fn session_delete_files_batch(session: &SshSession, paths: &[String], 
 }
 
 pub async fn session_create_dir(session: &SshSession, path: &str) -> Result<(), String> {
-    let sftp = session_open_sftp(session).await?;
-    sftp.create_dir(path).await.map_err(|e| format!("Failed to create directory: {}", e))
+    // ponytail: use `mkdir -p` via SSH exec — SFTP create_dir fails when parent dirs don't exist
+    let escaped = path.replace('\'', "'\\''");
+    let (_, _, code) = session_exec_with_output(session, &format!("mkdir -p '{}'", escaped), 10).await?;
+    if code != 0 { return Err(format!("mkdir -p failed with exit code {}", code)); }
+    Ok(())
 }
 
 pub async fn session_rename_file(session: &SshSession, old_path: &str, new_path: &str) -> Result<(), String> {

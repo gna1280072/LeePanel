@@ -618,10 +618,10 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
   const readEntries = (reader: FileSystemDirectoryReader): Promise<FileSystemEntry[]> =>
     new Promise((resolve, reject) => reader.readEntries(resolve, reject))
 
-  const walkDragEntries = async (entry: FileSystemEntry): Promise<File[]> => {
+  const walkDragEntries = async (entry: FileSystemEntry, prefix = ''): Promise<{ file: File; relPath: string }[]> => {
     if (entry.isFile) {
       return new Promise((resolve) => {
-        (entry as FileSystemFileEntry).file(f => resolve([f]), () => resolve([]))
+        (entry as FileSystemFileEntry).file(f => resolve([{ file: f, relPath: prefix + entry.name }]), () => resolve([]))
       })
     }
     if (entry.isDirectory) {
@@ -632,7 +632,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
         batch = await readEntries(reader)
         allEntries.push(...batch)
       } while (batch.length > 0)
-      const results = await Promise.all(allEntries.map(e => walkDragEntries(e)))
+      const results = await Promise.all(allEntries.map(e => walkDragEntries(e, prefix + entry.name + '/')))
       return results.flat()
     }
     return []
@@ -723,15 +723,10 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     // Upload directories using Web API traversal + shared upload logic
     if (dirEntries.length > 0) {
       for (const entry of dirEntries) {
+        // ponytail: walkDragEntries tracks relPath manually — don't rely on webkitRelativePath
         const allFiles = await walkDragEntries(entry)
         if (allFiles.length === 0) continue
-        const folderName = entry.name
-        // ponytail: webkitRelativePath is relative to drag root (without root name)
-        const files = allFiles.map(f => ({
-          file: f,
-          relPath: folderName + '/' + (f.webkitRelativePath || f.name)
-        }))
-        await uploadFolderFiles(files)
+        await uploadFolderFiles(allFiles)
       }
     }
   }, [handleUploadFiles, uploadFolderFiles])

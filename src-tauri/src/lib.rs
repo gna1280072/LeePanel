@@ -2134,10 +2134,11 @@ async fn server_check_installation(
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     drop(mgr);
-    // ponytail: check PID file exists + process alive
+    // ponytail: check if login shell has active child processes (install script/tee)
+    // kill -0 alone is unreliable — stale PID may be reused by unrelated process
     let (pid_out, _, _) = ssh::session_exec_with_output(
         &session,
-        "test -f /tmp/taichi-install.pid && kill -0 $(cat /tmp/taichi-install.pid) 2>/dev/null && echo RUNNING || echo IDLE",
+        "test -f /tmp/taichi-install.pid && pgrep -P $(cat /tmp/taichi-install.pid) >/dev/null 2>&1 && echo RUNNING || echo IDLE",
         5,
     ).await?;
     let running = pid_out.trim().contains("RUNNING");

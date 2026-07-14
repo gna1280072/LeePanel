@@ -126,13 +126,9 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
           setLogs(lines)
         } else {
           if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null }
-          // ponytail: read final log when install completes
+          // ponytail: show final log when install completes
           if (result.log) {
-            const finalLines = result.log.split('\n').filter(l => l.trim())
-            setLogs(prev => {
-              const combined = [...prev, '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', ...finalLines]
-              return combined.filter((v, i, a) => a.indexOf(v) === i || i > prev.length)
-            })
+            setLogs(result.log.split('\n').filter(l => l.trim()))
           }
           setLogs(prev => [...prev, '✅ Installation process ended'])
           setLogStatus('done')
@@ -154,8 +150,12 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
     // ponytail: check for running installation before loading software list
     invoke<{ running: boolean; log: string }>('server_check_installation', { sessionId })
       .then(result => {
-        if (result.running && result.log) {
-          setLogs(result.log.split('\n').filter(l => l.trim()))
+        if (result.running) {
+          if (result.log) {
+            setLogs(result.log.split('\n').filter(l => l.trim()))
+          } else {
+            setLogs([t('software.recoveringProgress')])
+          }
           setLogStatus('running')
           setActionLabel(t('software.recoveringProgress'))
           setState('running')

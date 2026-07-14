@@ -645,6 +645,23 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     return { files: [], dirs: [] }
   }
 
+  // ponytail: lazy file-like object — reads chunks from disk on demand instead of loading entire file into memory
+  const makeLazyFile = (absPath: string, fileSize: number): File => {
+    return {
+      size: fileSize,
+      name: absPath.split(/[\\/]/).pop() || '',
+      slice(start: number, end: number) {
+        const len = Math.min(end, fileSize) - start
+        return {
+          async arrayBuffer() {
+            const data = await invoke<Uint8Array>('read_file_chunk', { path: absPath, offset: start, length: len })
+            return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
+          }
+        }
+      },
+    } as unknown as File
+  }
+
   const handleUploadFolder = useCallback(async () => {
     if (!sessionId) return
     const folderPath = await openDialog({ directory: true, multiple: false })
@@ -654,15 +671,16 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     const folderName = folderPath.split(/[\\/]/).pop()!
     const { files: allFiles, dirs: allDirs } = await walkDir(folderPath, folderName)
 
-    // Read files from disk and create File objects
+    // ponytail: get file sizes in parallel without reading contents — instant even for 4000 files
+    const sizeResults = await Promise.all(
+      allFiles.map(f => invoke<number>('get_local_file_size', { path: f.absPath }).catch(() => -1))
+    )
+
     const files: { file: File; relPath: string }[] = []
-    for (const f of allFiles) {
-      try {
-        const bytes = await readFile(f.absPath)
-        const blob = new Blob([bytes])
-        const file = new File([blob], f.relPath, { type: 'application/octet-stream' })
-        files.push({ file, relPath: f.relPath })
-      } catch (_) { /* skip unreadable files */ }
+    for (let i = 0; i < allFiles.length; i++) {
+      const size = sizeResults[i]
+      if (size < 0) continue // skip files we can't stat
+      files.push({ file: makeLazyFile(allFiles[i].absPath, size), relPath: allFiles[i].relPath })
     }
     if (files.length > 0 || allDirs.length > 0) await uploadFolderFiles(files, allDirs)
   }, [sessionId, currentPath, navigateTo, onStartUpload, uploadFolderFiles])

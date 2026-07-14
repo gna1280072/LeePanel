@@ -114,6 +114,40 @@ function App() {
   const uploadStopRef = useRef(false)
   const uploadCompleteRef = useRef<(() => void) | null>(null)
 
+  // ponytail: build a POSIX tar archive in the browser — no dependencies
+  const createTar = async (entries: { name: string; file: File }[]): Promise<Uint8Array> => {
+    const chunks: Uint8Array[] = []
+    for (const { name, file } of entries) {
+      const data = new Uint8Array(await file.arrayBuffer())
+      const header = new Uint8Array(512)
+      const enc = new TextEncoder()
+      header.set(enc.encode(name), 0)
+      header.set(enc.encode('0000644\0'), 100)  // mode
+      header.set(enc.encode('0001000\0'), 108)  // uid
+      header.set(enc.encode('0001000\0'), 116)  // gid
+      header.set(enc.encode(file.size.toString(8).padStart(11, '0') + '\0'), 124)
+      header.set(enc.encode(Math.floor(Date.now() / 1000).toString(8).padStart(11, '0') + '\0'), 136)
+      header.set(enc.encode('        '), 148) // checksum placeholder (spaces)
+      header[156] = 0x30 // type '0' = regular file
+      header.set(enc.encode('ustar\0'), 257)
+      header.set(enc.encode('00'), 263)
+      // compute checksum
+      let cksum = 0
+      for (let i = 0; i < 512; i++) cksum += header[i]
+      header.set(enc.encode(cksum.toString(8).padStart(6, '0') + '\0 '), 148)
+      chunks.push(header)
+      chunks.push(data)
+      const padLen = (512 - (data.length % 512)) % 512
+      if (padLen > 0) chunks.push(new Uint8Array(padLen))
+    }
+    chunks.push(new Uint8Array(1024)) // terminator
+    const total = chunks.reduce((s, c) => s + c.length, 0)
+    const result = new Uint8Array(total)
+    let off = 0
+    for (const c of chunks) { result.set(c, off); off += c.length }
+    return result
+  }
+
   const handleStartUpload = useCallback(async (files: { file: File; fileName: string; remotePath: string }[]) => {
     if (!sessionId || files.length === 0) return
     const sid = sessionId
@@ -126,10 +160,8 @@ function App() {
     let uploadedBytes = 0
     const startTime = Date.now()
     const CHUNK_SIZE = 1024 * 1024
-
-    // ponytail: 3 concurrent workers — SFTP session reused via cache, 3x throughput
-    const CONCURRENCY = Math.min(3, files.length)
-    let nextIndex = 0
+    // ponytail: files < 1MB go to tar batch; large files use chunked workers
+    const SMALL_THRESHOLD = CHUNK_SIZE
 
     const updateSpeed = () => {
       const elapsed = (Date.now() - startTime) / 1000
@@ -137,71 +169,167 @@ function App() {
       setUpload(prev => ({ ...prev, uploadedBytes, speed }))
     }
 
-    const worker = async () => {
-      while (true) {
-        if (uploadStopRef.current) return
-        const i = nextIndex++
-        if (i >= queue.length) return
-        const item = queue[i]
-
-        setUpload(prev => ({
-          ...prev,
-          queue: prev.queue.map((q, j) => j === i ? { ...q, status: 'uploading' } : q)
-        }))
-
-        try {
-          let offset = 0
-          while (offset < item.file.size) {
-            if (uploadStopRef.current) return
-            while (uploadPauseRef.current) {
-              if (uploadStopRef.current) return
-              await new Promise(r => setTimeout(r, 100))
-            }
-
-            const end = Math.min(offset + CHUNK_SIZE, item.file.size)
-            const slice = item.file.slice(offset, end)
-            const buffer = await slice.arrayBuffer()
-            const chunkData = new Uint8Array(buffer)
-            try {
-              await invoke('ssh_upload_chunk', {
-                sessionId: sid,
-                remotePath: item.remotePath,
-                data: chunkData,
-                offset,
-              })
-            } catch (_chunkErr) {
-              if (uploadStopRef.current) return
-              // ponytail: SFTP session may be dead — reset cache and retry once
-              await invoke('ssh_sftp_reset', { sessionId: sid }).catch(() => {})
-              await new Promise(r => setTimeout(r, 500))
-              if (uploadStopRef.current) return
-              await invoke('ssh_upload_chunk', {
-                sessionId: sid,
-                remotePath: item.remotePath,
-                data: chunkData,
-                offset,
-              })
-            }
-            uploadedBytes += (end - offset)
-            offset = end
-            updateSpeed()
-          }
-          setUpload(prev => ({
-            ...prev,
-            queue: prev.queue.map((q, j) => j === i ? { ...q, status: 'done' } : q)
-          }))
-        } catch (err) {
-          if (uploadStopRef.current) return
-          setUpload(prev => ({
-            ...prev,
-            queue: prev.queue.map((q, j) => j === i ? { ...q, status: 'error', error: String(err) } : q)
-          }))
-        }
-      }
+    // ponytail: batch small files by parent directory into tar archives — N SFTP ops → 1 per dir
+    const smallFiles: typeof files = []
+    const largeFiles: typeof files = []
+    for (const f of files) {
+      if (f.file.size < SMALL_THRESHOLD && f.file.size > 0) smallFiles.push(f)
+      else largeFiles.push(f)
     }
 
-    const workers = Array.from({ length: CONCURRENCY }, () => worker())
-    await Promise.all(workers)
+    if (smallFiles.length > 1) {
+      // group by parent directory
+      const byDir = new Map<string, typeof files>()
+      for (const f of smallFiles) {
+        const parent = f.remotePath.substring(0, f.remotePath.lastIndexOf('/'))
+        if (!byDir.has(parent)) byDir.set(parent, [])
+        byDir.get(parent)!.push(f)
+      }
+
+      // process directories with concurrency of 3
+      const dirEntries = [...byDir.entries()]
+      let dirIdx = 0
+      const batchWorker = async () => {
+        while (dirIdx < dirEntries.length) {
+          if (uploadStopRef.current) return
+          const i = dirIdx++
+          const [parentDir, dirFiles] = dirEntries[i]
+
+          // mark batch as uploading
+          const indices = dirFiles.map(df => queue.indexOf(queue.find(q => q.remotePath === df.remotePath)!))
+          setUpload(prev => ({
+            ...prev,
+            queue: prev.queue.map((q, j) => indices.includes(j) ? { ...q, status: 'uploading' } : q)
+          }))
+
+          try {
+            const tarEntries = dirFiles.map(f => ({
+              name: f.fileName.split('/').pop()!, // just filename, extract in target dir
+              file: f.file,
+            }))
+            const tarData = await createTar(tarEntries)
+            const tarPath = `${parentDir}/.__tb_${Date.now()}_${i}.tar`
+
+            // upload tar in chunks
+            let offset = 0
+            while (offset < tarData.length) {
+              if (uploadStopRef.current) return
+              const end = Math.min(offset + CHUNK_SIZE, tarData.length)
+              const chunk = tarData.slice(offset, end)
+              await invoke('ssh_upload_chunk', {
+                sessionId: sid, remotePath: tarPath, data: chunk, offset,
+              })
+              uploadedBytes += (end - offset)
+              offset = end
+              updateSpeed()
+            }
+
+            // extract + cleanup
+            const escaped = (s: string) => s.replace(/'/g, "'\\''")
+            const cmd = `cd '${escaped(parentDir)}' && tar xf '${escaped(tarPath.split('/').pop()!)}' && rm -f '${escaped(tarPath.split('/').pop()!)}'`
+            const result = await invoke<[string, string, number]>('ssh_exec', { sessionId: sid, command: cmd })
+            if (result[2] !== 0) throw new Error(`tar extract failed: ${result[1]}`)
+
+            setUpload(prev => ({
+              ...prev,
+              queue: prev.queue.map((q, j) => indices.includes(j) ? { ...q, status: 'done' } : q)
+            }))
+          } catch (err) {
+            if (uploadStopRef.current) return
+            const indices = dirFiles.map(df => queue.indexOf(queue.find(q => q.remotePath === df.remotePath)!))
+            setUpload(prev => ({
+              ...prev,
+              queue: prev.queue.map((q, j) => indices.includes(j) ? { ...q, status: 'error', error: String(err) } : q)
+            }))
+          }
+        }
+      }
+      const batchWorkers = Array.from({ length: Math.min(3, dirEntries.length) }, () => batchWorker())
+      await Promise.all(batchWorkers)
+    }
+
+    if (uploadStopRef.current) return
+
+    // ponytail: large files + zero-byte files via chunked workers
+    const largeQueue: UploadItem[] = largeFiles.map(f => ({ ...f, status: 'pending' as const }))
+    if (largeQueue.length > 0) {
+      // update main queue to reflect only large files remaining
+      setUpload(prev => ({
+        ...prev,
+        queue: prev.queue.map(q => {
+          const inLarge = largeFiles.some(lf => lf.remotePath === q.remotePath)
+          return inLarge ? { ...q, status: 'pending' as const } : q
+        })
+      }))
+
+      const CONCURRENCY = Math.min(3, largeQueue.length)
+      let nextIndex = 0
+
+      const worker = async () => {
+        while (true) {
+          if (uploadStopRef.current) return
+          const i = nextIndex++
+          if (i >= largeQueue.length) return
+          const item = largeQueue[i]
+
+          setUpload(prev => ({
+            ...prev,
+            queue: prev.queue.map(q => q.remotePath === item.remotePath ? { ...q, status: 'uploading' } : q)
+          }))
+
+          try {
+            let offset = 0
+            while (offset < item.file.size) {
+              if (uploadStopRef.current) return
+              while (uploadPauseRef.current) {
+                if (uploadStopRef.current) return
+                await new Promise(r => setTimeout(r, 100))
+              }
+
+              const end = Math.min(offset + CHUNK_SIZE, item.file.size)
+              const slice = item.file.slice(offset, end)
+              const buffer = await slice.arrayBuffer()
+              const chunkData = new Uint8Array(buffer)
+              try {
+                await invoke('ssh_upload_chunk', {
+                  sessionId: sid,
+                  remotePath: item.remotePath,
+                  data: chunkData,
+                  offset,
+                })
+              } catch (_chunkErr) {
+                if (uploadStopRef.current) return
+                await invoke('ssh_sftp_reset', { sessionId: sid }).catch(() => {})
+                await new Promise(r => setTimeout(r, 500))
+                if (uploadStopRef.current) return
+                await invoke('ssh_upload_chunk', {
+                  sessionId: sid,
+                  remotePath: item.remotePath,
+                  data: chunkData,
+                  offset,
+                })
+              }
+              uploadedBytes += (end - offset)
+              offset = end
+              updateSpeed()
+            }
+            setUpload(prev => ({
+              ...prev,
+              queue: prev.queue.map(q => q.remotePath === item.remotePath ? { ...q, status: 'done' } : q)
+            }))
+          } catch (err) {
+            if (uploadStopRef.current) return
+            setUpload(prev => ({
+              ...prev,
+              queue: prev.queue.map(q => q.remotePath === item.remotePath ? { ...q, status: 'error', error: String(err) } : q)
+            }))
+          }
+        }
+      }
+
+      const workers = Array.from({ length: CONCURRENCY }, () => worker())
+      await Promise.all(workers)
+    }
 
     if (!uploadStopRef.current) {
       setUpload(prev => ({ ...prev, active: false, paused: false }))

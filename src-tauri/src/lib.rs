@@ -416,6 +416,20 @@ async fn ssh_create_dirs_batch(
     Ok(())
 }
 
+// ponytail: execute arbitrary SSH command — used for tar extraction after batch upload
+#[tauri::command]
+async fn ssh_exec(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+    command: &str,
+) -> Result<(String, String, i32), String> {
+    let session = {
+        let mgr = ssh_mgr.lock().await;
+        mgr.get_session(session_id)?
+    };
+    ssh::session_exec_with_output(&session, command, 60).await
+}
+
 #[tauri::command]
 async fn ssh_download_file(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
@@ -2297,7 +2311,7 @@ pub fn run() {
             ssh_get_cwd, ssh_list_dir, ssh_stat_file, ssh_read_file, ssh_write_file,
             ssh_delete_file, ssh_delete_files_batch, ssh_create_dir, ssh_rename_file, ssh_rename_files_batch,
             ssh_copy_file, ssh_copy_files_batch, ssh_copy_dir, ssh_set_permissions, ssh_set_permissions_batch,
-            ssh_check_space, ssh_upload, ssh_upload_chunk, ssh_sftp_reset, ssh_upload_files_batch, ssh_create_dirs_batch, ssh_download_file,
+            ssh_check_space, ssh_upload, ssh_upload_chunk, ssh_sftp_reset, ssh_upload_files_batch, ssh_create_dirs_batch, ssh_exec, ssh_download_file,
             ssh_download_to_local, ssh_save_as_local,
             ssh_compress, ssh_extract, ssh_reconnect,
             ssh_generate_keypair, save_key_to_local,

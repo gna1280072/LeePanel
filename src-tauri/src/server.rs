@@ -7275,6 +7275,62 @@ fn is_valid_ipv4(ip: &str) -> bool {
     true
 }
 
+/// Ensure MySQL accepts remote connections by setting bind-address = 0.0.0.0
+/// ponytail: idempotent — only modifies config and restarts if bind-address is not already 0.0.0.0
+async fn ensure_mysql_remote_access(session: &SshSession) -> Result<(), String> {
+    // Find the active MySQL/MariaDB config file
+    let check_cmd = r#"
+for f in /etc/mysql/mysql.conf.d/mysqld.cnf /etc/mysql/mariadb.conf.d/50-server.cnf /etc/my.cnf /etc/mysql/my.cnf; do
+  if [ -f "$f" ]; then
+    CURRENT=$(grep -E '^\s*bind-address' "$f" 2>/dev/null | tail -1 | sed 's/.*=\s*//' | tr -d ' ')
+    if [ "$CURRENT" = "0.0.0.0" ]; then
+      echo "ALREADY_OK"
+      exit 0
+    fi
+    echo "CONFIG_FILE=$f"
+    exit 0
+  fi
+done
+echo "NO_CONFIG"
+"#;
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session, check_cmd, 10).await?;
+    
+    if stdout.contains("ALREADY_OK") {
+        return Ok(());
+    }
+    
+    let config_file = stdout.lines()
+        .find(|l| l.starts_with("CONFIG_FILE="))
+        .map(|l| l.trim_start_matches("CONFIG_FILE=").to_string());
+    
+    if let Some(cfg) = config_file {
+        // Set bind-address = 0.0.0.0 (replace existing or append)
+        let fix_cmd = format!(
+            r#"if grep -qE '^\s*bind-address' '{cfg}'; then
+  sed -i 's/^\s*bind-address\s*=.*/bind-address = 0.0.0.0/' '{cfg}'
+else
+  echo 'bind-address = 0.0.0.0' >> '{cfg}'
+fi
+# Restart MySQL/MariaDB
+for svc in mysql mysqld mariadb; do
+  if systemctl is-active $svc >/dev/null 2>&1; then
+    systemctl restart $svc
+    break
+  fi
+done
+echo "DONE"
+"#,
+            cfg = cfg
+        );
+        let (out, _, _) = crate::ssh::session_exec_with_output(session, &fix_cmd, 30).await?;
+        if !out.contains("DONE") {
+            return Err("Failed to configure MySQL bind-address".to_string());
+        }
+    }
+    // If no config file found, skip (unusual setup)
+    Ok(())
+}
+
 /// Create a database with user and grant privileges
 pub async fn create_database(
     session: &SshSession,
@@ -7345,6 +7401,11 @@ pub async fn create_database(
     }
     
     sql.push_str("FLUSH PRIVILEGES;\n");
+
+    // ponytail: configure MySQL bind-address for remote access when not localhost-only
+    if access_type != "local" {
+        ensure_mysql_remote_access(session).await.ok();
+    }
 
     let mysql_cmd = get_mysql_cmd(session, cache, session_id).await;
 
@@ -7489,6 +7550,11 @@ pub async fn change_db_access(
     }
     
     sql.push_str("FLUSH PRIVILEGES;\n");
+
+    // ponytail: configure MySQL bind-address for remote access when not localhost-only
+    if access_type != "local" {
+        ensure_mysql_remote_access(session).await.ok();
+    }
 
     let mysql_cmd = get_mysql_cmd(session, cache, session_id).await;
 

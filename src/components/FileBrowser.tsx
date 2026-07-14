@@ -726,12 +726,10 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
         const allFiles = await walkDragEntries(entry)
         if (allFiles.length === 0) continue
         const folderName = entry.name
-        const prefix = folderName + '/'
+        // ponytail: webkitRelativePath is relative to drag root (without root name)
         const files = allFiles.map(f => ({
           file: f,
-          relPath: f.webkitRelativePath.startsWith(prefix)
-            ? f.webkitRelativePath
-            : folderName + '/' + f.webkitRelativePath
+          relPath: folderName + '/' + (f.webkitRelativePath || f.name)
         }))
         await uploadFolderFiles(files)
       }

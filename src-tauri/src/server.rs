@@ -7291,7 +7291,8 @@ pub async fn create_database(
     // fail with a clear error if mysql client is missing, saving 5s per call
     let safe_db = db_name.replace('`', "");
     let safe_user = db_user.replace('`', "");
-    let safe_pw = db_pass.replace('`', "");
+    // ponytail: escape single quotes in password to prevent SQL syntax errors
+    let safe_pw = db_pass.replace('\'', "\\'");
     
     // Validate and sanitize charset (whitelist approach)
     let valid_charsets = ["utf8mb4", "utf8", "gbk", "big5", "latin1"];
@@ -7387,9 +7388,14 @@ pub async fn delete_database(
 ) -> Result<String, String> {
     let safe_db = db_name.replace('`', "");
     let safe_user = db_user.replace('`', "");
+    // ponytail: drop user for ALL hosts (not just localhost) — matches create_database which supports any/ip access
     let sql = format!(
         "DROP DATABASE IF EXISTS `{}`;\n\
-         DROP USER IF EXISTS '{}'@'localhost';\n\
+         SET @sql = (SELECT GROUP_CONCAT('DROP USER IF EXISTS ''', user, '''@''', host, '''') SEPARATOR ';\\n') FROM mysql.user WHERE user = '{}');\n\
+         SET @sql = IFNULL(@sql, 'SELECT 1');\n\
+         PREPARE stmt FROM @sql;\n\
+         EXECUTE stmt;\n\
+         DEALLOCATE PREPARE stmt;\n\
          FLUSH PRIVILEGES;\n",
         safe_db, safe_user
     );

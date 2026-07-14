@@ -9,7 +9,7 @@ use rusqlite::Connection as SqliteConn;
 use server::*;
 use ssh::SshManager;
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::sync::Mutex as AsyncMutex;
 
 type DbPool = std::sync::Mutex<SqliteConn>;
@@ -311,8 +311,99 @@ async fn ssh_upload_chunk(
     data: Vec<u8>,
     offset: u64,
 ) -> Result<(), String> {
-    let mgr = ssh_mgr.lock().await;
-    mgr.upload_chunk(session_id, remote_path, &data, offset).await
+    // ponytail: release SshManager lock before I/O — uses cached SFTP session
+    let session = {
+        let mgr = ssh_mgr.lock().await;
+        mgr.get_session(session_id)?
+    };
+    let sftp = ssh::session_open_sftp(&session).await?;
+    use russh_sftp::protocol::OpenFlags;
+    let mut file = if offset == 0 {
+        sftp.create(remote_path).await
+    } else {
+        sftp.open_with_flags(remote_path, OpenFlags::APPEND | OpenFlags::WRITE).await
+    }.map_err(|e| format!("Failed to open file: {}", e))?;
+    use tokio::io::AsyncWriteExt;
+    file.write_all(&data).await.map_err(|e| format!("Write failed: {}", e))?;
+    file.shutdown().await.map_err(|e| format!("Failed to finalize: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn ssh_upload_files_batch(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    app: tauri::AppHandle,
+    session_id: &str,
+    files: Vec<(String, Vec<u8>)>,
+) -> Result<u32, String> {
+    // ponytail: get session under lock, then release lock for all I/O
+    let session = {
+        let mgr = ssh_mgr.lock().await;
+        mgr.get_session(session_id)?
+    };
+    let sftp = ssh::session_open_sftp(&session).await?;
+
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(3));
+    let mut handles = vec![];
+
+    for (remote_path, data) in files {
+        let sftp = sftp.clone();
+        let sem = semaphore.clone();
+        let app = app.clone();
+        let sid = session_id.to_string();
+        handles.push(tokio::spawn(async move {
+            let _permit = sem.acquire().await.unwrap();
+            use tokio::io::AsyncWriteExt;
+            let mut file = sftp.create(&remote_path).await
+                .map_err(|e| format!("Failed to create {}: {}", remote_path, e))?;
+            file.write_all(&data).await
+                .map_err(|e| format!("Write failed for {}: {}", remote_path, e))?;
+            file.shutdown().await
+                .map_err(|e| format!("Finalize failed for {}: {}", remote_path, e))?;
+            let _ = app.emit("upload-file-done", serde_json::json!({
+                "sessionId": sid, "remotePath": remote_path
+            }));
+            Ok::<(), String>(())
+        }));
+    }
+
+    let mut success = 0u32;
+    for h in handles {
+        match h.await {
+            Ok(Ok(())) => success += 1,
+            Ok(Err(e)) => {
+                let _ = app.emit("upload-file-error", serde_json::json!({"error": e}));
+            }
+            Err(e) => {
+                let _ = app.emit("upload-file-error", serde_json::json!({"error": e.to_string()}));
+            }
+        }
+    }
+
+    Ok(success)
+}
+
+#[tauri::command]
+async fn ssh_create_dirs_batch(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    // ponytail: release lock before SSH exec
+    let session = {
+        let mgr = ssh_mgr.lock().await;
+        mgr.get_session(session_id)?
+    };
+    if paths.is_empty() { return Ok(()); }
+    let escaped: Vec<String> = paths.iter()
+        .map(|p| format!("'{}'", p.replace('\'', "'\\''")))
+        .collect();
+    let cmd = format!("mkdir -p {}", escaped.join(" "));
+    let (_, stderr, exit_code) = ssh::session_exec_with_output(&session, &cmd, 30).await?;
+    if exit_code != 0 {
+        return Err(format!("mkdir -p failed: {}", stderr));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -2196,7 +2287,7 @@ pub fn run() {
             ssh_get_cwd, ssh_list_dir, ssh_stat_file, ssh_read_file, ssh_write_file,
             ssh_delete_file, ssh_delete_files_batch, ssh_create_dir, ssh_rename_file, ssh_rename_files_batch,
             ssh_copy_file, ssh_copy_files_batch, ssh_copy_dir, ssh_set_permissions, ssh_set_permissions_batch,
-            ssh_check_space, ssh_upload, ssh_upload_chunk, ssh_download_file,
+            ssh_check_space, ssh_upload, ssh_upload_chunk, ssh_upload_files_batch, ssh_create_dirs_batch, ssh_download_file,
             ssh_download_to_local, ssh_save_as_local,
             ssh_compress, ssh_extract, ssh_reconnect,
             ssh_generate_keypair, save_key_to_local,

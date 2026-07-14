@@ -127,73 +127,82 @@ function App() {
     const startTime = Date.now()
     const CHUNK_SIZE = 1024 * 1024
 
-    for (let i = 0; i < queue.length; i++) {
-      if (uploadStopRef.current) {
+    // ponytail: 3 concurrent workers — SFTP session reused via cache, 3x throughput
+    const CONCURRENCY = Math.min(3, files.length)
+    let nextIndex = 0
+
+    const updateSpeed = () => {
+      const elapsed = (Date.now() - startTime) / 1000
+      const speed = elapsed > 0 ? uploadedBytes / elapsed : 0
+      setUpload(prev => ({ ...prev, uploadedBytes, speed }))
+    }
+
+    const worker = async () => {
+      while (true) {
+        if (uploadStopRef.current) return
+        const i = nextIndex++
+        if (i >= queue.length) return
+        const item = queue[i]
+
         setUpload(prev => ({
-          ...prev, active: false, paused: false,
-          queue: prev.queue.map((q, j) => j >= i ? { ...q, status: 'stopped' } : q)
+          ...prev,
+          queue: prev.queue.map((q, j) => j === i ? { ...q, status: 'uploading' } : q)
         }))
-        return
-      }
 
-      const item = queue[i]
-      setUpload(prev => ({
-        ...prev,
-        queue: prev.queue.map((q, j) => j === i ? { ...q, status: 'uploading' } : q)
-      }))
-
-      try {
-        let offset = 0
-        while (offset < item.file.size) {
-          // Check stop
-          if (uploadStopRef.current) {
-            setUpload(prev => ({
-              ...prev, active: false, paused: false,
-              queue: prev.queue.map((q, j) => j === i ? { ...q, status: 'stopped' } : j > i ? { ...q, status: 'stopped' } : q)
-            }))
-            return
-          }
-          // Wait while paused
-          while (uploadPauseRef.current) {
+        try {
+          let offset = 0
+          while (offset < item.file.size) {
             if (uploadStopRef.current) {
               setUpload(prev => ({
                 ...prev, active: false, paused: false,
-                queue: prev.queue.map((q, j) => j === i ? { ...q, status: 'stopped' } : j > i ? { ...q, status: 'stopped' } : q)
+                queue: prev.queue.map((q, j) => j === i ? { ...q, status: 'stopped' } : q)
               }))
               return
             }
-            await new Promise(r => setTimeout(r, 100))
-          }
+            while (uploadPauseRef.current) {
+              if (uploadStopRef.current) {
+                setUpload(prev => ({
+                  ...prev, active: false, paused: false,
+                  queue: prev.queue.map((q, j) => j === i ? { ...q, status: 'stopped' } : q)
+                }))
+                return
+              }
+              await new Promise(r => setTimeout(r, 100))
+            }
 
-          const end = Math.min(offset + CHUNK_SIZE, item.file.size)
-          const slice = item.file.slice(offset, end)
-          const buffer = await slice.arrayBuffer()
-          await invoke('ssh_upload_chunk', {
-            sessionId: sid,
-            remotePath: item.remotePath,
-            data: new Uint8Array(buffer),
-            offset,
-          })
-          uploadedBytes += (end - offset)
-          offset = end
-          const elapsed = (Date.now() - startTime) / 1000
-          const speed = elapsed > 0 ? uploadedBytes / elapsed : 0
-          setUpload(prev => ({ ...prev, uploadedBytes, speed }))
+            const end = Math.min(offset + CHUNK_SIZE, item.file.size)
+            const slice = item.file.slice(offset, end)
+            const buffer = await slice.arrayBuffer()
+            await invoke('ssh_upload_chunk', {
+              sessionId: sid,
+              remotePath: item.remotePath,
+              data: new Uint8Array(buffer),
+              offset,
+            })
+            uploadedBytes += (end - offset)
+            offset = end
+            updateSpeed()
+          }
+          setUpload(prev => ({
+            ...prev,
+            queue: prev.queue.map((q, j) => j === i ? { ...q, status: 'done' } : q)
+          }))
+        } catch (err) {
+          setUpload(prev => ({
+            ...prev,
+            queue: prev.queue.map((q, j) => j === i ? { ...q, status: 'error', error: String(err) } : q)
+          }))
         }
-        setUpload(prev => ({
-          ...prev,
-          queue: prev.queue.map((q, j) => j === i ? { ...q, status: 'done' } : q)
-        }))
-      } catch (err) {
-        setUpload(prev => ({
-          ...prev,
-          queue: prev.queue.map((q, j) => j === i ? { ...q, status: 'error', error: String(err) } : q)
-        }))
       }
     }
 
-    setUpload(prev => ({ ...prev, active: false, paused: false }))
-    uploadCompleteRef.current?.()
+    const workers = Array.from({ length: CONCURRENCY }, () => worker())
+    await Promise.all(workers)
+
+    if (!uploadStopRef.current) {
+      setUpload(prev => ({ ...prev, active: false, paused: false }))
+      uploadCompleteRef.current?.()
+    }
   }, [sessionId])
 
   const handlePauseUpload = useCallback(() => {

@@ -1100,6 +1100,7 @@ impl SshManager {
     }
 
     /// Write a single chunk at a given offset (for streaming upload)
+    /// ponytail: uses cached SFTP session — no new channel/subsystem per chunk
     pub async fn upload_chunk(
         &self,
         session_id: &str,
@@ -1107,19 +1108,7 @@ impl SshManager {
         data: &[u8],
         offset: u64,
     ) -> Result<(), String> {
-        let channel = self.open_channel(session_id).await?;
-        channel.request_subsystem(true, "sftp").await
-            .map_err(|e| format!("SFTP subsystem request failed: {}", e))?;
-        let stream = channel.into_stream();
-        let config = russh_sftp::client::Config {
-            max_packet_len: 64 * 1024,
-            max_concurrent_writes: 8,
-            request_timeout_secs: 60,
-        };
-        let sftp = russh_sftp::client::SftpSession::new_with_config(stream, config)
-            .await
-            .map_err(|e| format!("SFTP init failed: {}", e))?;
-        sftp.set_timeout(60);
+        let sftp = self.open_sftp(session_id).await?;
 
         use russh_sftp::protocol::OpenFlags;
         let mut file = if offset == 0 {
@@ -1135,7 +1124,6 @@ impl SshManager {
         file.shutdown()
             .await
             .map_err(|e| format!("Failed to finalize: {}", e))?;
-        // Don't close SFTP session - keep it alive for reuse via cache
 
         Ok(())
     }

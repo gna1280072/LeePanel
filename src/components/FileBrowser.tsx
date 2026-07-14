@@ -604,8 +604,9 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       }
     }
     const sortedDirs = [...dirsToCreate].sort((a, b) => a.split('/').length - b.split('/').length)
-    for (const dir of sortedDirs) {
-      try { await invoke('ssh_create_dir', { sessionId, path: dir }) } catch (_) { /* may exist */ }
+    // ponytail: single mkdir -p command instead of individual ssh_create_dir calls
+    if (sortedDirs.length > 0) {
+      try { await invoke('ssh_create_dirs_batch', { sessionId, paths: sortedDirs }) } catch (_) { /* may partially exist */ }
     }
     const uploadList: { file: File; fileName: string; remotePath: string }[] = []
     for (const f of files) {

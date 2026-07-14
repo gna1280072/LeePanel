@@ -5737,7 +5737,12 @@ if [ "__ACTION__" = "install" ]; then
         apt-get install -y "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
       done
     fi
-    SVC=$(systemctl list-units --type=service | grep -E 'php[0-9.]*-fpm' | awk '{print $1}' | head -1 | sed 's/.service//')
+    # ponytail: use exact versioned service name when version is known — avoids picking older php from list-units
+    if [ -n "__VERSION__" ]; then
+      SVC="php__VERSION__-fpm"
+    else
+      SVC=$(systemctl list-units --type=service | grep -E 'php[0-9.]*-fpm' | awk '{print $1}' | head -1 | sed 's/.service//')
+    fi
   else
     yum install -y --nogpgcheck --assumeyes epel-release 2>/dev/null || true
     if [ -n "__VERSION__" ]; then
@@ -5752,7 +5757,12 @@ if [ "__ACTION__" = "install" ]; then
         yum install -y --nogpgcheck --assumeyes "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
       done
     fi
-    SVC=$(systemctl list-units --type=service | grep -E 'php' | awk '{print $1}' | head -1 | sed 's/.service//')
+    # ponytail: use exact versioned service name when version is known
+    if [ -n "__VERSION__" ]; then
+      SVC="php${VER_NODOT}-php-fpm"
+    else
+      SVC=$(systemctl list-units --type=service | grep -E 'php' | awk '{print $1}' | head -1 | sed 's/.service//')
+    fi
   fi
   if [ -n "$SVC" ]; then
     systemctl enable "$SVC" && systemctl start "$SVC"

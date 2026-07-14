@@ -70,12 +70,14 @@ function App() {
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0)
   const [connHost, setConnHost] = useState('')
   const [connUsername, setConnUsername] = useState('')
+  const [initialSection, setInitialSection] = useState<string>('dashboard')
 
   const clearSession = () => {
     setSessionId(null)
     setConnectedConfigId(null)
     setConnHost('')
     setConnUsername('')
+    setInitialSection('dashboard')
   }
 
   // Draggable dividers
@@ -408,18 +410,24 @@ function App() {
     const doConnect = (username: string, password?: string, keyPath?: string) => {
       setConnectingServerId(conn.id)
       setError('')
-      // ponytail: 20s local timeout — ensures UI always recovers even if backend hangs
-      Promise.race([
-        invoke<string>('ssh_connect', {
-          config: { host: conn.host, port: conn.port, username, password, keyPath },
-        }),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 20000)),
-      ]).then(sid => {
+      const hostKey = `${conn.host}_${conn.port}`
+      const panelKey = `lastPanel_${username}@${hostKey}`
+      // ponytail: parallel SSH + DB read → no flash, correct page rendered immediately
+      Promise.all([
+        Promise.race([
+          invoke<string>('ssh_connect', {
+            config: { host: conn.host, port: conn.port, username, password, keyPath },
+          }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 20000)),
+        ]),
+        invoke<string>('ui_state_get', { key: panelKey }).catch(() => ''),
+      ]).then(([sid, savedPanel]) => {
         setSessionId(sid)
         setConnectedConfigId(conn.id)
         console.log('Direct connect! sessionId:', sid, 'configId:', conn.id)
-        setConnHost(`${conn.host}_${conn.port}`)
+        setConnHost(hostKey)
         setConnUsername(username)
+        setInitialSection(savedPanel || 'dashboard')
         manualDisconnectRef.current = false
         // Show welcome modal on successful connection (once per 6 hours)
         const WELCOME_INTERVAL = 6 * 60 * 60 * 1000
@@ -526,7 +534,7 @@ function App() {
         )}
         <div className="split-container" ref={splitContainerRef}>
           <div className="split-full">
-            <ServerPanel sessionId={sessionId} connHost={connHost} connUsername={connUsername} jumpToPath={jumpToPath} setJumpToPath={setJumpToPath} termRef={termRef} onStartUpload={handleStartUpload} onUploadComplete={uploadCompleteRef} appSettings={settings} onToggleAutoReconnect={toggleAutoReconnect} onUpdateSettings={handleUpdateSettings} />
+            <ServerPanel sessionId={sessionId} connHost={connHost} connUsername={connUsername} initialSection={initialSection} jumpToPath={jumpToPath} setJumpToPath={setJumpToPath} termRef={termRef} onStartUpload={handleStartUpload} onUploadComplete={uploadCompleteRef} appSettings={settings} onToggleAutoReconnect={toggleAutoReconnect} onUpdateSettings={handleUpdateSettings} />
           </div>
         </div>
       </div>

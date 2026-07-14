@@ -37,6 +37,7 @@ interface ServerPanelProps {
   sessionId: string | null
   connHost?: string
   connUsername?: string
+  initialSection?: string
   jumpToPath?: string | null
   setJumpToPath?: (path: string | null) => void
   termRef?: React.RefObject<TerminalHandle | null>
@@ -67,22 +68,21 @@ const NAV_ITEMS: { key: PanelSection; labelKey: string; icon: string }[] = [
   { key: 'settings', labelKey: 'nav.settings', icon: '⚙' },
 ]
 
-export default function ServerPanel({ sessionId, connHost, connUsername, jumpToPath, setJumpToPath, termRef, onStartUpload, onUploadComplete, appSettings, onToggleAutoReconnect, onUpdateSettings }: ServerPanelProps) {
+export default function ServerPanel({ sessionId, connHost, connUsername, initialSection = 'dashboard', jumpToPath, setJumpToPath, termRef, onStartUpload, onUploadComplete, appSettings, onToggleAutoReconnect, onUpdateSettings }: ServerPanelProps) {
   const { t } = useTranslation()
-  const [activeSection, setActiveSectionRaw] = useState<PanelSection>('dashboard')
+  const [activeSection, setActiveSectionRaw] = useState<PanelSection>((initialSection && NAV_ITEMS.some(s => s.key === initialSection) ? initialSection : 'dashboard') as PanelSection)
   const cdHereRef = useRef<string | null>(null)
   const fileBrowserRef = useRef<FileBrowserHandle | null>(null)
 
   // ponytail: per-server panel memory — key = lastPanel_${user}@${host}
   const panelKey = connHost && connUsername ? `lastPanel_${connUsername}@${connHost}` : ''
 
-  // Load last panel from SQLite when connection changes
+  // Sync activeSection when initialSection changes (new connection)
   useEffect(() => {
-    if (!panelKey) return
-    invoke<string>('ui_state_get', { key: panelKey })
-      .then(v => { if (v && NAV_ITEMS.some(s => s.key === v)) setActiveSectionRaw(v as PanelSection) })
-      .catch(() => {})
-  }, [panelKey])
+    if (initialSection && NAV_ITEMS.some(s => s.key === initialSection)) {
+      setActiveSectionRaw(initialSection as PanelSection)
+    }
+  }, [initialSection])
 
   const setActiveSection = (key: PanelSection) => {
     setActiveSectionRaw(key)

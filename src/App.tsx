@@ -69,11 +69,13 @@ function App() {
   const manualDisconnectRef = useRef(false)
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0)
   const [connHost, setConnHost] = useState('')
+  const [connUsername, setConnUsername] = useState('')
 
   const clearSession = () => {
     setSessionId(null)
     setConnectedConfigId(null)
     setConnHost('')
+    setConnUsername('')
   }
 
   // Draggable dividers
@@ -417,6 +419,7 @@ function App() {
         setConnectedConfigId(conn.id)
         console.log('Direct connect! sessionId:', sid, 'configId:', conn.id)
         setConnHost(`${conn.host}_${conn.port}`)
+        setConnUsername(username)
         manualDisconnectRef.current = false
         // Show welcome modal on successful connection (once per 6 hours)
         const WELCOME_INTERVAL = 6 * 60 * 60 * 1000
@@ -523,7 +526,7 @@ function App() {
         )}
         <div className="split-container" ref={splitContainerRef}>
           <div className="split-full">
-            <ServerPanel sessionId={sessionId} connHost={connHost} jumpToPath={jumpToPath} setJumpToPath={setJumpToPath} termRef={termRef} onStartUpload={handleStartUpload} onUploadComplete={uploadCompleteRef} appSettings={settings} onToggleAutoReconnect={toggleAutoReconnect} onUpdateSettings={handleUpdateSettings} />
+            <ServerPanel sessionId={sessionId} connHost={connHost} connUsername={connUsername} jumpToPath={jumpToPath} setJumpToPath={setJumpToPath} termRef={termRef} onStartUpload={handleStartUpload} onUploadComplete={uploadCompleteRef} appSettings={settings} onToggleAutoReconnect={toggleAutoReconnect} onUpdateSettings={handleUpdateSettings} />
           </div>
         </div>
       </div>

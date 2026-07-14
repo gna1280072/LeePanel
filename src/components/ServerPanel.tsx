@@ -36,6 +36,7 @@ interface AppSettings {
 interface ServerPanelProps {
   sessionId: string | null
   connHost?: string
+  connUsername?: string
   jumpToPath?: string | null
   setJumpToPath?: (path: string | null) => void
   termRef?: React.RefObject<TerminalHandle | null>
@@ -66,22 +67,26 @@ const NAV_ITEMS: { key: PanelSection; labelKey: string; icon: string }[] = [
   { key: 'settings', labelKey: 'nav.settings', icon: '⚙' },
 ]
 
-export default function ServerPanel({ sessionId, connHost, jumpToPath, setJumpToPath, termRef, onStartUpload, onUploadComplete, appSettings, onToggleAutoReconnect, onUpdateSettings }: ServerPanelProps) {
+export default function ServerPanel({ sessionId, connHost, connUsername, jumpToPath, setJumpToPath, termRef, onStartUpload, onUploadComplete, appSettings, onToggleAutoReconnect, onUpdateSettings }: ServerPanelProps) {
   const { t } = useTranslation()
   const [activeSection, setActiveSectionRaw] = useState<PanelSection>('dashboard')
   const cdHereRef = useRef<string | null>(null)
   const fileBrowserRef = useRef<FileBrowserHandle | null>(null)
 
-  // Load last panel from SQLite
+  // ponytail: per-server panel memory — key = lastPanel_${user}@${host}
+  const panelKey = connHost && connUsername ? `lastPanel_${connUsername}@${connHost}` : ''
+
+  // Load last panel from SQLite when connection changes
   useEffect(() => {
-    invoke<string>('ui_state_get', { key: 'lastPanel' })
+    if (!panelKey) return
+    invoke<string>('ui_state_get', { key: panelKey })
       .then(v => { if (v && NAV_ITEMS.some(s => s.key === v)) setActiveSectionRaw(v as PanelSection) })
       .catch(() => {})
-  }, [])
+  }, [panelKey])
 
   const setActiveSection = (key: PanelSection) => {
     setActiveSectionRaw(key)
-    invoke('ui_state_set', { key: 'lastPanel', value: key }).catch(() => {})
+    if (panelKey) invoke('ui_state_set', { key: panelKey, value: key }).catch(() => {})
   }
 
   const handleNavigate = (section: string) => {

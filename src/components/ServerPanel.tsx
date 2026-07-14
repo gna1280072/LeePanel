@@ -77,7 +77,7 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
   // ponytail: per-server panel memory — key = lastPanel_${user}@${host}
   const panelKey = connHost && connUsername ? `lastPanel_${connUsername}@${connHost}` : ''
 
-  // Sync activeSection when initialSection changes (new connection)
+  // Sync activeSection when initialSection changes (redundant with key remount, kept as safety net)
   useEffect(() => {
     if (initialSection && NAV_ITEMS.some(s => s.key === initialSection)) {
       setActiveSectionRaw(initialSection as PanelSection)
@@ -188,15 +188,15 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
           <Terminal ref={termRef} sessionId={sessionId} isActive={activeSection === 'terminal'} />
         </div>
         {/* Files always mounted to preserve state and avoid reload flash */}
-        <div key={sessionId} style={{ display: activeSection === 'files' ? 'block' : 'none', height: '100%' }}>
+        <div style={{ display: activeSection === 'files' ? 'block' : 'none', height: '100%' }}>
           <FileBrowser sessionId={sessionId} connHost={connHost} jumpToPath={jumpToPath} ref={fileBrowserRef} onTerminalCommand={termRef?.current ? (cmd: string) => termRef.current?.sendCommand(cmd) : undefined} onCdHere={handleCdHere} onStartUpload={onStartUpload} />
         </div>
         {/* Sites always mounted to preserve list state */}
         <div style={{ display: activeSection === 'sites' ? 'block' : 'none', height: '100%' }}>
           <SitesPanel sessionId={sessionId} onOpenFolder={handleInternalOpenFolder} />
         </div>
-        {/* Software always mounted to preserve install progress state, key forces remount on server switch */}
-        <div key={sessionId} style={{ display: activeSection === 'software' ? 'block' : 'none', height: '100%' }}>
+        {/* Software always mounted to preserve install progress state */}
+        <div style={{ display: activeSection === 'software' ? 'block' : 'none', height: '100%' }}>
           <SoftwareRepo sessionId={sessionId} />
         </div>
         {activeSection !== 'terminal' && activeSection !== 'files' && activeSection !== 'sites' && activeSection !== 'software' && renderContent()}

@@ -7391,7 +7391,7 @@ pub async fn delete_database(
     // ponytail: drop user for ALL hosts (not just localhost) — matches create_database which supports any/ip access
     let sql = format!(
         "DROP DATABASE IF EXISTS `{}`;\n\
-         SET @sql = (SELECT GROUP_CONCAT('DROP USER IF EXISTS ''', user, '''@''', host, '''') SEPARATOR ';\\n') FROM mysql.user WHERE user = '{}');\n\
+         SET @sql = (SELECT GROUP_CONCAT(CONCAT('DROP USER IF EXISTS ''', user, '''@''', host, '''') SEPARATOR ';\\n') FROM mysql.user WHERE user = '{}');\n\
          SET @sql = IFNULL(@sql, 'SELECT 1');\n\
          PREPARE stmt FROM @sql;\n\
          EXECUTE stmt;\n\
@@ -7471,7 +7471,7 @@ pub async fn change_db_access(
     // ponytail: dynamic delete all old users + create new with correct password
     let mut sql = String::new();
     sql.push_str(&format!(
-        "SET @drop_sql = (SELECT GROUP_CONCAT('DROP USER IF EXISTS ''', user, '''@''', host, '''') SEPARATOR ';\\n') FROM mysql.user WHERE user = '{}');\n\
+        "SET @drop_sql = (SELECT GROUP_CONCAT(CONCAT('DROP USER IF EXISTS ''', user, '''@''', host, '''') SEPARATOR ';\\n') FROM mysql.user WHERE user = '{}');\n\
          SET @drop_sql = IFNULL(@drop_sql, 'SELECT 1');\n\
          PREPARE stmt FROM @drop_sql;\n\
          EXECUTE stmt;\n\

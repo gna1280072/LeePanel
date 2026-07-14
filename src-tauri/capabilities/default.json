@@ -10,6 +10,10 @@
     "core:event:default",
     "dialog:default",
     "fs:default",
+    {
+      "identifier": "fs:scope",
+      "allow": [{ "path": "**" }]
+    },
     "updater:default",
     "log:default"
   ]

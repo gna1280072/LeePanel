@@ -119,7 +119,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
     pollingRef.current = setInterval(async () => {
       if (!sessionId) return
       try {
-        const result = await invoke<{ running: boolean; log: string; action: string; software: string }>('server_check_installation', { sessionId })
+        const result = await invoke<{ running: boolean; log: string; action: string; displayName: string }>('server_check_installation', { sessionId })
         pollErrors = 0
         if (result.running) {
           const lines = result.log.split('\n').filter(l => l.trim())
@@ -134,7 +134,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
           setLogStatus('done')
           // ponytail: update actionLabel when recovery completes
           const actionText = result.action === 'install' ? 'Installed' : 'Uninstalled'
-          setActionLabel(result.software ? `${actionText} ${result.software}` : 'Completed')
+          setActionLabel(result.displayName ? `${actionText} ${result.displayName}` : 'Completed')
           loadSoftware()
         }
       } catch {
@@ -152,7 +152,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
   useEffect(() => {
     if (!sessionId) return
     // ponytail: check for running installation before loading software list
-    invoke<{ running: boolean; log: string; action: string; software: string }>('server_check_installation', { sessionId })
+    invoke<{ running: boolean; log: string; action: string; displayName: string }>('server_check_installation', { sessionId })
       .then(result => {
         if (result.running) {
           if (result.log) {
@@ -161,9 +161,9 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
             setLogs([t('software.recoveringProgress')])
           }
           setLogStatus('running')
-          // ponytail: build actionLabel from recovered action/software info
+          // ponytail: build actionLabel from recovered action/displayName info
           const actionText = result.action === 'install' ? 'Installing' : 'Uninstalling'
-          setActionLabel(result.software ? `${actionText} ${result.software}...` : t('software.recoveringProgress'))
+          setActionLabel(result.displayName ? `${actionText} ${result.displayName}...` : t('software.recoveringProgress'))
           setState('running')
           startPolling()
         } else {
@@ -244,6 +244,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
         software: sw.name,
         action,
         options: opts,
+        displayName: sw.display_name,
       })
       setLogStatus('done')
     } catch (e) {
@@ -369,6 +370,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
         software: 'php',
         action: 'install',
         options: opts,
+        displayName: `PHP ${selectedVersion}`,
       })
       setLogStatus('done')
     } catch (e) {
@@ -423,6 +425,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
         sessionId,
         packageName: sw.name,
         action,
+        displayName: sw.display_name,
       })
       setLogStatus('done')
     } catch (e) {

@@ -1699,6 +1699,7 @@ async fn server_software_action(
     software: &str,
     action: &str,
     options: &str,
+    display_name: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
@@ -1713,7 +1714,7 @@ async fn server_software_action(
             .unwrap_or(30)
     };
     let timeout_secs = timeout_mins * 60;
-    let result = server::software_action(&session, &cache, session_id, software, action, options, &app, timeout_secs).await;
+    let result = server::software_action(&session, &cache, session_id, software, action, options, display_name, &app, timeout_secs).await;
     // ponytail: invalidate software/service caches after install/uninstall
     cache.invalidate(session_id, &[
         "software_list", "service_statuses", "lnmp_status", "docker_status",
@@ -2109,6 +2110,7 @@ async fn custom_software_action(
     session_id: &str,
     package_name: &str,
     action: &str,
+    display_name: &str,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
@@ -2123,7 +2125,7 @@ async fn custom_software_action(
             .unwrap_or(30)
     };
     let timeout_secs = timeout_mins * 60;
-    server::custom_software_action(&session, &cache, session_id, package_name, action, &app, timeout_secs).await
+    server::custom_software_action(&session, &cache, session_id, package_name, action, display_name, &app, timeout_secs).await
 }
 
 #[tauri::command]
@@ -2152,12 +2154,12 @@ async fn server_check_installation(
         .await
         .map(|(out, _, _)| out.trim().to_string())
         .unwrap_or_default();
-    let (action, software) = if let Some((a, s)) = info.split_once(':') {
+    let (action, display_name) = if let Some((a, s)) = info.split_once(':') {
         (a.to_string(), s.to_string())
     } else {
         (String::new(), String::new())
     };
-    Ok(serde_json::json!({ "running": running, "log": log, "action": action, "software": software }))
+    Ok(serde_json::json!({ "running": running, "log": log, "action": action, "displayName": display_name }))
 }
 
 // ===== App Entry =====

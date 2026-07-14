@@ -4477,6 +4477,7 @@ pub async fn custom_software_action(
     session_id: &str,
     package_name: &str,
     action: &str,
+    display_name: &str,
     app_handle: &AppHandle,
     timeout_secs: u64,
 ) -> Result<String, String> {
@@ -4552,8 +4553,8 @@ echo "ACTION_SUCCESS"
 
     let mut channel = crate::ssh::session_open_channel(session).await?;
     // ponytail: redirect output to log file (not SSH channel) so install survives disconnect
-    // write action info for recovery: "action:software"
-    let info_cmd: String = format!("echo $$ > /tmp/leepanel-install.pid; echo '{}:{}' > /tmp/leepanel-install.info; > /tmp/leepanel-install.log; bash /tmp/software-action.sh >> /tmp/leepanel-install.log 2>&1; rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info", action, package_name);
+    // write action info for recovery: "action:display_name"
+    let info_cmd: String = format!("echo $$ > /tmp/leepanel-install.pid; echo '{}:{}' > /tmp/leepanel-install.info; > /tmp/leepanel-install.log; bash /tmp/software-action.sh >> /tmp/leepanel-install.log 2>&1; rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info", action, display_name);
     channel.exec(true, info_cmd).await
         .map_err(|e| format!("Failed to start script: {}", e))?;
     // ponytail: tail the log file for real-time output display
@@ -4936,6 +4937,7 @@ pub async fn software_action(
     software: &str,
     action: &str,
     options: &str,
+    display_name: &str,
     app_handle: &AppHandle,
     timeout_secs: u64,
 ) -> Result<String, String> {
@@ -4968,8 +4970,8 @@ pub async fn software_action(
 
     let mut channel = crate::ssh::session_open_channel(session).await?;
     // ponytail: redirect output to log file (not SSH channel) so install survives disconnect
-    // write action info for recovery: "action:software"
-    let info_cmd: String = format!("echo $$ > /tmp/leepanel-install.pid; echo '{}:{}' > /tmp/leepanel-install.info; > /tmp/leepanel-install.log; bash /tmp/software-action.sh >> /tmp/leepanel-install.log 2>&1; rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info", action, software);
+    // write action info for recovery: "action:display_name"
+    let info_cmd: String = format!("echo $$ > /tmp/leepanel-install.pid; echo '{}:{}' > /tmp/leepanel-install.info; > /tmp/leepanel-install.log; bash /tmp/software-action.sh >> /tmp/leepanel-install.log 2>&1; rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info", action, display_name);
     channel
         .exec(true, info_cmd)
         .await

@@ -998,8 +998,8 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                 onChange={(e) => setAccessType(e.target.value as any)}
                 className="form-input"
               >
-                <option value="local">Local server (localhost)</option>
-                <option value="any">{t('database.allowedIpsHint')}</option>
+                <option value="local">{t('database.localServer')}</option>
+                <option value="any">{t('database.allHosts')}</option>
                 <option value="ip">{t('database.allowedIps')}</option>
               </select>
             </div>
@@ -1179,8 +1179,8 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                 onChange={(e) => setNewAccessType(e.target.value as any)}
                 className="form-input"
               >
-                <option value="local">Local server (localhost)</option>
-                <option value="any">{t('database.allowedIpsHint')}</option>
+                <option value="local">{t('database.localServer')}</option>
+                <option value="any">{t('database.allHosts')}</option>
                 <option value="ip">{t('database.allowedIps')}</option>
               </select>
             </div>

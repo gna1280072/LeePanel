@@ -379,6 +379,8 @@
     "databaseName": "数据库名",
     "userName": "用户名",
     "allowedIps": "允许的 IP",
+    "allHosts": "所有主机 (%)",
+    "localServer": "本地服务器 (localhost)",
     "allowedIpsHint": "使用 % 表示所有主机，或输入特定 IP",
     "newPassword": "新密码",
     "confirmPassword": "确认密码",

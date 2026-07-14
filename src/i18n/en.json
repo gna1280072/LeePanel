@@ -379,6 +379,8 @@
     "databaseName": "Database Name",
     "userName": "User Name",
     "allowedIps": "Allowed IPs",
+    "allHosts": "All hosts (%)",
+    "localServer": "Local server (localhost)",
     "allowedIpsHint": "Use % for all hosts, or specific IPs",
     "newPassword": "New Password",
     "confirmPassword": "Confirm Password",

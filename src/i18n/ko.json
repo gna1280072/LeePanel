@@ -82,6 +82,7 @@
     "pause": "일시정지",
     "resume": "계속",
     "stop": "중지",
+    "confirmStop": "업로드를 중지하시겠습니까?",
     "remaining": "남은 시간",
     "retryFailed": "실패 재시도"
   },
@@ -527,7 +528,7 @@
     "commandTimeout": "명령 시간 초과 (분)",
     "commandTimeoutHint": "설치/제거 스크립트의 최대 실행 시간",
     "uploadWorkers": "업로드 동시 실행 수",
-    "uploadWorkersHint": "동시 업로드 스레드 수 (1-16)",
+    "uploadWorkersHint": "동시 업로드 스레드 수 (≥1)",
     "fileCache": "디렉토리 캐시",
     "directories": "개 디렉토리",
     "cacheTtl": "캐시 TTL (시간)",

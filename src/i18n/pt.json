@@ -82,6 +82,7 @@
     "pause": "Pausar",
     "resume": "Retomar",
     "stop": "Parar",
+    "confirmStop": "Parar o upload?",
     "remaining": "Restante",
     "retryFailed": "Repetir falhas"
   },
@@ -527,7 +528,7 @@
     "commandTimeout": "Tempo limite do comando (minutos)",
     "commandTimeoutHint": "tempo máximo de execução dos scripts de instalação/remoção",
     "uploadWorkers": "Threads de upload",
-    "uploadWorkersHint": "número de threads de upload simultâneos (1-16)",
+    "uploadWorkersHint": "número de threads de upload simultâneos (≥1)",
     "fileCache": "Cache de diretórios",
     "directories": "diretórios",
     "cacheTtl": "TTL do cache (horas)",

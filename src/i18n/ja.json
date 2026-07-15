@@ -82,6 +82,7 @@
     "pause": "一時停止",
     "resume": "再開",
     "stop": "停止",
+    "confirmStop": "アップロードを停止しますか？",
     "remaining": "残り",
     "retryFailed": "失敗を再試行"
   },
@@ -527,7 +528,7 @@
     "commandTimeout": "コマンドタイムアウト（分）",
     "commandTimeoutHint": "インストール/アンインストールスクリプトの最大実行時間",
     "uploadWorkers": "アップロード同時実行数",
-    "uploadWorkersHint": "同時アップロードのスレッド数（1-16）",
+    "uploadWorkersHint": "同時アップロードのスレッド数（≥1）",
     "fileCache": "ディレクトリキャッシュ",
     "directories": "ディレクトリ",
     "cacheTtl": "キャッシュ有効期限（時間）",

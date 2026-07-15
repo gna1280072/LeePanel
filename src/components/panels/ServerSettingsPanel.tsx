@@ -358,7 +358,6 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
                 <input
                   type="number"
                   min="1"
-                  max="16"
                   value={uploadWorkersInput}
                   onChange={(e) => setUploadWorkersInput(e.target.value)}
                   className="create-input"

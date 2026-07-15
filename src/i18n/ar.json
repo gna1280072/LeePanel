@@ -82,6 +82,7 @@
     "pause": "إيقاف مؤقت",
     "resume": "استئناف",
     "stop": "إيقاف",
+    "confirmStop": "إيقاف الرفع؟",
     "remaining": "المتبقي",
     "retryFailed": "إعادة المحاولة"
   },
@@ -527,7 +528,7 @@
     "commandTimeout": "مهلة الأمر (دقائق)",
     "commandTimeoutHint": "الحد الأقصى لوقت تنفيذ سكريبتات التثبيت/الإزالة",
     "uploadWorkers": "خيوط التحميل",
-    "uploadWorkersHint": "عدد خيوط التحميل المتزامنة (1-16)",
+    "uploadWorkersHint": "عدد خيوط التحميل المتزامنة (≥1)",
     "fileCache": "ذاكرة التخزين المؤقت للأدلة",
     "directories": "أدلة",
     "cacheTtl": "مدة صلاحية الذاكرة المؤقتة (ساعات)",

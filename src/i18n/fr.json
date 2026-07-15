@@ -82,6 +82,7 @@
     "pause": "Pause",
     "resume": "Reprendre",
     "stop": "Arrêter",
+    "confirmStop": "Arrêter le téléversement ?",
     "remaining": "Restant",
     "retryFailed": "Réessayer les échoués"
   },
@@ -527,7 +528,7 @@
     "commandTimeout": "Délai d'expiration (minutes)",
     "commandTimeoutHint": "durée max d'exécution des scripts d'installation/désinstallation",
     "uploadWorkers": "Threads d'upload",
-    "uploadWorkersHint": "nombre de threads d'upload simultanés (1-16)",
+    "uploadWorkersHint": "nombre de threads d'upload simultanés (≥1)",
     "fileCache": "Cache des répertoires",
     "directories": "répertoires",
     "cacheTtl": "Durée de vie du cache (heures)",

@@ -775,6 +775,7 @@ function UploadPanel({ upload, onPause, onResume, onStop, onDismiss, onRetry }: 
 }) {
   const { t } = useTranslation()
   const [collapsed, setCollapsed] = useState(false)
+  const [showStopConfirm, setShowStopConfirm] = useState(false)
   const pct = upload.totalBytes > 0 ? Math.round((upload.uploadedBytes / upload.totalBytes) * 100) : 0
   const uploadedMB = (upload.uploadedBytes / 1048576).toFixed(1)
   const totalMB = (upload.totalBytes / 1048576).toFixed(1)
@@ -822,16 +823,24 @@ function UploadPanel({ upload, onPause, onResume, onStop, onDismiss, onRetry }: 
             ))}
           </div>
           <div className="upload-panel-actions">
+            {showStopConfirm ? (
+              <>
+                <span style={{ fontSize: 11, color: '#8b949e', flex: 1 }}>{t('upload.confirmStop')}</span>
+                <button className="upload-btn" onClick={() => { setShowStopConfirm(false); onStop() }} style={{ fontSize: 11 }}>{t('common.confirm')}</button>
+                <button className="upload-btn" onClick={() => setShowStopConfirm(false)} style={{ fontSize: 11 }}>{t('common.cancel')}</button>
+              </>
+            ) : (
+              <>
             {upload.active && !upload.paused && (
               <>
-                <button className="upload-btn" onClick={onPause} title={t('upload.pause')}>⏸ {t('upload.pause')}</button>
-                <button className="upload-btn danger" onClick={onStop} title={t('upload.stop')}>⏹ {t('upload.stop')}</button>
+                <button className="upload-btn" onClick={onPause} title={t('upload.pause')}> {t('upload.pause')}</button>
+                <button className="upload-btn" onClick={() => setShowStopConfirm(true)} title={t('upload.stop')}> {t('upload.stop')}</button>
               </>
             )}
             {upload.active && upload.paused && (
               <>
                 <button className="upload-btn" onClick={onResume} title={t('upload.resume')}>▶ {t('upload.resume')}</button>
-                <button className="upload-btn danger" onClick={onStop} title={t('upload.stop')}>⏹ {t('upload.stop')}</button>
+                <button className="upload-btn" onClick={() => setShowStopConfirm(true)} title={t('upload.stop')}>⏹ {t('upload.stop')}</button>
               </>
             )}
             {!upload.active && (
@@ -840,6 +849,8 @@ function UploadPanel({ upload, onPause, onResume, onStop, onDismiss, onRetry }: 
                   <button className="upload-btn" onClick={onRetry} title={t('upload.retryFailed')}>🔄 {t('upload.retryFailed')} ({failedCount})</button>
                 )}
                 <button className="upload-btn" onClick={onDismiss} title={t('common.close')}>✕ {t('common.close')}</button>
+              </>
+            )}
               </>
             )}
           </div>

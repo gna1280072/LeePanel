@@ -82,6 +82,7 @@
     "pause": "Pause",
     "resume": "Fortsetzen",
     "stop": "Stoppen",
+    "confirmStop": "Upload stoppen?",
     "remaining": "Verbleibend",
     "retryFailed": "Fehlgeschlagene wiederholen"
   },
@@ -527,7 +528,7 @@
     "commandTimeout": "Befehls-Timeout (Minuten)",
     "commandTimeoutHint": "max. Ausführungszeit für Installations-/Deinstallationsskripte",
     "uploadWorkers": "Upload-Threads",
-    "uploadWorkersHint": "gleichzeitige Upload-Threads (1-16)",
+    "uploadWorkersHint": "gleichzeitige Upload-Threads (≥1)",
     "fileCache": "Verzeichnis-Cache",
     "directories": "Verzeichnisse",
     "cacheTtl": "Cache-Gültigkeitsdauer (Stunden)",

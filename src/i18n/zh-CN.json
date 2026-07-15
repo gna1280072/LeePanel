@@ -82,6 +82,7 @@
     "pause": "暂停",
     "resume": "继续",
     "stop": "停止",
+    "confirmStop": "确定停止上传？",
     "remaining": "剩余",
     "retryFailed": "重试失败"
   },
@@ -529,7 +530,7 @@
     "commandTimeout": "命令超时（分钟）",
     "commandTimeoutHint": "安装/卸载脚本的最大执行时间",
     "uploadWorkers": "上传并发数",
-    "uploadWorkersHint": "同时上传的线程数（1-16）",
+    "uploadWorkersHint": "同时上传的线程数（≥1）",
     "fileCache": "文件目录缓存",
     "directories": "个目录",
     "cacheTtl": "缓存有效期（小时）",

@@ -371,7 +371,7 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
                   disabled={settingsSaving}
                   style={{ marginTop: 8 }}
                 >
-                  {settingsSaving ? t('common.saving') : t('settings.saveSettings')}
+                  {settingsSaving ? t('common.saving') : t('common.save')}
                 </button>
               )}
             </div>
@@ -422,7 +422,7 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
                     onClick={handleSaveSettings}
                     disabled={settingsSaving || !appSettings.cache_enabled}
                   >
-                    {settingsSaving ? t('common.saving') : t('settings.saveSettings')}
+                    {settingsSaving ? t('common.saving') : t('common.save')}
                   </button>
                 )}
                 <button

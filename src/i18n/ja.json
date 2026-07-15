@@ -82,7 +82,8 @@
     "pause": "一時停止",
     "resume": "再開",
     "stop": "停止",
-    "remaining": "残り"
+    "remaining": "残り",
+    "retryFailed": "失敗を再試行"
   },
   "errorDialog": {
     "connectionFailed": "接続失敗",

@@ -82,7 +82,8 @@
     "pause": "일시정지",
     "resume": "계속",
     "stop": "중지",
-    "remaining": "남은 시간"
+    "remaining": "남은 시간",
+    "retryFailed": "실패 재시도"
   },
   "errorDialog": {
     "connectionFailed": "연결 실패",

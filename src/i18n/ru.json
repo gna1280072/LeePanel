@@ -82,7 +82,8 @@
     "pause": "Пауза",
     "resume": "Продолжить",
     "stop": "Остановить",
-    "remaining": "Осталось"
+    "remaining": "Осталось",
+    "retryFailed": "Повторить неудачные"
   },
   "errorDialog": {
     "connectionFailed": "Ошибка подключения",

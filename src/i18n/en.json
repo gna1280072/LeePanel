@@ -82,7 +82,8 @@
     "pause": "Pause",
     "resume": "Resume",
     "stop": "Stop",
-    "remaining": "Remaining"
+    "remaining": "Remaining",
+    "retryFailed": "Retry Failed"
   },
   "errorDialog": {
     "connectionFailed": "Connection Failed",

@@ -370,6 +370,13 @@ function App() {
     setUpload({ queue: [], totalBytes: 0, uploadedBytes: 0, speed: 0, active: false, paused: false, workers: 0 })
   }, [upload.active])
 
+  // ponytail: retry only failed files — re-queues them through the same upload pipeline
+  const handleRetryFailed = useCallback(() => {
+    const failed = upload.queue.filter(q => q.status === 'error')
+    if (failed.length === 0) return
+    handleStartUpload(failed.map(f => ({ file: f.file, fileName: f.fileName, remotePath: f.remotePath })))
+  }, [upload.queue, handleStartUpload])
+
   const [jumpToPath, setJumpToPath] = useState<string | null>(null)
 
   const handleCreateConnection = async (data: { name: string; host: string; port: number; username: string; auth_type: string; key_path?: string; password?: string; remember_me?: boolean }) => {
@@ -702,6 +709,7 @@ function App() {
           onResume={handleResumeUpload}
           onStop={handleStopUpload}
           onDismiss={handleDismissUpload}
+                    onRetry={handleRetryFailed}
         />
       )}
 
@@ -727,12 +735,13 @@ function App() {
 
 
 
-function UploadPanel({ upload, onPause, onResume, onStop, onDismiss }: {
+function UploadPanel({ upload, onPause, onResume, onStop, onDismiss, onRetry }: {
   upload: UploadState
   onPause: () => void
   onResume: () => void
   onStop: () => void
   onDismiss: () => void
+    onRetry: () => void
 }) {
   const { t } = useTranslation()
   const [collapsed, setCollapsed] = useState(false)
@@ -745,6 +754,7 @@ function UploadPanel({ upload, onPause, onResume, onStop, onDismiss }: {
     : `${(upload.speed / 1024).toFixed(0)} KB/s`
   const doneCount = upload.queue.filter(q => q.status === 'done').length
   const allDone = !upload.active && upload.queue.every(q => q.status === 'done' || q.status === 'error' || q.status === 'stopped')
+    const failedCount = upload.queue.filter(q => q.status === 'error').length
 
   return (
     <div className={`upload-panel ${collapsed ? 'collapsed' : ''}`}>
@@ -794,7 +804,12 @@ function UploadPanel({ upload, onPause, onResume, onStop, onDismiss }: {
               </>
             )}
             {!upload.active && (
-              <button className="upload-btn" onClick={onDismiss} title={t('common.close')}>✕ {t('common.close')}</button>
+              <>
+                {failedCount > 0 && (
+                  <button className="upload-btn" onClick={onRetry} title={t('upload.retryFailed')}>🔄 {t('upload.retryFailed')} ({failedCount})</button>
+                )}
+                <button className="upload-btn" onClick={onDismiss} title={t('common.close')}>✕ {t('common.close')}</button>
+              </>
             )}
           </div>
         </>

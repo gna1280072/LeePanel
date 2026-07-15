@@ -82,7 +82,8 @@
     "pause": "暂停",
     "resume": "继续",
     "stop": "停止",
-    "remaining": "剩余"
+    "remaining": "剩余",
+    "retryFailed": "重试失败"
   },
   "errorDialog": {
     "connectionFailed": "连接失败",

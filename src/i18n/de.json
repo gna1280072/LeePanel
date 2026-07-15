@@ -82,7 +82,8 @@
     "pause": "Pause",
     "resume": "Fortsetzen",
     "stop": "Stoppen",
-    "remaining": "Verbleibend"
+    "remaining": "Verbleibend",
+    "retryFailed": "Fehlgeschlagene wiederholen"
   },
   "errorDialog": {
     "connectionFailed": "Verbindung fehlgeschlagen",

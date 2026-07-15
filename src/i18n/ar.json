@@ -82,7 +82,8 @@
     "pause": "إيقاف مؤقت",
     "resume": "استئناف",
     "stop": "إيقاف",
-    "remaining": "المتبقي"
+    "remaining": "المتبقي",
+    "retryFailed": "إعادة المحاولة"
   },
   "errorDialog": {
     "connectionFailed": "فشل الاتصال",

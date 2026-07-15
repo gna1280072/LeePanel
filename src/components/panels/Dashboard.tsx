@@ -159,6 +159,7 @@ export default function Dashboard({ sessionId, onNavigate }: DashboardProps) {
           {sysInfo && (
             <span className="sp-dash-host">{sysInfo.os.hostname}</span>
           )}
+          <p className="sp-dash-welcome">{t('dashboard.welcome')}</p>
         </div>
         <button className="sp-refresh-btn" onClick={fetchData} disabled={loading}>
           {loading ? t('common.refreshing') : t('common.refresh')}

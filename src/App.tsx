@@ -23,6 +23,7 @@ interface UploadState {
   speed: number
   active: boolean
   paused: boolean
+  workers: number
 }
 
 interface SidebarConnection {
@@ -109,7 +110,7 @@ function App() {
 
   // Upload queue state
   const [upload, setUpload] = useState<UploadState>({
-    queue: [], totalBytes: 0, uploadedBytes: 0, speed: 0, active: false, paused: false
+    queue: [], totalBytes: 0, uploadedBytes: 0, speed: 0, active: false, paused: false, workers: 0
   })
   const uploadPauseRef = useRef(false)
   const uploadStopRef = useRef(false)
@@ -154,11 +155,12 @@ function App() {
     const sid = sessionId
     const totalBytes = files.reduce((sum, f) => sum + f.file.size, 0)
     const queue: UploadItem[] = files.map(f => ({ ...f, status: 'pending' as const }))
-    setUpload({ queue, totalBytes, uploadedBytes: 0, speed: 0, active: true, paused: false })
+    setUpload({ queue, totalBytes, uploadedBytes: 0, speed: 0, active: true, paused: false, workers: 0 })
     uploadPauseRef.current = false
     uploadStopRef.current = false
 
     let uploadedBytes = 0
+    let activeWorkers = 0
     const startTime = Date.now()
     const CHUNK_SIZE = 1024 * 1024
     // ponytail: files < 1MB go to tar batch; large files use chunked workers
@@ -167,7 +169,7 @@ function App() {
     const updateSpeed = () => {
       const elapsed = (Date.now() - startTime) / 1000
       const speed = elapsed > 0 ? uploadedBytes / elapsed : 0
-      setUpload(prev => ({ ...prev, uploadedBytes, speed }))
+      setUpload(prev => ({ ...prev, uploadedBytes, speed, workers: activeWorkers }))
     }
 
     // ponytail: batch small files by parent directory into tar archives — N SFTP ops → 1 per dir
@@ -191,6 +193,9 @@ function App() {
       const dirEntries = [...byDir.entries()]
       let dirIdx = 0
       const batchWorker = async () => {
+        activeWorkers++
+        updateSpeed()
+        try {
         while (dirIdx < dirEntries.length) {
           if (uploadStopRef.current) return
           const i = dirIdx++
@@ -244,6 +249,7 @@ function App() {
             }))
           }
         }
+        } finally { activeWorkers--; updateSpeed() }
       }
       const batchWorkers = Array.from({ length: Math.min(settings.upload_workers || 3, dirEntries.length) }, () => batchWorker())
       await Promise.all(batchWorkers)
@@ -267,6 +273,9 @@ function App() {
       let nextIndex = 0
 
       const worker = async () => {
+        activeWorkers++
+        updateSpeed()
+        try {
         while (true) {
           if (uploadStopRef.current) return
           const i = nextIndex++
@@ -326,6 +335,7 @@ function App() {
             }))
           }
         }
+        } finally { activeWorkers--; updateSpeed() }
       }
 
       const workers = Array.from({ length: CONCURRENCY }, () => worker())
@@ -352,12 +362,12 @@ function App() {
   const handleStopUpload = useCallback(() => {
     uploadStopRef.current = true
     uploadPauseRef.current = false
-    setUpload({ queue: [], totalBytes: 0, uploadedBytes: 0, speed: 0, active: false, paused: false })
+    setUpload({ queue: [], totalBytes: 0, uploadedBytes: 0, speed: 0, active: false, paused: false, workers: 0 })
   }, [])
 
   const handleDismissUpload = useCallback(() => {
     if (upload.active) return
-    setUpload({ queue: [], totalBytes: 0, uploadedBytes: 0, speed: 0, active: false, paused: false })
+    setUpload({ queue: [], totalBytes: 0, uploadedBytes: 0, speed: 0, active: false, paused: false, workers: 0 })
   }, [upload.active])
 
   const [jumpToPath, setJumpToPath] = useState<string | null>(null)
@@ -742,7 +752,7 @@ function UploadPanel({ upload, onPause, onResume, onStop, onDismiss }: {
         <span className="upload-panel-title">
           📤 {upload.active ? (upload.paused ? t('upload.paused') : t('upload.uploading')) : allDone ? t('upload.complete') : t('upload.stopped')}
           {' '}{doneCount}/{upload.queue.length}
-          {upload.active && !upload.paused && ` — ${pct}%`}
+          {upload.active && !upload.paused && ` — ${pct}% — 👷 ${upload.workers}`}
         </span>
         <span className="upload-panel-toggle">{collapsed ? '▲' : '▼'}</span>
       </div>

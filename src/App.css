@@ -6153,6 +6153,12 @@ body.dragging-files * {
   cursor: help;
 }
 
+.upload-item-retry {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #d29922;
+}
+
 .upload-panel-actions {
   display: flex;
   gap: 6px;

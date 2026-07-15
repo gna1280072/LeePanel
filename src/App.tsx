@@ -14,6 +14,7 @@ interface UploadItem {
   remotePath: string
   status: 'pending' | 'uploading' | 'done' | 'error' | 'stopped'
   error?: string
+  retryCount?: number
 }
 
 interface UploadState {
@@ -154,7 +155,8 @@ function App() {
     if (!sessionId || files.length === 0) return
     const sid = sessionId
     const totalBytes = files.reduce((sum, f) => sum + f.file.size, 0)
-    const queue: UploadItem[] = files.map(f => ({ ...f, status: 'pending' as const }))
+    const retryCounts = new Map<string, number>()
+    const queue: UploadItem[] = files.map(f => ({ ...f, status: 'pending' as const, retryCount: 0 }))
     setUpload({ queue, totalBytes, uploadedBytes: 0, speed: 0, active: true, paused: false, workers: 0 })
     uploadPauseRef.current = false
     uploadStopRef.current = false
@@ -242,11 +244,24 @@ function App() {
             }))
           } catch (err) {
             if (uploadStopRef.current) return
-            const indices = dirFiles.map(df => queue.indexOf(queue.find(q => q.remotePath === df.remotePath)!))
-            setUpload(prev => ({
-              ...prev,
-              queue: prev.queue.map((q, j) => indices.includes(j) ? { ...q, status: 'error', error: String(err) } : q)
-            }))
+            // ponytail: auto-retry up to 3 times per file before marking error
+            const canRetry = dirFiles.every(f => (retryCounts.get(f.remotePath) || 0) < 3)
+            if (canRetry) {
+              dirFiles.forEach(f => retryCounts.set(f.remotePath, (retryCounts.get(f.remotePath) || 0) + 1))
+              await invoke('ssh_sftp_reset', { sessionId: sid }).catch(() => {})
+              await new Promise(r => setTimeout(r, 1000))
+              if (uploadStopRef.current) return
+              setUpload(prev => ({
+                ...prev,
+                queue: prev.queue.map((q, j) => indices.includes(j) ? { ...q, status: 'pending' as const, retryCount: retryCounts.get(q.remotePath) || 0 } : q)
+              }))
+              dirEntries.push([parentDir, dirFiles])
+            } else {
+              setUpload(prev => ({
+                ...prev,
+                queue: prev.queue.map((q, j) => indices.includes(j) ? { ...q, status: 'error', error: String(err), retryCount: retryCounts.get(q.remotePath) || 0 } : q)
+              }))
+            }
           }
         }
         } finally { activeWorkers--; updateSpeed() }
@@ -329,10 +344,24 @@ function App() {
             }))
           } catch (err) {
             if (uploadStopRef.current) return
-            setUpload(prev => ({
-              ...prev,
-              queue: prev.queue.map(q => q.remotePath === item.remotePath ? { ...q, status: 'error', error: String(err) } : q)
-            }))
+            // ponytail: auto-retry up to 3 times before marking error
+            const count = (retryCounts.get(item.remotePath) || 0) + 1
+            retryCounts.set(item.remotePath, count)
+            if (count < 3) {
+              await invoke('ssh_sftp_reset', { sessionId: sid }).catch(() => {})
+              await new Promise(r => setTimeout(r, 1000))
+              if (uploadStopRef.current) return
+              setUpload(prev => ({
+                ...prev,
+                queue: prev.queue.map(q => q.remotePath === item.remotePath ? { ...q, status: 'pending' as const, retryCount: count } : q)
+              }))
+              largeQueue.push(item)
+            } else {
+              setUpload(prev => ({
+                ...prev,
+                queue: prev.queue.map(q => q.remotePath === item.remotePath ? { ...q, status: 'error', error: String(err), retryCount: count } : q)
+              }))
+            }
           }
         }
         } finally { activeWorkers--; updateSpeed() }
@@ -375,6 +404,7 @@ function App() {
     const failed = upload.queue.filter(q => q.status === 'error')
     if (failed.length === 0) return
     handleStartUpload(failed.map(f => ({ file: f.file, fileName: f.fileName, remotePath: f.remotePath })))
+    // handleStartUpload creates a fresh retryCounts map, so retries reset to 0
   }, [upload.queue, handleStartUpload])
 
   const [jumpToPath, setJumpToPath] = useState<string | null>(null)
@@ -786,6 +816,7 @@ function UploadPanel({ upload, onPause, onResume, onStop, onDismiss, onRetry }: 
                 </span>
                 <span className="upload-item-name" title={item.fileName}>{item.fileName}</span>
                 <span className="upload-item-size">{(item.file.size / 1048576).toFixed(1)}M</span>
+                {item.retryCount && item.retryCount > 0 && item.status === 'pending' && <span className="upload-item-retry">🔄 {item.retryCount}/3</span>}
                 {item.error && <span className="upload-item-error" title={item.error}>!</span>}
               </div>
             ))}

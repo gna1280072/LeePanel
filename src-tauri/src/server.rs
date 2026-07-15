@@ -8324,6 +8324,26 @@ pub async fn update_db_credential_password(
 
 // ===== Database Backup and Import =====
 
+/// Write a temporary MySQL credentials file via SFTP.
+/// Returns the remote path. Caller must `rm -f` it when done.
+async fn write_mysql_cnf_file(
+    session: &SshSession,
+    db_user: &str,
+    db_password: &str,
+) -> Result<String, String> {
+    // Escape for .cnf double-quoted value: backslash and double-quote only
+    let escaped_pw = db_password.replace('\\', "\\\\").replace('"', "\\\"");
+    let cnf_content = format!(
+        "[client]\nuser=\"{}\"\npassword=\"{}\"\n",
+        db_user, escaped_pw
+    );
+    let cnf_path = "/tmp/.db_credentials.cnf";
+    crate::ssh::session_write_file(session, cnf_path, &cnf_content).await?;
+    // Restrict permissions so other users can't read the password
+    let _ = crate::ssh::session_exec_with_output(session, "chmod 600 /tmp/.db_credentials.cnf", 5).await;
+    Ok(cnf_path.to_string())
+}
+
 /// Create a backup of the specified database using mysqldump
 pub async fn backup_database(
     session: &SshSession,
@@ -8362,15 +8382,21 @@ pub async fn backup_database(
     let sql_path = format!("/tmp/db_backups/{}", sql_filename);
     let zip_path = format!("/tmp/db_backups/{}", zip_filename);
 
-    // Execute mysqldump using db's own credentials
+    // Write temp credentials file to avoid shell special-character issues with inline passwords
+    let cnf_path = write_mysql_cnf_file(session, db_user, db_password).await?;
+
+    // Execute mysqldump using credentials file (no password on command line)
     let dump_cmd = format!(
-        "mysqldump --user={} --password={} {} > {}",
-        db_user, db_password, db_name, sql_path
+        "mysqldump --defaults-extra-file={} {} > {}",
+        cnf_path, db_name, sql_path
     );
     
     let (_stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &dump_cmd, 300)
         .await?;
     
+    // Clean up credentials file regardless of outcome
+    let _ = crate::ssh::session_exec_with_output(session, &format!("rm -f {}", cnf_path), 5).await;
+
     if code != 0 {
         return Err(format!("Backup failed: {}", stderr));
     }
@@ -8575,17 +8601,20 @@ pub async fn import_database_from_file(
         return Err(format!("Failed to write SQL file: {}", stderr));
     }
 
-    // Import SQL file into database using db's own credentials
+    // Write temp credentials file to avoid shell special-character issues with inline passwords
+    let cnf_path = write_mysql_cnf_file(session, db_user, db_password).await?;
+
+    // Import SQL file into database using credentials file (no password on command line)
     let import_cmd = format!(
-        "mysql --user={} --password={} {} < {}",
-        db_user, db_password, db_name, temp_path
+        "mysql --defaults-extra-file={} {} < {}",
+        cnf_path, db_name, temp_path
     );
     
     let (_import_stdout, import_stderr, import_code) = crate::ssh::session_exec_with_output(session, &import_cmd, 300)
         .await?;
     
-    // Clean up temp file
-    let _ = crate::ssh::session_exec_with_output(session, &format!("rm -f {}", temp_path), 5).await;
+    // Clean up temp files regardless of outcome
+    let _ = crate::ssh::session_exec_with_output(session, &format!("rm -f {} {}", temp_path, cnf_path), 5).await;
     
     if import_code != 0 {
         return Err(format!("Import failed: {}", import_stderr));
@@ -8651,19 +8680,25 @@ pub async fn import_database_from_backup(
         backup_path.clone()
     };
 
-    // Import SQL into database using db's own credentials
+    // Write temp credentials file to avoid shell special-character issues with inline passwords
+    let cnf_path = write_mysql_cnf_file(session, db_user, db_password).await?;
+
+    // Import SQL into database using credentials file (no password on command line)
     let import_cmd = format!(
-        "mysql --user={} --password={} {} < {}",
-        db_user, db_password, db_name, sql_path
+        "mysql --defaults-extra-file={} {} < {}",
+        cnf_path, db_name, sql_path
     );
     
     let (_import_stdout, import_stderr, import_code) = crate::ssh::session_exec_with_output(session, &import_cmd, 300)
         .await?;
     
-    // Clean up extracted SQL file if it was a zip
-    if backup_filename.ends_with(".zip") {
-        let _ = crate::ssh::session_exec_with_output(session, &format!("rm -f {}", sql_path), 5).await;
-    }
+    // Clean up extracted SQL file if it was a zip, and credentials file
+    let cleanup_files = if backup_filename.ends_with(".zip") {
+        format!("{} {}", sql_path, cnf_path)
+    } else {
+        cnf_path.clone()
+    };
+    let _ = crate::ssh::session_exec_with_output(session, &format!("rm -f {}", cleanup_files), 5).await;
     
     if import_code != 0 {
         return Err(format!("Import failed: {}", import_stderr));

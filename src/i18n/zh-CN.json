@@ -723,7 +723,7 @@
     "compilingPHPSource": "正在源码编译 PHP {{version}}（可能需要 5-15 分钟）...",
     "recoveringProgress": "正在恢复安装进度...",
     "installMethodPackage": "包管理器（快速）",
-    "installMethodSource": "源码编译（宝塔方式）",
+    "installMethodSource": "源码编译（可能需要5-15分钟）",
     "availableVersionsLabel": "系统软件源中可用的 PHP 版本",
     "installPHPVersionWarning": "这将使用系统包管理器安装 PHP {{version}} 及相关扩展。",
     "packageSourcesTitle": "软件源管理",

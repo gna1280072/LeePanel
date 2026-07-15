@@ -847,15 +847,11 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
               <div className="sw-confirm-warning" style={{ color: '#e74c3c' }}>{versionsError}</div>
             ) : (
               <>
-                {/* Install method toggle */}
+                {/* Install method toggle — ponytail: source compile hidden, package only */}
                 <div style={{ marginBottom: '12px', display: 'flex', gap: '8px' }}>
-                  <label style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '6px', border: `1px solid ${!sourceCompile ? '#238636' : '#30363d'}`, background: !sourceCompile ? 'rgba(35,134,54,0.1)' : 'transparent', cursor: 'pointer' }}>
-                    <input type="radio" name="phpInstallMethod" checked={!sourceCompile} onChange={() => setSourceCompile(false)} />
+                  <label style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '6px', border: '1px solid #238636', background: 'rgba(35,134,54,0.1)', cursor: 'pointer' }}>
+                    <input type="radio" name="phpInstallMethod" checked readOnly />
                     <span style={{ fontSize: '13px' }}>{t('software.installMethodPackage')}</span>
-                  </label>
-                  <label style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '6px', border: `1px solid ${sourceCompile ? '#238636' : '#30363d'}`, background: sourceCompile ? 'rgba(35,134,54,0.1)' : 'transparent', cursor: 'pointer' }}>
-                    <input type="radio" name="phpInstallMethod" checked={sourceCompile} onChange={() => setSourceCompile(true)} />
-                    <span style={{ fontSize: '13px' }}>{t('software.installMethodSource')}</span>
                   </label>
                 </div>
                 <div style={{ marginBottom: '16px' }}>

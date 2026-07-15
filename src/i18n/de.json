@@ -721,7 +721,7 @@
     "compilingPHPSource": "PHP {{version}} wird aus Quellcode kompiliert (kann 5-15 Minuten dauern)...",
     "recoveringProgress": "Installationsfortschritt wird wiederhergestellt...",
     "installMethodPackage": "Paket (schnell)",
-    "installMethodSource": "Quellcode-Kompilierung (BT Panel-Stil)",
+    "installMethodSource": "Quellcode-Kompilierung (kann 5-15 Min. dauern)",
     "availableVersionsLabel": "Im System-Repository verfügbare PHP-Versionen",
     "installPHPVersionWarning": "Dies installiert PHP {{version}} und zugehörige Erweiterungen über den System-Paketmanager.",
     "packageSourcesTitle": "Paketquellen-Verwaltung",

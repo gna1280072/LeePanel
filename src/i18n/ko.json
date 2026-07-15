@@ -721,7 +721,7 @@
     "compilingPHPSource": "PHP {{version}} 소스 컴파일 중 (5-15분 소요될 수 있음)...",
     "recoveringProgress": "설치 진행 상황 복구 중...",
     "installMethodPackage": "패키지 (빠름)",
-    "installMethodSource": "소스 컴파일 (BT Panel 스타일)",
+    "installMethodSource": "소스 컴파일 (5-15분 소요될 수 있음)",
     "availableVersionsLabel": "시스템 저장소에서 사용 가능한 PHP 버전",
     "installPHPVersionWarning": "이 작업은 시스템 패키지 관리자를 사용하여 PHP {{version}} 과(와) 관련 확장 기능을 설치합니다.",
     "packageSourcesTitle": "패키지 소스 관리",

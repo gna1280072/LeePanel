@@ -721,7 +721,7 @@
     "compilingPHPSource": "Compilation de PHP {{version}} depuis les sources (peut prendre 5-15 minutes)...",
     "recoveringProgress": "Récupération de la progression de l'installation...",
     "installMethodPackage": "Paquet (rapide)",
-    "installMethodSource": "Compilation depuis les sources (style BT Panel)",
+    "installMethodSource": "Compilation depuis les sources (peut prendre 5-15 min)",
     "availableVersionsLabel": "Versions PHP disponibles dans les dépôts système",
     "installPHPVersionWarning": "Cela installera PHP {{version}} et les extensions associées via le gestionnaire de paquets système.",
     "packageSourcesTitle": "Gestion des sources de paquets",

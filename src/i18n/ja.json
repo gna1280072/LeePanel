@@ -721,7 +721,7 @@
     "compilingPHPSource": "PHP {{version}} をソースからコンパイル中（5〜15分かかる場合があります）...",
     "recoveringProgress": "インストール進捗を復元中...",
     "installMethodPackage": "パッケージ（高速）",
-    "installMethodSource": "ソースコンパイル（BT Panel スタイル）",
+    "installMethodSource": "ソースコンパイル（5〜15分かかる場合があります）",
     "availableVersionsLabel": "システムリポジトリで利用可能な PHP バージョン",
     "installPHPVersionWarning": "システムパッケージマネージャーを使用して PHP {{version}} と関連拡張機能をインストールします。",
     "packageSourcesTitle": "パッケージソース管理",

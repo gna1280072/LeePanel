@@ -721,7 +721,7 @@
     "compilingPHPSource": "正在原始碼編譯 PHP {{version}}（可能需要 5-15 分鐘）...",
     "recoveringProgress": "正在恢復安裝進度...",
     "installMethodPackage": "套件管理器（快速）",
-    "installMethodSource": "原始碼編譯（寶塔方式）",
+    "installMethodSource": "原始碼編譯（可能需要5-15分鐘）",
     "availableVersionsLabel": "系統軟體源中可用的 PHP 版本",
     "installPHPVersionWarning": "這將使用系統套件管理器安裝 PHP {{version}} 及相關擴充套件。",
     "packageSourcesTitle": "軟體源管理",

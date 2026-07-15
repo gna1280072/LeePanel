@@ -776,6 +776,9 @@ function UploadPanel({ upload, onPause, onResume, onStop, onDismiss, onRetry }: 
   const { t } = useTranslation()
   const [collapsed, setCollapsed] = useState(false)
   const [showStopConfirm, setShowStopConfirm] = useState(false)
+  const [stopInput, setStopInput] = useState('')
+  const stopInputRef = useRef<HTMLInputElement>(null)
+  const stopConfirmed = stopInput.trim().toLowerCase() === 'stop'
   const pct = upload.totalBytes > 0 ? Math.round((upload.uploadedBytes / upload.totalBytes) * 100) : 0
   const uploadedMB = (upload.uploadedBytes / 1048576).toFixed(1)
   const totalMB = (upload.totalBytes / 1048576).toFixed(1)
@@ -823,24 +826,16 @@ function UploadPanel({ upload, onPause, onResume, onStop, onDismiss, onRetry }: 
             ))}
           </div>
           <div className="upload-panel-actions">
-            {showStopConfirm ? (
-              <>
-                <span style={{ fontSize: 11, color: '#8b949e', flex: 1 }}>{t('upload.confirmStop')}</span>
-                <button className="upload-btn" onClick={() => { setShowStopConfirm(false); onStop() }} style={{ fontSize: 11 }}>{t('common.confirm')}</button>
-                <button className="upload-btn" onClick={() => setShowStopConfirm(false)} style={{ fontSize: 11 }}>{t('common.cancel')}</button>
-              </>
-            ) : (
-              <>
             {upload.active && !upload.paused && (
               <>
-                <button className="upload-btn" onClick={onPause} title={t('upload.pause')}> {t('upload.pause')}</button>
-                <button className="upload-btn" onClick={() => setShowStopConfirm(true)} title={t('upload.stop')}> {t('upload.stop')}</button>
+                <button className="upload-btn" onClick={onPause} title={t('upload.pause')}>⏸ {t('upload.pause')}</button>
+                <button className="upload-btn" onClick={() => { setShowStopConfirm(true); setStopInput('') }} title={t('upload.stop')}>⏹ {t('upload.stop')}</button>
               </>
             )}
             {upload.active && upload.paused && (
               <>
                 <button className="upload-btn" onClick={onResume} title={t('upload.resume')}>▶ {t('upload.resume')}</button>
-                <button className="upload-btn" onClick={() => setShowStopConfirm(true)} title={t('upload.stop')}>⏹ {t('upload.stop')}</button>
+                <button className="upload-btn" onClick={() => { setShowStopConfirm(true); setStopInput('') }} title={t('upload.stop')}>⏹ {t('upload.stop')}</button>
               </>
             )}
             {!upload.active && (
@@ -851,10 +846,37 @@ function UploadPanel({ upload, onPause, onResume, onStop, onDismiss, onRetry }: 
                 <button className="upload-btn" onClick={onDismiss} title={t('common.close')}>✕ {t('common.close')}</button>
               </>
             )}
-              </>
-            )}
           </div>
         </>
+      )}
+
+      {/* Stop confirmation modal */}
+      {showStopConfirm && (
+        <div className="fb-dialog-overlay" onClick={() => setShowStopConfirm(false)}>
+          <div className="fb-dialog" onClick={(e) => e.stopPropagation()} style={{ minWidth: 380 }}>
+            <button className="modal-close-btn" onClick={() => setShowStopConfirm(false)} title={t('common.close')}>×</button>
+            <div className="fb-dialog-title" style={{ marginBottom: 12 }}>{t('upload.confirmStopTitle')}</div>
+            <p style={{ margin: '0 0 16px', fontSize: 13, color: '#8b949e', lineHeight: 1.6 }}>
+              {t('upload.confirmStopMsg')}
+            </p>
+            <input
+              ref={stopInputRef}
+              className="fb-dialog-input"
+              value={stopInput}
+              onChange={e => setStopInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && stopConfirmed) { onStop(); setShowStopConfirm(false) } }}
+              placeholder={t('upload.confirmStopPlaceholder')}
+              autoFocus
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #30363d', background: '#0d1117', color: '#c9d1d9', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+            />
+            <div className="fb-dialog-actions">
+              <button className="fb-dialog-btn" onClick={() => setShowStopConfirm(false)}>{t('common.cancel')}</button>
+              <button className="fb-dialog-btn danger" disabled={!stopConfirmed} onClick={() => { onStop(); setShowStopConfirm(false) }} style={{ opacity: stopConfirmed ? 1 : 0.4 }}>
+                {t('upload.stop')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

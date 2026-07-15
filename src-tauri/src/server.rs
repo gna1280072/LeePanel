@@ -4213,6 +4213,22 @@ else
   echo "NODEJS_INSTALLED=0"
 fi
 
+# Check zip
+if command -v zip &>/dev/null; then
+  echo "ZIP_INSTALLED=1"
+  echo "ZIP_VERSION=$(zip -v 2>/dev/null | head -1 | grep -oP '[\d.]+' || echo '')"
+else
+  echo "ZIP_INSTALLED=0"
+fi
+
+# Check unzip
+if command -v unzip &>/dev/null; then
+  echo "UNZIP_INSTALLED=1"
+  echo "UNZIP_VERSION=$(unzip -v 2>/dev/null | head -1 | grep -oP '[\d.]+' || echo '')"
+else
+  echo "UNZIP_INSTALLED=0"
+fi
+
 # Check Docker
 if command -v docker &>/dev/null; then
   echo "DOCKER_INSTALLED=1"
@@ -4372,6 +4388,28 @@ fi
         category: "runtime".to_string(),
         installed: get("NODEJS_INSTALLED") == "1",
         version: get("NODEJS_VERSION"),
+        service_name: String::new(),
+        running: false,
+    });
+
+    // zip
+    list.push(SoftwareInfo {
+        name: "zip".to_string(),
+        display_name: "Zip".to_string(),
+        category: "tools".to_string(),
+        installed: get("ZIP_INSTALLED") == "1",
+        version: get("ZIP_VERSION"),
+        service_name: String::new(),
+        running: false,
+    });
+
+    // unzip
+    list.push(SoftwareInfo {
+        name: "unzip".to_string(),
+        display_name: "Unzip".to_string(),
+        category: "tools".to_string(),
+        installed: get("UNZIP_INSTALLED") == "1",
+        version: get("UNZIP_VERSION"),
         service_name: String::new(),
         running: false,
     });
@@ -5592,6 +5630,18 @@ fi
 echo "ACTION_SUCCESS"
 "#, action, action, install_cmd);
         }
+        "zip" => (
+            "zip",
+            "zip",
+            "",
+            "",
+        ),
+        "unzip" => (
+            "unzip",
+            "unzip",
+            "",
+            "",
+        ),
         "nginx" => (
             "nginx",
             "nginx",

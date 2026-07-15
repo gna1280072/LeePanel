@@ -504,6 +504,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
     // ponytail: database category restored (only MySQL/MariaDB removed, Redis/PostgreSQL/Memcached kept)
     { key: 'database', label: t('software.database') },
     { key: 'runtime', label: t('software.runtime') },
+    { key: 'tools', label: t('software.tools') },
     { key: 'container', label: t('software.container') },
     { key: 'custom', label: t('software.customCategory') },
   ]
@@ -632,26 +633,6 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
               {t('software.addSource')}
             </button>
           </div>
-        </div>
-      )}
-
-      {/* Important Notice - Green border, red text */}
-      {(state === 'ready' || state === 'error') && (
-        <div style={{
-          marginTop: '16px',
-          padding: '12px 16px',
-          border: '0.5px solid #2ecc71',
-          borderRadius: '8px',
-          backgroundColor: 'rgba(46, 204, 113, 0.05)',
-        }}>
-          <p style={{
-            margin: 0,
-            color: '#e74c3c',
-            fontWeight: 600,
-            fontSize: '14px',
-          }}>
-            ️ {t('software.importantNotice')}
-          </p>
         </div>
       )}
 
@@ -1164,6 +1145,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                   <option value="web">{t('software.webServer')}</option>
                   <option value="database">{t('software.database')}</option>
                   <option value="runtime">{t('software.runtime')}</option>
+                  <option value="tools">{t('software.tools')}</option>
                   <option value="container">{t('software.container')}</option>
                 </select>
               </div>

@@ -196,7 +196,7 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
       username: 'root',
       auth_type: 'password',
       password: '',
-      remember_me: false
+      remember_me: true
     })
     onNew()
   }

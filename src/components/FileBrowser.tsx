@@ -21,6 +21,7 @@ interface FileBrowserProps {
   onTerminalCommand?: (cmd: string) => void
   onCdHere?: (path: string) => void
   onStartUpload?: (files: { file: File; fileName: string; remotePath: string }[]) => void
+  onNavigateToSoftware?: () => void
 }
 
 export interface FileBrowserHandle {
@@ -159,7 +160,7 @@ const RefreshIcon = () => (
   </svg>
 )
 
-export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrowser({ sessionId, connHost, jumpToPath, onTerminalCommand, onCdHere, onStartUpload }, ref) {
+export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrowser({ sessionId, connHost, jumpToPath, onTerminalCommand, onCdHere, onStartUpload, onNavigateToSoftware }, ref) {
   const { t } = useTranslation()
   const [currentPath, setCurrentPath] = useState('/')
   const [files, setFiles] = useState<FileEntry[]>([])
@@ -187,6 +188,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
   const [downloadProgress, setDownloadProgress] = useState<{ progress: number; status: string } | null>(null)
   const [compressDialog, setCompressDialog] = useState<{ names: string[] } | null>(null)
   const [compressFormat, setCompressFormat] = useState<'zip' | 'tar.gz' | 'tar.bz2'>('zip')
+  const [missingToolModal, setMissingToolModal] = useState<'zip' | 'unzip' | null>(null)
   const [dropActive, setDropActive] = useState(false)
   const dragItemRef = useRef<FileEntry | null>(null)
   const [dragOverTarget, setDragOverTarget] = useState<string | null>(null)
@@ -342,9 +344,11 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       onTerminalCommand?.(`cd ${resolvedPath} && ls -la`)
     } catch (e) {
       console.error('list_dir error:', e)
+      return false
     } finally {
       setLoading(false)
     }
+    return true
   }, [sessionId, currentPath, connHost, onTerminalCommand])
 
 
@@ -768,7 +772,11 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       ;(async () => {
         const saved = connHost ? await invoke<string>('ui_state_get', { key: `fb_path_${connHost}` }).catch(() => '') : ''
         const target = saved || await invoke<string>('ssh_get_cwd', { sessionId }).catch(() => '/root')
-        navigateTo(target, true)
+        const ok = await navigateTo(target, true)
+        // ponytail: saved path may not exist — fall back to /
+        if (!ok && target !== '/') {
+          await navigateTo('/', true)
+        }
       })()
     }
   }, [sessionId, jumpToPath]) // eslint-disable-line
@@ -1356,8 +1364,31 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
 
   const isArchive = (name: string) => /\.(tar\.gz|tgz|tar\.bz2|tbz2|tar\.xz|txz|tar|zip)$/i.test(name)
 
+  // ponytail: pre-flight check — verify CLI tool is installed before compress/extract
+  const checkToolAvailable = async (tool: 'zip' | 'unzip'): Promise<boolean> => {
+    if (!sessionId) return false
+    try {
+      const [, , exitCode] = await invoke<[string, string, number]>('ssh_exec', {
+        sessionId,
+        command: `command -v ${tool}`,
+      })
+      return exitCode === 0
+    } catch {
+      return false
+    }
+  }
+
   const handleCompress = async (names: string[], archiveName: string, format: string) => {
     if (!sessionId || names.length === 0) return
+    // ponytail: pre-flight check — only verify zip when format is zip
+    if (format === 'zip') {
+      const hasZip = await checkToolAvailable('zip')
+      if (!hasZip) {
+        setCompressDialog(null)
+        setMissingToolModal('zip')
+        return
+      }
+    }
     setCompressDialog(null)
     const ext = /\.(tar\.gz|tgz|tar\.bz2|tbz2|tar\.xz|txz|tar|zip)$/i.test(archiveName)
       ? ''
@@ -1946,7 +1977,15 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
             🗜️ {t('files.compress')}{selectedFiles.has(contextMenu.entry.name) && selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
           </div>
           {isArchive(contextMenu.entry.name) && (
-            <div className="fb-context-item" onClick={() => {
+            <div className="fb-context-item" onClick={async () => {
+              if (contextMenu.entry.name.endsWith('.zip')) {
+                const hasUnzip = await checkToolAvailable('unzip')
+                if (!hasUnzip) {
+                  setMissingToolModal('unzip')
+                  setContextMenu(null)
+                  return
+                }
+              }
               handleExtract(contextMenu.entry)
               setContextMenu(null)
             }}>
@@ -2074,6 +2113,26 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
             </div>
             <div className="fb-dialog-actions">
               <button className="fb-dialog-btn primary" onClick={() => setFileInfo(null)}>{t('common.close')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Missing Tool Modal */}
+      {missingToolModal && (
+        <div className="fb-dialog-overlay" onClick={() => setMissingToolModal(null)}>
+          <div className="fb-dialog fb-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close-btn" onClick={() => setMissingToolModal(null)} title="Close">×</button>
+            <div className="fb-dialog-title">{t('files.missingToolTitle')}</div>
+            <div className="fb-confirm-msg">
+              {missingToolModal === 'zip' ? t('files.missingZipTool') : t('files.missingUnzipTool')}
+            </div>
+            <div className="fb-dialog-actions">
+              <button className="fb-dialog-btn" onClick={() => setMissingToolModal(null)}>{t('common.cancel')}</button>
+              <button className="fb-dialog-btn primary" onClick={() => {
+                setMissingToolModal(null)
+                onNavigateToSoftware?.()
+              }}>{t('files.goToSoftware')}</button>
             </div>
           </div>
         </div>

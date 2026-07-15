@@ -335,7 +335,8 @@
     "installLnmp": "安裝 LNMP 環境",
     "connectToView": "連線伺服器以檢視儀表板",
     "loadingSystem": "載入系統資訊中...",
-    "cores": "核心"
+    "cores": "核心",
+        "welcome": "歡迎使用 LeePanel"
   },
   "database": {
     "title": "資料庫管理",

@@ -335,7 +335,8 @@
     "installLnmp": "Instalar ambiente LNMP",
     "connectToView": "Conecte-se a um servidor para ver o painel",
     "loadingSystem": "Carregando informações do sistema...",
-    "cores": "núcleos"
+    "cores": "núcleos",
+        "welcome": "Bem-vindo ao LeePanel"
   },
   "database": {
     "title": "Gerenciamento de banco de dados",

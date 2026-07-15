@@ -335,7 +335,8 @@
     "installLnmp": "安装 LNMP 环境",
     "connectToView": "连接服务器以查看仪表盘",
     "loadingSystem": "加载系统信息中...",
-    "cores": "核"
+    "cores": "核",
+        "welcome": "欢迎使用 LeePanel"
   },
   "database": {
     "title": "数据库管理",

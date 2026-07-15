@@ -335,7 +335,8 @@
     "installLnmp": "LNMP 환경 설치",
     "connectToView": "대시보드를 보려면 서버에 연결하세요",
     "loadingSystem": "시스템 정보 로딩 중...",
-    "cores": "코어"
+    "cores": "코어",
+        "welcome": "LeePanel에 오신 것을 환영합니다"
   },
   "database": {
     "title": "데이터베이스 관리",

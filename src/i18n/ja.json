@@ -335,7 +335,8 @@
     "installLnmp": "LNMP 環境をインストール",
     "connectToView": "サーバーに接続してダッシュボードを表示",
     "loadingSystem": "システム情報を読み込み中...",
-    "cores": "コア"
+    "cores": "コア",
+        "welcome": "LeePanel へようこそ"
   },
   "database": {
     "title": "データベース管理",

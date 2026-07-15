@@ -3073,6 +3073,12 @@ body.dragging-files * {
   font-family: 'JetBrains Mono', monospace;
 }
 
+.sp-dash-welcome {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #8b949e;
+}
+
 .sp-refresh-btn {
   padding: 5px 14px;
   border-radius: 6px;

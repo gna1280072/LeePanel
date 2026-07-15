@@ -335,7 +335,8 @@
     "installLnmp": "Install LNMP Environment",
     "connectToView": "Connect to a server to view dashboard",
     "loadingSystem": "Loading system information...",
-    "cores": "cores"
+    "cores": "cores",
+        "welcome": "Welcome to LeePanel"
   },
   "database": {
     "title": "Database Management",

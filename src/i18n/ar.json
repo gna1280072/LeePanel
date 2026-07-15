@@ -335,7 +335,8 @@
     "installLnmp": "تثبيت بيئة LNMP",
     "connectToView": "اتصل بخادم لعرض لوحة التحكم",
     "loadingSystem": "تحميل معلومات النظام...",
-    "cores": "أنوية"
+    "cores": "أنوية",
+        "welcome": "مرحبًا بك في LeePanel"
   },
   "database": {
     "title": "إدارة قواعد البيانات",

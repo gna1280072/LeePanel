@@ -335,7 +335,8 @@
     "installLnmp": "Installer l'environnement LNMP",
     "connectToView": "Connectez-vous à un serveur pour voir le tableau de bord",
     "loadingSystem": "Chargement des informations système...",
-    "cores": "cœurs"
+    "cores": "cœurs",
+        "welcome": "Bienvenue sur LeePanel"
   },
   "database": {
     "title": "Gestion de base de données",

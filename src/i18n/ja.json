@@ -352,6 +352,7 @@
     "database": "データベース",
     "user": "ユーザー",
     "password": "パスワード",
+    "savePasswordLocally": "パスワードをローカルに保存",
     "backup": "バックアップ",
     "location": "場所",
     "remark": "備考",

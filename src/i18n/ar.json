@@ -352,6 +352,7 @@
     "database": "قاعدة بيانات",
     "user": "مستخدم",
     "password": "كلمة المرور",
+    "savePasswordLocally": "حفظ كلمة المرور محلياً",
     "backup": "نسخة احتياطية",
     "location": "الموقع",
     "remark": "ملاحظة",

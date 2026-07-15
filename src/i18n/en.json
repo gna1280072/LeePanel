@@ -352,6 +352,7 @@
     "database": "Database",
     "user": "User",
     "password": "Password",
+    "savePasswordLocally": "Save password locally",
     "backup": "Backup",
     "location": "Location",
     "remark": "Remark",

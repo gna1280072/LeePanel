@@ -352,6 +352,7 @@
     "database": "Base de données",
     "user": "Utilisateur",
     "password": "Mot de passe",
+    "savePasswordLocally": "Sauvegarder le mot de passe localement",
     "backup": "Sauvegarde",
     "location": "Emplacement",
     "remark": "Remarque",

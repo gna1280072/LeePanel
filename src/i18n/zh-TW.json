@@ -352,6 +352,7 @@
     "database": "資料庫",
     "user": "使用者",
     "password": "密碼",
+    "savePasswordLocally": "本機儲存密碼",
     "backup": "備份",
     "location": "位置",
     "remark": "備註",

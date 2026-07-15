@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 interface DbInfo {
   name: string
+  user?: string // Actual MySQL user name (may differ from db name)
   size_mb: number
   password?: string // Optional: loaded from localStorage
   access_type?: 'local' | 'any' | 'ip' // Access permission type
@@ -18,6 +19,7 @@ interface BackupInfo {
 
 interface DbCredential {
   db_name: string
+  db_user: string
   password: string
   access_type: string
   allowed_ip: string
@@ -72,6 +74,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
   // Change root password dialog
   const [showChangePwDialog, setShowChangePwDialog] = useState(false)
   const [newRootPassword, setNewRootPassword] = useState('')
+  const [showRootPassword, setShowRootPassword] = useState(false)
   const [changingPw, setChangingPw] = useState(false)
   
   // Change access permission dialog
@@ -128,10 +131,11 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
           const cred = credsMap[db.name]
           return cred ? {
             ...db,
+            user: cred.db_user || db.name, // Use saved db_user, fallback to db name
             password: cred.password || undefined,
             access_type: (cred.access_type as 'local' | 'any' | 'ip') || 'local',
             allowed_ip: cred.allowed_ip || undefined,
-          } : db
+          } : { ...db, user: db.name } // Default: user = db name
         })
         setDatabases(withCredentials)
       } catch (e) {
@@ -218,6 +222,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
         await invoke<string>('server_save_db_credentials', {
           sessionId,
           dbName: newDbName.trim(),
+          dbUser: newDbUser.trim(),
           password: savePasswordLocally ? newDbPass : '',
           accessType,
           allowedIp: accessType === 'ip' ? allowedIp.trim() : ''
@@ -254,7 +259,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       const result = await invoke<string>('server_mysql_delete_database', {
         sessionId,
         dbName: deleteTarget.name,
-        dbUser: deleteTarget.name // Default: user has same name as database
+        dbUser: deleteTarget.user || deleteTarget.name // Use actual user, fallback to db name
       })
       setMsg(result)
       setDeleteTarget(null)
@@ -303,6 +308,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
         await invoke<string>('server_save_db_credentials', {
           sessionId,
           dbName: accessTarget.name,
+          dbUser: accessTarget.user,
           password: existingCred?.password || '',
           accessType: newAccessType,
           allowedIp: newAccessType === 'ip' ? newAllowedIp.trim() : ''
@@ -334,7 +340,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
   }
   
   const openAccessDialog = (db: DbInfo) => {
-    setAccessTarget({ name: db.name, user: db.name })
+    setAccessTarget({ name: db.name, user: db.user || db.name })
     // Get current access type from SQLite credentials
     const cred = dbCredentials[db.name]
     setNewAccessType((cred?.access_type as any) || 'local')
@@ -475,7 +481,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
     setBackingUp(true)
     try {
       const result = await invoke<string>('server_backup_database', { 
-        sessionId, dbName: backupTarget, dbUser: backupTarget, dbPassword 
+        sessionId, dbName: backupTarget, dbUser: dbCredentials[backupTarget]?.db_user || backupTarget, dbPassword 
       })
       setMsg(result)
       setTimeout(() => setMsg(''), 3000)
@@ -559,7 +565,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
         const result = await invoke<string>('server_import_database_from_file', {
           sessionId,
           dbName: importTarget,
-          dbUser: importTarget,
+          dbUser: dbCredentials[importTarget]?.db_user || importTarget,
           dbPassword,
           sqlContent
         })
@@ -568,7 +574,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
         const result = await invoke<string>('server_import_database_from_backup', {
           sessionId,
           dbName: importTarget,
-          dbUser: importTarget,
+          dbUser: dbCredentials[importTarget]?.db_user || importTarget,
           dbPassword,
           backupFilename: selectedBackup
         })
@@ -603,7 +609,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       const result = await invoke<string>('server_import_database_from_backup', {
         sessionId,
         dbName: backupTarget,
-        dbUser: backupTarget,
+        dbUser: dbCredentials[backupTarget]?.db_user || backupTarget,
         dbPassword,
         backupFilename: filename
       })
@@ -729,7 +735,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                     />
                   </td>
                   <td>{db.name}</td>
-                  <td>{db.name}</td>
+                  <td>{db.user || db.name}</td>
                   <td>
                     <span style={{ fontFamily: 'monospace' }}>
                       {visiblePasswords.has(db.name) ? (
@@ -820,7 +826,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                       {t('database.accessControl')}
                     </button>
                     <span className="separator">|</span>
-                    <button className="action-link" onClick={() => { setChangePwTarget({ name: db.name, user: db.name }); setNewDbPassword(''); setShowChangePwDbDialog(true); }}>{t('database.changePassword')}</button>
+                    <button className="action-link" onClick={() => { setChangePwTarget({ name: db.name, user: db.user || db.name }); setNewDbPassword(''); setShowChangePwDbDialog(true); }}>{t('database.changePassword')}</button>
                     <span className="separator">|</span>
                     <button 
                       className="action-link danger"
@@ -1036,7 +1042,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                   onChange={(e) => setSavePasswordLocally(e.target.checked)}
                   style={{ width: 'auto', margin: 0 }}
                 />
-                <span>{t('database.password')}</span>
+                <span>{t('database.savePasswordLocally')}</span>
               </label>
             </div>
             
@@ -1125,13 +1131,24 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                   
             <div className="form-group">
               <label>{t('database.newPassword')}:</label>
-              <input
-                type="password"
-                value={newRootPassword}
-                onChange={(e) => setNewRootPassword(e.target.value)}
-                placeholder="Enter new password (min 6 chars)"
-                className="form-input"
-              />
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input
+                  type={showRootPassword ? 'text' : 'password'}
+                  value={newRootPassword}
+                  onChange={(e) => setNewRootPassword(e.target.value)}
+                  placeholder="Enter new password (min 6 chars)"
+                  className="form-input"
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowRootPassword(!showRootPassword)}
+                  title={showRootPassword ? t('database.hidePassword') : t('database.showPassword')}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', padding: '4px 6px', lineHeight: 1 }}
+                >
+                  {showRootPassword ? '🙈' : '👁'}
+                </button>
+              </div>
             </div>
                   
             <div style={{ marginBottom: '12px', fontSize: '12px', color: '#888' }}>
@@ -1285,7 +1302,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                   onChange={(e) => setUpdateLocalPassword(e.target.checked)}
                   style={{ width: 'auto', margin: 0 }}
                 />
-                <span>{t('database.password')}</span>
+                <span>{t('database.savePasswordLocally')}</span>
               </label>
             </div>
             

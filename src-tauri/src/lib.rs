@@ -928,6 +928,7 @@ async fn server_save_db_credentials(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
     session_id: &str,
     db_name: &str,
+    db_user: &str,
     password: &str,
     access_type: &str,
     allowed_ip: &str,
@@ -936,7 +937,7 @@ async fn server_save_db_credentials(
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
     drop(mgr);
-    server::save_db_credentials(&session, &cache, session_id, db_name, password, access_type, allowed_ip).await
+    server::save_db_credentials(&session, &cache, session_id, db_name, db_user, password, access_type, allowed_ip).await
 }
 
 #[tauri::command]

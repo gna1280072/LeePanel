@@ -352,6 +352,7 @@
     "database": "数据库",
     "user": "用户",
     "password": "密码",
+    "savePasswordLocally": "本地保存密码",
     "backup": "备份",
     "location": "位置",
     "remark": "备注",

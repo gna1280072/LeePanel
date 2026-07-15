@@ -352,6 +352,7 @@
     "database": "데이터베이스",
     "user": "사용자",
     "password": "비밀번호",
+    "savePasswordLocally": "로컬에 비밀번호 저장",
     "backup": "백업",
     "location": "위치",
     "remark": "비고",

@@ -117,9 +117,23 @@ pub fn init_db() -> Result<Mutex<SqliteConn>, String> {
         let _ = conn.execute_batch("ALTER TABLE connections ADD COLUMN remember_me INTEGER DEFAULT 0;");
     }
 
+    // v3: add db_user column to db_credentials (ponytail: idempotent ALTER TABLE)
+    let has_db_user: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('db_credentials') WHERE name='db_user'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+    if !has_db_user {
+        let _ = conn.execute_batch("ALTER TABLE db_credentials ADD COLUMN db_user TEXT NOT NULL DEFAULT '';");
+    }
+
     // Update schema version to latest
     conn.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', '2')",
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', '3')",
         [],
     ).map_err(|e| format!("Failed to update schema_version: {}", e))?;
 
@@ -224,6 +238,7 @@ impl FbFavorites {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DbCredential {
     pub db_name: String,
+    pub db_user: String,
     pub password: String,
     pub access_type: String,
     pub allowed_ip: String,
@@ -237,13 +252,14 @@ impl DbCredentialsManager {
         conn: &SqliteConn,
         server_host: &str,
         db_name: &str,
+        db_user: &str,
         password: &str,
         access_type: &str,
         allowed_ip: &str,
     ) -> Result<(), String> {
         conn.execute(
-            "INSERT OR REPLACE INTO db_credentials (server_host, db_name, password, access_type, allowed_ip) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![server_host, db_name, password, access_type, allowed_ip],
+            "INSERT OR REPLACE INTO db_credentials (server_host, db_name, db_user, password, access_type, allowed_ip) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![server_host, db_name, db_user, password, access_type, allowed_ip],
         ).map_err(|e| format!("Failed to save db credentials: {}", e))?;
         Ok(())
     }
@@ -251,14 +267,15 @@ impl DbCredentialsManager {
     /// Get credentials for a specific database
     pub fn get(conn: &SqliteConn, server_host: &str, db_name: &str) -> Option<DbCredential> {
         conn.query_row(
-            "SELECT db_name, password, access_type, allowed_ip FROM db_credentials WHERE server_host = ?1 AND db_name = ?2",
+            "SELECT db_name, db_user, password, access_type, allowed_ip FROM db_credentials WHERE server_host = ?1 AND db_name = ?2",
             rusqlite::params![server_host, db_name],
             |row| {
                 Ok(DbCredential {
                     db_name: row.get(0)?,
-                    password: row.get(1)?,
-                    access_type: row.get(2)?,
-                    allowed_ip: row.get(3)?,
+                    db_user: row.get::<_, String>(1).unwrap_or_default(),
+                    password: row.get(2)?,
+                    access_type: row.get(3)?,
+                    allowed_ip: row.get(4)?,
                 })
             },
         ).ok()
@@ -267,14 +284,15 @@ impl DbCredentialsManager {
     /// List all credentials for a server
     pub fn list_for_server(conn: &SqliteConn, server_host: &str) -> Vec<DbCredential> {
         let mut stmt = conn.prepare(
-            "SELECT db_name, password, access_type, allowed_ip FROM db_credentials WHERE server_host = ?1"
+            "SELECT db_name, db_user, password, access_type, allowed_ip FROM db_credentials WHERE server_host = ?1"
         ).unwrap();
         stmt.query_map([server_host], |row| {
             Ok(DbCredential {
                 db_name: row.get(0)?,
-                password: row.get(1)?,
-                access_type: row.get(2)?,
-                allowed_ip: row.get(3)?,
+                db_user: row.get::<_, String>(1).unwrap_or_default(),
+                password: row.get(2)?,
+                access_type: row.get(3)?,
+                allowed_ip: row.get(4)?,
             })
         }).unwrap()
         .filter_map(|r| r.ok())
@@ -290,7 +308,7 @@ impl DbCredentialsManager {
         Ok(())
     }
 
-    /// Update only the password
+    /// Update only the password (preserves existing db_user)
     pub fn update_password(conn: &SqliteConn, server_host: &str, db_name: &str, password: &str) -> Result<(), String> {
         // Check if record exists
         let exists = conn.query_row(
@@ -307,7 +325,7 @@ impl DbCredentialsManager {
         } else if !password.is_empty() {
             // Create new record with defaults if password is not empty
             conn.execute(
-                "INSERT INTO db_credentials (server_host, db_name, password, access_type, allowed_ip) VALUES (?1, ?2, ?3, 'local', '')",
+                "INSERT INTO db_credentials (server_host, db_name, db_user, password, access_type, allowed_ip) VALUES (?1, ?2, ?2, ?3, 'local', '')",
                 rusqlite::params![server_host, db_name, password],
             ).map_err(|e| format!("Failed to insert password: {}", e))?;
         }

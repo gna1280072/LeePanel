@@ -8212,6 +8212,7 @@ pub async fn save_db_credentials(
     cache: &SshCache,
     session_id: &str,
     db_name: &str,
+    db_user: &str,
     password: &str,
     access_type: &str,
     allowed_ip: &str,
@@ -8220,7 +8221,7 @@ pub async fn save_db_credentials(
         .map_err(|e| format!("Failed to init DB: {}", e))?;
     let conn = db_conn.lock().map_err(|_| "DB lock failed".to_string())?;
     let server_host = session.connect_info.host.clone();
-    crate::db::DbCredentialsManager::save(&conn, &server_host, db_name, password, access_type, allowed_ip)?;
+    crate::db::DbCredentialsManager::save(&conn, &server_host, db_name, db_user, password, access_type, allowed_ip)?;
     Ok("Credentials saved".to_string())
 }
 

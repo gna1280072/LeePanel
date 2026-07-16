@@ -131,6 +131,13 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
     }
   }, [activeSection])
 
+  // ponytail: auto-focus FileBrowser on tab switch so keyboard shortcuts work immediately
+  useEffect(() => {
+    if (activeSection === 'files' && fileBrowserRef.current) {
+      fileBrowserRef.current.focus()
+    }
+  }, [activeSection])
+
   useEffect(() => {
     if (onUploadComplete) onUploadComplete.current = handleUploadComplete
   }, [onUploadComplete, handleUploadComplete])

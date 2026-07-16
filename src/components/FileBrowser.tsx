@@ -27,6 +27,7 @@ interface FileBrowserProps {
 export interface FileBrowserHandle {
   jumpToPath: (path: string) => void
   refreshCurrentDirectory: () => void
+  focus: () => void
 }
 
 interface FileContextMenu {
@@ -354,7 +355,9 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
 
   useImperativeHandle(ref, () => ({
     jumpToPath: (path: string) => navigateTo(path),
-    refreshCurrentDirectory: () => navigateTo(currentPath)
+    refreshCurrentDirectory: () => navigateTo(currentPath),
+    // ponytail: expose focus() so parent can move focus here on tab switch — fixes keyboard shortcuts
+    focus: () => fileBrowserRef.current?.focus()
   }), [navigateTo, currentPath])
 
   // Get unique filename in current directory
@@ -1573,6 +1576,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
   return (
     <div
       ref={fileBrowserRef}
+      tabIndex={-1}
       className={`file-browser ${dropActive ? 'fb-drop-active' : ''}`}
       {...gridDragHandlers}
     >

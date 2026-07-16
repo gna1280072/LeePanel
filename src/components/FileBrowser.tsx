@@ -1916,7 +1916,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               handlePaste()
               setContextMenu(null)
             }}>
-              📎 {t('common.paste')}
+              📥 {t('common.paste')}
               <span className="fb-shortcut">Ctrl+V</span>
             </div>
           )}
@@ -2027,7 +2027,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
                 handlePaste()
                 setBgContextMenu(null)
               }}>
-                📎 {t('common.paste')}
+                📥 {t('common.paste')}
                 <span className="fb-shortcut">Ctrl+V</span>
               </div>
             </>

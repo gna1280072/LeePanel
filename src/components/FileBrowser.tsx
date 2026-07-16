@@ -1993,7 +1993,6 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
             setBgContextMenu(null)
           }}>
             🔄 {t('files.refresh')}
-            <span className="fb-shortcut">F5</span>
           </div>
           <div className="fb-context-divider" />
           <div className="fb-context-item" onClick={() => {

@@ -1755,6 +1755,18 @@ async fn server_get_available_php_versions(
 }
 
 #[tauri::command]
+async fn server_get_available_mysql_versions(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+) -> Result<Vec<String>, String> {
+    let mgr = ssh_mgr.lock().await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_available_mysql_versions(&session, &cache, session_id).await
+}
+
+#[tauri::command]
 async fn server_get_removable_sources(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
     session_id: &str,
@@ -2348,7 +2360,7 @@ pub fn run() {
             server_setup_ssl, server_get_monitor_data,
             server_firewall_list, server_firewall_add,
             server_firewall_remove, server_firewall_toggle,
-            server_get_software_list, server_get_available_php_versions, server_software_action,
+            server_get_software_list, server_get_available_php_versions, server_get_available_mysql_versions, server_software_action,
             server_get_removable_sources, server_remove_sources, server_clean_and_update_sources, server_add_source,
             server_reboot, server_get_uptime,
             server_deploy_pubkey, server_get_ssh_auth_mode,

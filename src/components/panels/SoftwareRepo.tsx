@@ -59,6 +59,13 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
   const [versionsLoading, setVersionsLoading] = useState(false)
   const [versionsError, setVersionsError] = useState('')
 
+  // MySQL version selection modal state
+  const [mysqlVersionModalOpen, setMysqlVersionModalOpen] = useState(false)
+  const [availableMysqlVersions, setAvailableMysqlVersions] = useState<string[]>([])
+  const [selectedMysqlVersion, setSelectedMysqlVersion] = useState('')
+  const [mysqlVersionsLoading, setMysqlVersionsLoading] = useState(false)
+  const [mysqlVersionsError, setMysqlVersionsError] = useState('')
+
   // Package sources management state
   const [sourcesModalOpen, setSourcesModalOpen] = useState(false)
   const [removableSources, setRemovableSources] = useState<string[]>([])
@@ -371,6 +378,51 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
         action: 'install',
         options: opts,
         displayName: `PHP ${selectedVersion}`,
+      })
+      setLogStatus('done')
+    } catch (e) {
+      const msg = String(e)
+      setLogs(prev => [...prev, msg.length > 300 ? msg.slice(0, 300) + '...' : msg])
+      setLogStatus('error')
+    }
+  }
+
+  const handleMySQLInstallClick = async () => {
+    if (!sessionId) return
+    setMysqlVersionsLoading(true)
+    setMysqlVersionsError('')
+    setMysqlVersionModalOpen(true)
+    try {
+      const versions = await invoke<string[]>('server_get_available_mysql_versions', { sessionId })
+      setAvailableMysqlVersions(versions)
+      if (versions.length === 0) {
+        setMysqlVersionsError(t('software.noMysqlVersionsAvailable'))
+      } else {
+        // Default to mariadb if available, otherwise first available
+        setSelectedMysqlVersion(versions.includes('mariadb') ? 'mariadb' : versions[0])
+      }
+    } catch (e) {
+      setMysqlVersionsError(`${t('software.queryFailed')}: ${String(e)}`)
+    } finally {
+      setMysqlVersionsLoading(false)
+    }
+  }
+
+  const handleConfirmMySQLInstall = async () => {
+    if (!sessionId || !selectedMysqlVersion) return
+    setMysqlVersionModalOpen(false)
+    const displayName = selectedMysqlVersion === 'mysql' ? 'MySQL' : 'MariaDB'
+    setState('running')
+    setLogs([t('software.installingMysqlVersion', { version: displayName })])
+    setLogStatus('running')
+    setActionLabel(t('software.installingMysqlVersion', { version: displayName }))
+    try {
+      await invoke('server_software_action', {
+        sessionId,
+        software: 'mysql',
+        action: 'install',
+        options: selectedMysqlVersion,
+        displayName,
       })
       setLogStatus('done')
     } catch (e) {
@@ -766,11 +818,14 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                               onClick={() => {
                                 if (sw.name === 'docker') {
                                   setDockerSourceModal(sw)
+                                } else if (sw.name === 'mysql') {
+                                  handleMySQLInstallClick()
                                 } else {
                                   setConfirmAction({ software: sw, action: 'install' })
                                 }
                               }}
-                            >{t('common.install')}</button>
+                              disabled={mysqlVersionsLoading && mysqlVersionModalOpen}
+                            >{(mysqlVersionsLoading && mysqlVersionModalOpen) ? t('software.queryingVersions') : t('common.install')}</button>
                           )
                         )}
                       </div>
@@ -876,6 +931,61 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                 onClick={handleConfirmPHPInstall}
                 disabled={versionsLoading || !!versionsError || !selectedVersion}
               >{sourceCompile ? t('software.compilePHPVersion', { version: selectedVersion }) : t('software.installPHPVersion', { version: selectedVersion })}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MySQL Version Selection Modal */}
+      {mysqlVersionModalOpen && (
+        <div className="sw-confirm-overlay" onClick={() => setMysqlVersionModalOpen(false)}>
+          <div className="sw-confirm-dialog" onClick={e => e.stopPropagation()}>
+            <div className="sw-confirm-title">{t('software.selectMysqlVersion')}</div>
+
+            {mysqlVersionsLoading ? (
+              <div style={{ padding: '16px', textAlign: 'center' }}>{t('software.queryingVersions')}</div>
+            ) : mysqlVersionsError ? (
+              <div className="sw-confirm-warning" style={{ color: '#e74c3c' }}>{mysqlVersionsError}</div>
+            ) : (
+              <>
+                <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {availableMysqlVersions.map(ver => (
+                    <label
+                      key={ver}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer',
+                        padding: '10px 12px', borderRadius: '8px',
+                        border: `1px solid ${selectedMysqlVersion === ver ? '#238636' : '#30363d'}`,
+                        background: selectedMysqlVersion === ver ? 'rgba(35,134,54,0.1)' : 'transparent',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="mysqlVersion"
+                        checked={selectedMysqlVersion === ver}
+                        onChange={() => setSelectedMysqlVersion(ver)}
+                      />
+                      <span>{ver === 'mysql' ? t('software.mysql') : t('software.mariadb')}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="sw-confirm-warning">
+                  {t('software.installMysqlVersionWarning', { version: selectedMysqlVersion === 'mysql' ? 'MySQL' : 'MariaDB' })}
+                </div>
+              </>
+            )}
+
+            <div className="sw-confirm-actions">
+              <button
+                className="sw-action-btn"
+                onClick={() => setMysqlVersionModalOpen(false)}
+                disabled={mysqlVersionsLoading}
+              >{t('common.cancel')}</button>
+              <button
+                className="sw-action-btn primary"
+                onClick={handleConfirmMySQLInstall}
+                disabled={mysqlVersionsLoading || !!mysqlVersionsError || !selectedMysqlVersion}
+              >{t('software.installMysqlVersion', { version: selectedMysqlVersion === 'mysql' ? 'MySQL' : 'MariaDB' })}</button>
             </div>
           </div>
         </div>

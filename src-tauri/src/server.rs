@@ -4722,6 +4722,52 @@ fi
     Ok(versions)
 }
 
+/// Get available MySQL/MariaDB variants from system repos
+pub async fn get_available_mysql_versions(
+    session: &SshSession,
+    _cache: &SshCache,
+    _session_id: &str,
+) -> Result<Vec<String>, String> {
+    // ponytail: returns "mariadb" and/or "mysql" based on what's actually installable
+    let cmd = r#"
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+fi
+
+if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+  apt-get update -qq 2>/dev/null
+  # Check mariadb
+  M_CAND=$(apt-cache policy mariadb-server 2>/dev/null | grep 'Candidate:' | awk '{print $2}')
+  if [ -n "$M_CAND" ] && [ "$M_CAND" != "(none)" ]; then
+    echo "mariadb"
+  fi
+  # Check mysql
+  MY_CAND=$(apt-cache policy mysql-server 2>/dev/null | grep 'Candidate:' | awk '{print $2}')
+  if [ -n "$MY_CAND" ] && [ "$MY_CAND" != "(none)" ]; then
+    echo "mysql"
+  fi
+else
+  if command -v dnf &>/dev/null; then
+    dnf list available mariadb-server 2>/dev/null | grep -q mariadb && echo "mariadb"
+    dnf list available mysql-server 2>/dev/null | grep -q mysql && echo "mysql"
+  else
+    yum list available mariadb-server 2>/dev/null | grep -q mariadb && echo "mariadb"
+    yum list available mysql-server 2>/dev/null | grep -q mysql && echo "mysql"
+  fi
+fi
+"#;
+
+    let (stdout, _stderr, _exit_code) = crate::ssh::session_exec_with_output(session, cmd, 60).await?;
+
+    let versions: Vec<String> = stdout
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| l == "mariadb" || l == "mysql")
+        .collect();
+
+    Ok(versions)
+}
+
 /// Get list of removable package sources (third-party repos)
 pub async fn get_removable_sources(
     session: &SshSession,
@@ -5649,8 +5695,7 @@ echo "ACTION_SUCCESS"
             "systemctl stop nginx 2>/dev/null; systemctl disable nginx 2>/dev/null",
         ),
         "mysql" => {
-            // ponytail: simplified MySQL/MariaDB install - uses system package manager defaults
-            // No variant/version parsing needed, options parameter is ignored
+            // ponytail: options = "mariadb" or "mysql" to force variant; empty = auto-detect
             let script = r#"#!/bin/bash
 set -e
 echo "=== __ACTION__ MySQL/MariaDB ==="
@@ -5659,7 +5704,7 @@ if [ -f /etc/os-release ]; then
 fi
 
 if [ "__ACTION__" = "install" ]; then
-  echo "Installing MySQL/MariaDB from system repositories..."
+  VARIANT="__OPTIONS__"
   
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
     # Wait for apt lock
@@ -5671,7 +5716,21 @@ if [ "__ACTION__" = "install" ]; then
       sleep 1
     done
     apt-get update -qq
-    if apt-cache show mysql-server &>/dev/null; then
+    
+    # Auto-detect variant if not specified
+    if [ -z "$VARIANT" ]; then
+      M_CAND=$(apt-cache policy mariadb-server 2>/dev/null | grep 'Candidate:' | awk '{print $2}')
+      MY_CAND=$(apt-cache policy mysql-server 2>/dev/null | grep 'Candidate:' | awk '{print $2}')
+      if [ -n "$M_CAND" ] && [ "$M_CAND" != "(none)" ]; then
+        VARIANT="mariadb"
+      elif [ -n "$MY_CAND" ] && [ "$MY_CAND" != "(none)" ]; then
+        VARIANT="mysql"
+      else
+        err "No MySQL or MariaDB package available in system repos"
+      fi
+    fi
+    
+    if [ "$VARIANT" = "mysql" ]; then
       apt-get install -y debconf-utils
       echo "mysql-server mysql-server/root_password password " | debconf-set-selections
       echo "mysql-server mysql-server/root_password_again password " | debconf-set-selections
@@ -5682,7 +5741,18 @@ if [ "__ACTION__" = "install" ]; then
       SVC_NAME="mariadb"
     fi
   else
-    if yum list available mysql-server &>/dev/null; then
+    # Auto-detect variant if not specified
+    if [ -z "$VARIANT" ]; then
+      if yum list available mariadb-server 2>/dev/null | grep -q mariadb; then
+        VARIANT="mariadb"
+      elif yum list available mysql-server 2>/dev/null | grep -q mysql; then
+        VARIANT="mysql"
+      else
+        err "No MySQL or MariaDB package available in system repos"
+      fi
+    fi
+    
+    if [ "$VARIANT" = "mysql" ]; then
       yum install -y --nogpgcheck --assumeyes mysql-server
       SVC_NAME="mysqld"
     else
@@ -5690,6 +5760,8 @@ if [ "__ACTION__" = "install" ]; then
       SVC_NAME="mariadb"
     fi
   fi
+  
+  echo "Installed variant: $VARIANT (service: $SVC_NAME)"
   
   systemctl enable $SVC_NAME
   systemctl start $SVC_NAME
@@ -5704,12 +5776,18 @@ if [ "__ACTION__" = "install" ]; then
   done
   
   echo "Generating random root password..."
-  ROOT_PASS=$(cat /dev/urandom | tr -dc 'A-Za-z0-9!@#$%^&*()_+' | head -c 20)
-  mysqladmin -u root password "$ROOT_PASS"
-  mysql -u root -p"$ROOT_PASS" -e "DELETE FROM mysql.user WHERE User='';"
-  mysql -u root -p"$ROOT_PASS" -e "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost','127.0.0.1','::1');"
-  mysql -u root -p"$ROOT_PASS" -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '$ROOT_PASS';"
-  mysql -u root -p"$ROOT_PASS" -e "FLUSH PRIVILEGES;"
+  # ponytail: alphanumeric only — avoids shell/SQL escaping issues with special chars
+  ROOT_PASS=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 20)
+  
+  # ponytail: single mysql invocation handles all setup; works on fresh install (unix_socket auth)
+  # Uses generic IDENTIFIED BY which is compatible with both MariaDB and MySQL
+  mysql -u root <<SETUP_EOF
+ALTER USER 'root'@'localhost' IDENTIFIED BY '${ROOT_PASS}';
+DELETE FROM mysql.user WHERE User='';
+DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost','127.0.0.1','::1');
+FLUSH PRIVILEGES;
+SETUP_EOF
+  
   echo "$ROOT_PASS" > /tmp/mysql_root_password.txt
   chmod 600 /tmp/mysql_root_password.txt
   printf '[client]\nuser=root\npassword=%s\n' "$ROOT_PASS" > /root/.my.cnf
@@ -5741,7 +5819,7 @@ else
 fi
 echo "ACTION_SUCCESS"
 "#;
-            return script.replace("__ACTION__", action);
+            return script.replace("__ACTION__", action).replace("__OPTIONS__", options);
         }
         "php" => {
             // ponytail: source compile mode — options = "source:X.Y" e.g. "source:8.3"

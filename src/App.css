@@ -1728,6 +1728,17 @@ body.dragging-files * {
   color: #c9d1d9;
   cursor: pointer;
   transition: background 0.12s;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+}
+
+/* ponytail: shortcut hint — small grey text, right-aligned via parent flex */
+.fb-shortcut {
+  font-size: 11px;
+  color: #6e7681;
+  white-space: nowrap;
 }
 
 .fb-context-item:hover {

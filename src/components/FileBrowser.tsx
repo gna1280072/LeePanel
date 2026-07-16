@@ -1902,12 +1902,14 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
             setContextMenu(null)
           }}>
             📋 {t('common.copy')}{selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
+            <span className="fb-shortcut">Ctrl+C</span>
           </div>
           <div className="fb-context-item" onClick={() => {
             handleCut()
             setContextMenu(null)
           }}>
             ✂️ {t('common.cut')}{selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
+            <span className="fb-shortcut">Ctrl+X</span>
           </div>
           {clipboard && (
             <div className="fb-context-item" onClick={() => {
@@ -1915,6 +1917,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               setContextMenu(null)
             }}>
               📎 {t('common.paste')}
+              <span className="fb-shortcut">Ctrl+V</span>
             </div>
           )}
           <div className="fb-context-divider" />
@@ -1973,6 +1976,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
             setContextMenu(null)
           }}>
             🗑️ {t('common.delete')}{selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
+            <span className="fb-shortcut">Del</span>
           </div>
         </div>
       )}
@@ -1989,6 +1993,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
             setBgContextMenu(null)
           }}>
             🔄 {t('files.refresh')}
+            <span className="fb-shortcut">F5</span>
           </div>
           <div className="fb-context-divider" />
           <div className="fb-context-item" onClick={() => {
@@ -2024,6 +2029,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
                 setBgContextMenu(null)
               }}>
                 📎 {t('common.paste')}
+                <span className="fb-shortcut">Ctrl+V</span>
               </div>
             </>
           )}

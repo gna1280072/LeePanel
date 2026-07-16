@@ -1409,58 +1409,17 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
 
   const handleExtract = (entry: FileEntry) => {
     if (!sessionId) return
+    // ponytail: extract directly to user-chosen destDir — no extra subdirectory from archive name
     showPrompt(t('files.extractTo'), async (destDir) => {
       if (!destDir) return
-      // Derive suggested folder name from archive filename
-      let extractName = entry.name
-        .replace(/\.(tar\.gz|tgz|tar\.bz2|tbz2|tar\.xz|txz|tar|zip)$/i, '')
-      if (!extractName) extractName = 'extracted'
-
-      const targetPath = destDir === '/' ? `/${extractName}` : `${destDir}/${extractName}`
-
-      // Check if target already exists and determine its type (file or dir)
-      let conflict = false
-      let isTargetDir = true
-      try {
-        const stat = await invoke<any>('ssh_stat_file', { sessionId, path: targetPath })
-        conflict = stat.exists
-        isTargetDir = stat.isDir
-      } catch {
-        // Path doesn't exist — no conflict
-      }
-
-      let finalName = extractName
-      if (conflict) {
-        const result = await showConflict({ name: extractName, isDir: isTargetDir }, 0)
-        if (result.action === 'skip') {
-          showToast(t('files.skipped', { name: entry.name }), 'info')
-          return
-        }
-        if (result.action === 'rename') {
-          const newName = await new Promise<string>((resolve) => {
-            showPrompt(t('files.folderName'), resolve, extractName + '_1')
-          })
-          if (!newName) return
-          finalName = newName
-        }
-        // 'replace' uses original extractName
-      }
 
       const archivePath = resolvePath(entry)
-      // Build final extraction path with user-specified name
-      const extractDestPath = destDir === '/' ? `/${finalName}` : `${destDir}/${finalName}`
       setArchiveProgress({ type: 'extract', logs: [t('files.extractingFile', { name: entry.name })], done: false })
 
       try {
-        // If conflict and user chose replace, delete existing first
-        if (conflict && finalName === extractName) {
-          await invoke('ssh_delete_file', { sessionId, path: extractDestPath, isDir: isTargetDir })
-        }
+        await invoke('ssh_extract', { sessionId, archivePath, destDir })
 
-        // Extract directly to destination directory with the chosen name
-        await invoke('ssh_extract', { sessionId, archivePath, destDir: extractDestPath })
-
-        showToast(t('files.extracted', { name: entry.name, dest: finalName }), 'success')
+        showToast(t('files.extracted', { name: entry.name, dest: destDir }), 'success')
         navigateTo(currentPath)
       } catch (e) {
         setArchiveProgress(prev => prev ? { ...prev, logs: [...prev.logs, `Error: ${e}`], done: true } : null)

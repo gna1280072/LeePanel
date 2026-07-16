@@ -1758,7 +1758,7 @@ async fn server_get_available_php_versions(
 async fn server_get_available_mysql_versions(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
     session_id: &str,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<server::MysqlVariant>, String> {
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();

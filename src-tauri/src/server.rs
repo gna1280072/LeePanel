@@ -4722,13 +4722,19 @@ fi
     Ok(versions)
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct MysqlVariant {
+    pub variant: String,
+    pub version: String,
+}
+
 /// Get available MySQL/MariaDB variants from system repos
 pub async fn get_available_mysql_versions(
     session: &SshSession,
     _cache: &SshCache,
     _session_id: &str,
-) -> Result<Vec<String>, String> {
-    // ponytail: returns "mariadb" and/or "mysql" based on what's actually installable
+) -> Result<Vec<MysqlVariant>, String> {
+    // ponytail: outputs "variant:version" lines (e.g. "mariadb:11.8.6")
     let cmd = r#"
 if [ -f /etc/os-release ]; then
   . /etc/os-release
@@ -4736,33 +4742,44 @@ fi
 
 if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
   apt-get update -qq 2>/dev/null
-  # Check mariadb
   M_CAND=$(apt-cache policy mariadb-server 2>/dev/null | grep 'Candidate:' | awk '{print $2}')
   if [ -n "$M_CAND" ] && [ "$M_CAND" != "(none)" ]; then
-    echo "mariadb"
+    echo "mariadb:$M_CAND"
   fi
-  # Check mysql
   MY_CAND=$(apt-cache policy mysql-server 2>/dev/null | grep 'Candidate:' | awk '{print $2}')
   if [ -n "$MY_CAND" ] && [ "$MY_CAND" != "(none)" ]; then
-    echo "mysql"
+    echo "mysql:$MY_CAND"
   fi
 else
   if command -v dnf &>/dev/null; then
-    dnf list available mariadb-server 2>/dev/null | grep -q mariadb && echo "mariadb"
-    dnf list available mysql-server 2>/dev/null | grep -q mysql && echo "mysql"
+    M_VER=$(dnf list available mariadb-server 2>/dev/null | grep mariadb | awk '{print $2}' | head -1)
+    [ -n "$M_VER" ] && echo "mariadb:$M_VER"
+    MY_VER=$(dnf list available mysql-server 2>/dev/null | grep mysql | awk '{print $2}' | head -1)
+    [ -n "$MY_VER" ] && echo "mysql:$MY_VER"
   else
-    yum list available mariadb-server 2>/dev/null | grep -q mariadb && echo "mariadb"
-    yum list available mysql-server 2>/dev/null | grep -q mysql && echo "mysql"
+    M_VER=$(yum list available mariadb-server 2>/dev/null | grep mariadb | awk '{print $2}' | head -1)
+    [ -n "$M_VER" ] && echo "mariadb:$M_VER"
+    MY_VER=$(yum list available mysql-server 2>/dev/null | grep mysql | awk '{print $2}' | head -1)
+    [ -n "$MY_VER" ] && echo "mysql:$MY_VER"
   fi
 fi
 "#;
 
     let (stdout, _stderr, _exit_code) = crate::ssh::session_exec_with_output(session, cmd, 60).await?;
 
-    let versions: Vec<String> = stdout
+    let versions: Vec<MysqlVariant> = stdout
         .lines()
-        .map(|l| l.trim().to_string())
-        .filter(|l| l == "mariadb" || l == "mysql")
+        .filter_map(|l| {
+            let l = l.trim();
+            let mut parts = l.splitn(2, ':');
+            let variant = parts.next()?.to_string();
+            let version = parts.next().unwrap_or("").to_string();
+            if variant == "mariadb" || variant == "mysql" {
+                Some(MysqlVariant { variant, version })
+            } else {
+                None
+            }
+        })
         .collect();
 
     Ok(versions)

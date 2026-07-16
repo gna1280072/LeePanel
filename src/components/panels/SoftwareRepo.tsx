@@ -25,6 +25,11 @@ interface ConfirmAction {
   action: 'install' | 'uninstall'
 }
 
+interface MysqlVariant {
+  variant: string
+  version: string
+}
+
 export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
   const { t } = useTranslation()
   const [state, setState] = useState<PanelState>('loading')
@@ -61,7 +66,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
 
   // MySQL version selection modal state
   const [mysqlVersionModalOpen, setMysqlVersionModalOpen] = useState(false)
-  const [availableMysqlVersions, setAvailableMysqlVersions] = useState<string[]>([])
+  const [availableMysqlVersions, setAvailableMysqlVersions] = useState<MysqlVariant[]>([])
   const [selectedMysqlVersion, setSelectedMysqlVersion] = useState('')
   const [mysqlVersionsLoading, setMysqlVersionsLoading] = useState(false)
   const [mysqlVersionsError, setMysqlVersionsError] = useState('')
@@ -393,13 +398,14 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
     setMysqlVersionsError('')
     setMysqlVersionModalOpen(true)
     try {
-      const versions = await invoke<string[]>('server_get_available_mysql_versions', { sessionId })
+      const versions = await invoke<MysqlVariant[]>('server_get_available_mysql_versions', { sessionId })
       setAvailableMysqlVersions(versions)
       if (versions.length === 0) {
         setMysqlVersionsError(t('software.noMysqlVersionsAvailable'))
       } else {
         // Default to mariadb if available, otherwise first available
-        setSelectedMysqlVersion(versions.includes('mariadb') ? 'mariadb' : versions[0])
+        const mariadb = versions.find(v => v.variant === 'mariadb')
+        setSelectedMysqlVersion(mariadb ? mariadb.variant : versions[0].variant)
       }
     } catch (e) {
       setMysqlVersionsError(`${t('software.queryFailed')}: ${String(e)}`)
@@ -411,18 +417,20 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
   const handleConfirmMySQLInstall = async () => {
     if (!sessionId || !selectedMysqlVersion) return
     setMysqlVersionModalOpen(false)
+    const selected = availableMysqlVersions.find(v => v.variant === selectedMysqlVersion)
     const displayName = selectedMysqlVersion === 'mysql' ? 'MySQL' : 'MariaDB'
+    const versionStr = selected?.version || ''
     setState('running')
-    setLogs([t('software.installingMysqlVersion', { version: displayName })])
+    setLogs([t('software.installingMysqlVersion', { version: `${displayName} ${versionStr}` })])
     setLogStatus('running')
-    setActionLabel(t('software.installingMysqlVersion', { version: displayName }))
+    setActionLabel(t('software.installingMysqlVersion', { version: `${displayName} ${versionStr}` }))
     try {
       await invoke('server_software_action', {
         sessionId,
         software: 'mysql',
         action: 'install',
         options: selectedMysqlVersion,
-        displayName,
+        displayName: `${displayName} ${versionStr}`,
       })
       setLogStatus('done')
     } catch (e) {
@@ -949,23 +957,36 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
             ) : (
               <>
                 <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {availableMysqlVersions.map(ver => (
+                  {availableMysqlVersions.map(v => (
                     <label
-                      key={ver}
+                      key={v.variant}
                       style={{
-                        display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer',
-                        padding: '10px 12px', borderRadius: '8px',
-                        border: `1px solid ${selectedMysqlVersion === ver ? '#238636' : '#30363d'}`,
-                        background: selectedMysqlVersion === ver ? 'rgba(35,134,54,0.1)' : 'transparent',
+                        display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer',
+                        padding: '12px 14px', borderRadius: '8px',
+                        border: `1px solid ${selectedMysqlVersion === v.variant ? '#238636' : '#30363d'}`,
+                        background: selectedMysqlVersion === v.variant ? 'rgba(35,134,54,0.1)' : 'transparent',
                       }}
                     >
                       <input
                         type="radio"
                         name="mysqlVersion"
-                        checked={selectedMysqlVersion === ver}
-                        onChange={() => setSelectedMysqlVersion(ver)}
+                        checked={selectedMysqlVersion === v.variant}
+                        onChange={() => setSelectedMysqlVersion(v.variant)}
+                        style={{ marginTop: '3px' }}
                       />
-                      <span>{ver === 'mysql' ? t('software.mysql') : t('software.mariadb')}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 500, marginBottom: '4px' }}>
+                          {v.variant === 'mysql' ? t('software.mysqlLabel') : t('software.mariadbLabel')}
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#8b949e', marginBottom: '4px' }}>
+                          {v.variant === 'mysql' ? t('software.mysqlDesc') : t('software.mariadbDesc')}
+                        </div>
+                        {v.version && (
+                          <div style={{ fontSize: '12px', color: '#58a6ff' }}>
+                            {t('software.mysqlVersionInfo', { version: v.version })}
+                          </div>
+                        )}
+                      </div>
                     </label>
                   ))}
                 </div>

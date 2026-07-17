@@ -8710,17 +8710,8 @@ pub async fn download_db_backup(
         return Err("Backup file not found".to_string());
     }
     
-    // Read file content using cat
-    let read_cmd = format!("cat {}", backup_path);
-    let (content, _, code) = crate::ssh::session_exec_with_output(session, &read_cmd, 30)
-        .await?;
-    
-    if code != 0 {
-        return Err("Failed to read backup file".to_string());
-    }
-    
-    // Return raw bytes (UTF-8 encoded SQL text)
-    Ok(content.into_bytes())
+    // Read file as raw bytes via SFTP (preserves binary data)
+    crate::ssh::session_read_file_bytes(session, &backup_path).await
 }
 
 /// Import database from uploaded SQL content

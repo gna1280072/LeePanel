@@ -599,15 +599,15 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
           }
         }
         // Read file as raw bytes (supports .sql, .tar.gz, .zip)
+        // Pass ArrayBuffer directly for efficient binary transfer via Tauri IPC
         const buffer = await selectedFile.arrayBuffer()
-        const fileBytes = Array.from(new Uint8Array(buffer))
         const result = await invoke<string>('server_import_database_from_file_bytes', {
           sessionId,
           dbName: importTarget,
           dbUser: dbCredentials[importTarget]?.db_user || importTarget,
           dbPassword,
           fileName: selectedFile.name,
-          fileBytes
+          fileBytes: buffer
         })
         setMsg(result)
       } else if (importMode === 'backup' && selectedBackup) {

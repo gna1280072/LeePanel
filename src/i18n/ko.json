@@ -83,9 +83,9 @@
     "resume": "계속",
     "stop": "중지",
     "confirmStop": "업로드를 중지하시겠습니까?",
-        "confirmStopTitle": "업로드 중지 확인",
-        "confirmStopMsg": "모든 파일의 업로드를 중지하시겠습니까? 이 작업은 취소할 수 없습니다.",
-        "confirmStopPlaceholder": "확인하려면 stop을 입력하세요",
+    "confirmStopTitle": "업로드 중지 확인",
+    "confirmStopMsg": "모든 파일의 업로드를 중지하시겠습니까? 이 작업은 취소할 수 없습니다.",
+    "confirmStopPlaceholder": "확인하려면 stop을 입력하세요",
     "remaining": "남은 시간",
     "retryFailed": "실패 재시도"
   },
@@ -220,7 +220,7 @@
     "noSearchResults": "일치하는 파일 없음",
     "uploadFiles": "파일 업로드",
     "uploadFolder": "폴더 업로드",
-        "dragUploadEnabled": "드래그 앤 드롭 파일 업로드가 활성화되었습니다",
+    "dragUploadEnabled": "드래그 앤 드롭 파일 업로드가 활성화되었습니다",
     "dropFilesHere": "업로드할 파일을 여기에 드롭하세요",
     "emptyDir": "빈 디렉토리",
     "selected": "선택됨",
@@ -310,10 +310,10 @@
     "skipped": "건너뜀: {{name}}",
     "extracted": "추출됨: {{name}} → {{dest}}/",
     "extractFailed": "추출 실패: {{error}}",
-        "missingToolTitle": "도구 없음",
-        "missingZipTool": "서버에 zip 도구가 설치되어 있지 않습니다. 소프트웨어 저장소에서 설치해 주세요.",
-        "missingUnzipTool": "서버에 unzip 도구가 설치되어 있지 않습니다. 소프트웨어 저장소에서 설치해 주세요.",
-        "goToSoftware": "소프트웨어로 이동",
+    "missingToolTitle": "도구 없음",
+    "missingZipTool": "서버에 zip 도구가 설치되어 있지 않습니다. 소프트웨어 저장소에서 설치해 주세요.",
+    "missingUnzipTool": "서버에 unzip 도구가 설치되어 있지 않습니다. 소프트웨어 저장소에서 설치해 주세요.",
+    "goToSoftware": "소프트웨어로 이동",
     "startingDownload": "다운로드 시작: {{name}}",
     "downloadError": "다운로드 오류: {{error}}",
     "openImage": "열림: {{name}}",
@@ -345,7 +345,7 @@
     "connectToView": "대시보드를 보려면 서버에 연결하세요",
     "loadingSystem": "시스템 정보 로딩 중...",
     "cores": "코어",
-        "welcome": "LeePanel에 오신 것을 환영합니다"
+    "welcome": "LeePanel에 오신 것을 환영합니다"
   },
   "database": {
     "title": "데이터베이스 관리",
@@ -404,7 +404,9 @@
     "deleteBatchConfirm": "{{count}} 개의 데이터베이스를 삭제하시겠습니까",
     "backupAll": "선 항목 백업 ({{count}})",
     "deleteSelected": "선택 항목 삭제 ({{count}})",
-    "batchOperations": "일괄 작업"
+    "batchOperations": "일괄 작업",
+    "allHosts": "All hosts (%)",
+    "localServer": "Local server (localhost)"
   },
   "redis": {
     "title": "Redis 관리",
@@ -699,7 +701,7 @@
     "webServer": "웹 서버",
     "database": "데이터베이스",
     "runtime": "런타임",
-        "tools": "도구",
+    "tools": "도구",
     "container": "컨테이너",
     "checkingStatus": "소프트웨어 상태 확인 중...",
     "notInstalledLabel": "미설치",
@@ -766,7 +768,17 @@
     "uninstallCustomWarning": "서버에서 {{name}}을(를) 제거합니다.",
     "remove": "제거",
     "removeFromList": "목록에서 제거",
-    "installMultiplePHP": "여기에서 여러 PHP 버전 설치"
+    "installMultiplePHP": "여기에서 여러 PHP 버전 설치",
+    "selectMysqlVersion": "Select MySQL Variant",
+    "noMysqlVersionsAvailable": "No MySQL or MariaDB packages available in system repositories.",
+    "installMysqlVersion": "Install {{version}}",
+    "installingMysqlVersion": "Installing {{version}}...",
+    "installMysqlVersionWarning": "This will install {{version}} using the system package manager.",
+    "mysqlLabel": "MySQL (Oracle)",
+    "mariadbLabel": "MariaDB (Community)",
+    "mysqlDesc": "Official MySQL by Oracle. Enterprise-grade, widely adopted.",
+    "mariadbDesc": "Community fork of MySQL. Fully compatible, faster release cycle, default on most Linux distros.",
+    "mysqlVersionInfo": "Available version: {{version}}"
   },
   "logs": {
     "title": "사이트 로그",

@@ -83,9 +83,9 @@
     "resume": "再開",
     "stop": "停止",
     "confirmStop": "アップロードを停止しますか？",
-        "confirmStopTitle": "アップロード停止の確認",
-        "confirmStopMsg": "すべてのファイルのアップロードを停止しますか？この操作は取り消せません。",
-        "confirmStopPlaceholder": "確認するには stop と入力してください",
+    "confirmStopTitle": "アップロード停止の確認",
+    "confirmStopMsg": "すべてのファイルのアップロードを停止しますか？この操作は取り消せません。",
+    "confirmStopPlaceholder": "確認するには stop と入力してください",
     "remaining": "残り",
     "retryFailed": "失敗を再試行"
   },
@@ -220,7 +220,7 @@
     "noSearchResults": "一致するファイルがありません",
     "uploadFiles": "ファイルをアップロード",
     "uploadFolder": "フォルダをアップロード",
-        "dragUploadEnabled": "ドラッグ＆ドロップでのファイルアップロードが有効です",
+    "dragUploadEnabled": "ドラッグ＆ドロップでのファイルアップロードが有効です",
     "dropFilesHere": "ここにファイルをドラッグしてアップロード",
     "emptyDir": "空のディレクトリ",
     "selected": "選択済み",
@@ -310,10 +310,10 @@
     "skipped": "スキップ: {{name}}",
     "extracted": "展開: {{name}} → {{dest}}/",
     "extractFailed": "展開失敗: {{error}}",
-        "missingToolTitle": "ツール未インストール",
-        "missingZipTool": "サーバーに zip がインストールされていません。ソフトウェアリポジトリからインストールしてください。",
-        "missingUnzipTool": "サーバーに unzip がインストールされていません。ソフトウェアリポジトリからインストールしてください。",
-        "goToSoftware": "ソフトウェアへ",
+    "missingToolTitle": "ツール未インストール",
+    "missingZipTool": "サーバーに zip がインストールされていません。ソフトウェアリポジトリからインストールしてください。",
+    "missingUnzipTool": "サーバーに unzip がインストールされていません。ソフトウェアリポジトリからインストールしてください。",
+    "goToSoftware": "ソフトウェアへ",
     "startingDownload": "ダウンロード開始: {{name}}",
     "downloadError": "ダウンロードエラー: {{error}}",
     "openImage": "開きました: {{name}}",
@@ -345,7 +345,7 @@
     "connectToView": "サーバーに接続してダッシュボードを表示",
     "loadingSystem": "システム情報を読み込み中...",
     "cores": "コア",
-        "welcome": "LeePanel へようこそ"
+    "welcome": "LeePanel へようこそ"
   },
   "database": {
     "title": "データベース管理",
@@ -404,7 +404,9 @@
     "deleteBatchConfirm": "{{count}} 個のデータベースを削除しますか",
     "backupAll": "選択をバックアップ ({{count}})",
     "deleteSelected": "選択を削除 ({{count}})",
-    "batchOperations": "一括操作"
+    "batchOperations": "一括操作",
+    "allHosts": "All hosts (%)",
+    "localServer": "Local server (localhost)"
   },
   "redis": {
     "title": "Redis 管理",
@@ -699,7 +701,7 @@
     "webServer": "Web サーバー",
     "database": "データベース",
     "runtime": "ランタイム",
-        "tools": "ツール",
+    "tools": "ツール",
     "container": "コンテナ",
     "checkingStatus": "ソフトウェアステータスを確認中...",
     "notInstalledLabel": "未インストール",
@@ -766,7 +768,17 @@
     "uninstallCustomWarning": "サーバーから {{name}} をアンインストールします。",
     "remove": "削除",
     "removeFromList": "リストから削除",
-    "installMultiplePHP": "ここで複数のPHPバージョンをインストール"
+    "installMultiplePHP": "ここで複数のPHPバージョンをインストール",
+    "selectMysqlVersion": "Select MySQL Variant",
+    "noMysqlVersionsAvailable": "No MySQL or MariaDB packages available in system repositories.",
+    "installMysqlVersion": "Install {{version}}",
+    "installingMysqlVersion": "Installing {{version}}...",
+    "installMysqlVersionWarning": "This will install {{version}} using the system package manager.",
+    "mysqlLabel": "MySQL (Oracle)",
+    "mariadbLabel": "MariaDB (Community)",
+    "mysqlDesc": "Official MySQL by Oracle. Enterprise-grade, widely adopted.",
+    "mariadbDesc": "Community fork of MySQL. Fully compatible, faster release cycle, default on most Linux distros.",
+    "mysqlVersionInfo": "Available version: {{version}}"
   },
   "logs": {
     "title": "サイトログ",

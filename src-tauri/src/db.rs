@@ -492,3 +492,236 @@ impl SiteMetadataManager {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ponytail: in-memory SQLite for all tests — same schema as init_db, no filesystem
+    fn test_conn() -> SqliteConn {
+        let conn = SqliteConn::open(":memory:").unwrap();
+        conn.execute_batch(
+            "CREATE TABLE fb_favorites (server_host TEXT NOT NULL, path TEXT NOT NULL, PRIMARY KEY(server_host, path));
+             CREATE TABLE fb_dir_cache (server_host TEXT NOT NULL, path TEXT NOT NULL, data TEXT NOT NULL, cached_at INTEGER NOT NULL, PRIMARY KEY(server_host, path));
+             CREATE TABLE db_remarks (server_host TEXT NOT NULL, db_name TEXT NOT NULL, remark TEXT NOT NULL DEFAULT '', PRIMARY KEY(server_host, db_name));
+             CREATE TABLE db_credentials (server_host TEXT NOT NULL, db_name TEXT NOT NULL, db_user TEXT NOT NULL DEFAULT '', password TEXT NOT NULL DEFAULT '', access_type TEXT NOT NULL DEFAULT 'local', allowed_ip TEXT NOT NULL DEFAULT '', PRIMARY KEY(server_host, db_name));
+             CREATE TABLE site_metadata (server_host TEXT NOT NULL, domain TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(server_host, domain));
+             CREATE TABLE custom_software (server_host TEXT NOT NULL, package_name TEXT NOT NULL, display_name TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'other', PRIMARY KEY(server_host, package_name));"
+        ).unwrap();
+        conn
+    }
+
+    // ===== FbFavorites =====
+
+    #[test]
+    fn fb_favorites_add_and_list() {
+        let conn = test_conn();
+        FbFavorites::add(&conn, "host1", "/var/www").unwrap();
+        FbFavorites::add(&conn, "host1", "/etc/nginx").unwrap();
+        let paths = FbFavorites::list(&conn, "host1");
+        assert_eq!(paths, vec!["/etc/nginx", "/var/www"]);
+    }
+
+    #[test]
+    fn fb_favorites_isolation_by_host() {
+        let conn = test_conn();
+        FbFavorites::add(&conn, "host1", "/a").unwrap();
+        FbFavorites::add(&conn, "host2", "/b").unwrap();
+        assert_eq!(FbFavorites::list(&conn, "host1"), vec!["/a"]);
+        assert_eq!(FbFavorites::list(&conn, "host2"), vec!["/b"]);
+    }
+
+    #[test]
+    fn fb_favorites_remove() {
+        let conn = test_conn();
+        FbFavorites::add(&conn, "host1", "/a").unwrap();
+        FbFavorites::remove(&conn, "host1", "/a").unwrap();
+        assert!(FbFavorites::list(&conn, "host1").is_empty());
+    }
+
+    #[test]
+    fn fb_favorites_add_duplicate_ignored() {
+        let conn = test_conn();
+        FbFavorites::add(&conn, "host1", "/a").unwrap();
+        FbFavorites::add(&conn, "host1", "/a").unwrap();
+        assert_eq!(FbFavorites::list(&conn, "host1").len(), 1);
+    }
+
+    // ===== FbDirCache =====
+
+    #[test]
+    fn fb_dir_cache_put_and_get() {
+        let conn = test_conn();
+        FbDirCache::put(&conn, "host1", "/tmp", r#"[{"name":"a.txt"}]"#).unwrap();
+        let result = FbDirCache::get(&conn, "host1", "/tmp", 24);
+        assert!(result.is_some());
+        let (data, _) = result.unwrap();
+        assert!(data.contains("a.txt"));
+    }
+
+    #[test]
+    fn fb_dir_cache_expired_returns_none() {
+        let conn = test_conn();
+        // Manually insert with old timestamp
+        let old_ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64 - 48 * 3600 * 1000;
+        conn.execute(
+            "INSERT INTO fb_dir_cache VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params!["host1", "/tmp", "data", old_ts],
+        ).unwrap();
+        assert!(FbDirCache::get(&conn, "host1", "/tmp", 24).is_none());
+    }
+
+    #[test]
+    fn fb_dir_cache_touch_updates_timestamp() {
+        let conn = test_conn();
+        FbDirCache::put(&conn, "host1", "/tmp", "data").unwrap();
+        FbDirCache::touch(&conn, "host1", "/tmp").unwrap();
+        assert!(FbDirCache::get(&conn, "host1", "/tmp", 24).is_some());
+    }
+
+    #[test]
+    fn fb_dir_cache_count_and_clear() {
+        let conn = test_conn();
+        FbDirCache::put(&conn, "host1", "/a", "1").unwrap();
+        FbDirCache::put(&conn, "host1", "/b", "2").unwrap();
+        assert_eq!(FbDirCache::count(&conn), 2);
+        let cleared = FbDirCache::clear_all(&conn).unwrap();
+        assert_eq!(cleared, 2);
+        assert_eq!(FbDirCache::count(&conn), 0);
+    }
+
+    // ===== DbCredentialsManager =====
+
+    #[test]
+    fn db_credentials_save_and_get() {
+        let conn = test_conn();
+        DbCredentialsManager::save(&conn, "host1", "mydb", "admin", "secret", "local", "").unwrap();
+        let cred = DbCredentialsManager::get(&conn, "host1", "mydb").unwrap();
+        assert_eq!(cred.db_name, "mydb");
+        assert_eq!(cred.db_user, "admin");
+        assert_eq!(cred.password, "secret");
+        assert_eq!(cred.access_type, "local");
+    }
+
+    #[test]
+    fn db_credentials_list_for_server() {
+        let conn = test_conn();
+        DbCredentialsManager::save(&conn, "host1", "db1", "u1", "p1", "local", "").unwrap();
+        DbCredentialsManager::save(&conn, "host1", "db2", "u2", "p2", "remote", "%").unwrap();
+        DbCredentialsManager::save(&conn, "host2", "db3", "u3", "p3", "local", "").unwrap();
+        let creds = DbCredentialsManager::list_for_server(&conn, "host1");
+        assert_eq!(creds.len(), 2);
+    }
+
+    #[test]
+    fn db_credentials_delete() {
+        let conn = test_conn();
+        DbCredentialsManager::save(&conn, "host1", "mydb", "u", "p", "local", "").unwrap();
+        DbCredentialsManager::delete(&conn, "host1", "mydb").unwrap();
+        assert!(DbCredentialsManager::get(&conn, "host1", "mydb").is_none());
+    }
+
+    #[test]
+    fn db_credentials_update_password() {
+        let conn = test_conn();
+        DbCredentialsManager::save(&conn, "host1", "mydb", "admin", "old", "local", "").unwrap();
+        DbCredentialsManager::update_password(&conn, "host1", "mydb", "new").unwrap();
+        let cred = DbCredentialsManager::get(&conn, "host1", "mydb").unwrap();
+        assert_eq!(cred.password, "new");
+        assert_eq!(cred.db_user, "admin"); // preserved
+    }
+
+    #[test]
+    fn db_credentials_update_password_creates_if_missing() {
+        let conn = test_conn();
+        DbCredentialsManager::update_password(&conn, "host1", "newdb", "pass123").unwrap();
+        let cred = DbCredentialsManager::get(&conn, "host1", "newdb").unwrap();
+        assert_eq!(cred.password, "pass123");
+    }
+
+    #[test]
+    fn db_credentials_clear_password() {
+        let conn = test_conn();
+        DbCredentialsManager::save(&conn, "host1", "mydb", "u", "secret", "local", "").unwrap();
+        DbCredentialsManager::clear_password(&conn, "host1", "mydb").unwrap();
+        let cred = DbCredentialsManager::get(&conn, "host1", "mydb").unwrap();
+        assert_eq!(cred.password, "");
+    }
+
+    // ===== DbRemarksManager =====
+
+    #[test]
+    fn db_remarks_save_and_get() {
+        let conn = test_conn();
+        DbRemarksManager::save(&conn, "host1", "mydb", "Production DB").unwrap();
+        assert_eq!(DbRemarksManager::get(&conn, "host1", "mydb"), Some("Production DB".to_string()));
+    }
+
+    #[test]
+    fn db_remarks_list_for_server() {
+        let conn = test_conn();
+        DbRemarksManager::save(&conn, "host1", "db1", "note1").unwrap();
+        DbRemarksManager::save(&conn, "host1", "db2", "note2").unwrap();
+        let list = DbRemarksManager::list_for_server(&conn, "host1");
+        assert_eq!(list.len(), 2);
+    }
+
+    #[test]
+    fn db_remarks_delete() {
+        let conn = test_conn();
+        DbRemarksManager::save(&conn, "host1", "mydb", "test").unwrap();
+        DbRemarksManager::delete(&conn, "host1", "mydb").unwrap();
+        assert_eq!(DbRemarksManager::get(&conn, "host1", "mydb"), None);
+    }
+
+    // ===== CustomSoftwareManager =====
+
+    #[test]
+    fn custom_software_add_and_list() {
+        let conn = test_conn();
+        CustomSoftwareManager::add(&conn, "host1", "htop", "Htop", "monitoring").unwrap();
+        let list = CustomSoftwareManager::list(&conn, "host1");
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].package_name, "htop");
+        assert_eq!(list[0].display_name, "Htop");
+        assert_eq!(list[0].category, "monitoring");
+    }
+
+    #[test]
+    fn custom_software_remove() {
+        let conn = test_conn();
+        CustomSoftwareManager::add(&conn, "host1", "htop", "Htop", "monitoring").unwrap();
+        CustomSoftwareManager::remove(&conn, "host1", "htop").unwrap();
+        assert!(CustomSoftwareManager::list(&conn, "host1").is_empty());
+    }
+
+    // ===== SiteMetadataManager =====
+
+    #[test]
+    fn site_metadata_save_or_get_first_call_stores() {
+        let conn = test_conn();
+        let ts = SiteMetadataManager::save_or_get_created_at(&conn, "host1", "example.com", 1000).unwrap();
+        assert_eq!(ts, 1000);
+    }
+
+    #[test]
+    fn site_metadata_save_or_get_second_call_returns_stored() {
+        let conn = test_conn();
+        SiteMetadataManager::save_or_get_created_at(&conn, "host1", "example.com", 1000).unwrap();
+        let ts = SiteMetadataManager::save_or_get_created_at(&conn, "host1", "example.com", 2000).unwrap();
+        assert_eq!(ts, 1000); // returns original, not 2000
+    }
+
+    #[test]
+    fn site_metadata_list_and_delete() {
+        let conn = test_conn();
+        SiteMetadataManager::save_or_get_created_at(&conn, "host1", "a.com", 100).unwrap();
+        SiteMetadataManager::save_or_get_created_at(&conn, "host1", "b.com", 200).unwrap();
+        let list = SiteMetadataManager::list_for_server(&conn, "host1");
+        assert_eq!(list.len(), 2);
+        SiteMetadataManager::delete(&conn, "host1", "a.com").unwrap();
+        let list = SiteMetadataManager::list_for_server(&conn, "host1");
+        assert_eq!(list.len(), 1);
+    }
+}

@@ -220,7 +220,7 @@
     "noSearchResults": "لا توجد ملفات مطابقة",
     "uploadFiles": "رفع ملفات",
     "uploadFolder": "رفع مجلد",
-        "dragUploadEnabled": "تم تفعيل رفع الملفات بالسحب والإفلات",
+    "dragUploadEnabled": "تم تفعيل رفع الملفات بالسحب والإفلات",
     "dropFilesHere": "أسقط الملفات هنا للرفع",
     "emptyDir": "دليل فارغ",
     "selected": "محدد",
@@ -310,10 +310,10 @@
     "skipped": "تُخطي: {{name}}",
     "extracted": "استُخرج: {{name}} → {{dest}}/",
     "extractFailed": "فشل الاستخراج: {{error}}",
-        "missingToolTitle": "أداة مفقودة",
-        "missingZipTool": "أداة zip غير مثبتة على الخادم. يرجى تثبيتها من مستودع البرامج.",
-        "missingUnzipTool": "أداة unzip غير مثبتة على الخادم. يرجى تثبيتها من مستودع البرامج.",
-        "goToSoftware": "الذهاب إلى البرامج",
+    "missingToolTitle": "أداة مفقودة",
+    "missingZipTool": "أداة zip غير مثبتة على الخادم. يرجى تثبيتها من مستودع البرامج.",
+    "missingUnzipTool": "أداة unzip غير مثبتة على الخادم. يرجى تثبيتها من مستودع البرامج.",
+    "goToSoftware": "الذهاب إلى البرامج",
     "startingDownload": "بدء التحميل: {{name}}",
     "downloadError": "خطأ في التحميل: {{error}}",
     "openImage": "فُتح: {{name}}",
@@ -345,7 +345,7 @@
     "connectToView": "اتصل بخادم لعرض لوحة التحكم",
     "loadingSystem": "تحميل معلومات النظام...",
     "cores": "أنوية",
-        "welcome": "مرحبًا بك في LeePanel"
+    "welcome": "مرحبًا بك في LeePanel"
   },
   "database": {
     "title": "إدارة قواعد البيانات",
@@ -404,7 +404,9 @@
     "deleteBatchConfirm": "هل أنت متأكد من حذف {{count}} قواعد بيانات",
     "backupAll": "نسخ المحدد احتياطياً ({{count}})",
     "deleteSelected": "حذف المحدد ({{count}})",
-    "batchOperations": "عمليات مجمعة"
+    "batchOperations": "عمليات مجمعة",
+    "allHosts": "All hosts (%)",
+    "localServer": "Local server (localhost)"
   },
   "redis": {
     "title": "إدارة Redis",
@@ -699,7 +701,7 @@
     "webServer": "خادم الويب",
     "database": "قاعدة البيانات",
     "runtime": "بيئة التشغيل",
-        "tools": "أدوات",
+    "tools": "أدوات",
     "container": "حاوية",
     "checkingStatus": "التحقق من حالة البرمجيات...",
     "notInstalledLabel": "غير مُثبَّت",
@@ -766,7 +768,17 @@
     "uninstallCustomWarning": "سيتم إلغاء تثبيت {{name}} من الخادم.",
     "remove": "إزالة",
     "removeFromList": "إزالة من القائمة",
-    "installMultiplePHP": "تثبيت إصدارات PHP متعددة هنا"
+    "installMultiplePHP": "تثبيت إصدارات PHP متعددة هنا",
+    "selectMysqlVersion": "Select MySQL Variant",
+    "noMysqlVersionsAvailable": "No MySQL or MariaDB packages available in system repositories.",
+    "installMysqlVersion": "Install {{version}}",
+    "installingMysqlVersion": "Installing {{version}}...",
+    "installMysqlVersionWarning": "This will install {{version}} using the system package manager.",
+    "mysqlLabel": "MySQL (Oracle)",
+    "mariadbLabel": "MariaDB (Community)",
+    "mysqlDesc": "Official MySQL by Oracle. Enterprise-grade, widely adopted.",
+    "mariadbDesc": "Community fork of MySQL. Fully compatible, faster release cycle, default on most Linux distros.",
+    "mysqlVersionInfo": "Available version: {{version}}"
   },
   "logs": {
     "title": "سجلات الموقع",

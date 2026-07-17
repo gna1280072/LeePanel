@@ -1581,3 +1581,78 @@ pub async fn session_disconnect(session: &SshSession) -> Result<(), String> {
     }).await;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ===== parse_curl_progress =====
+
+    #[test]
+    fn parse_curl_progress_percentage() {
+        // ponytail: function only handles simple 'N%' patterns; prefix like '#=#=#' is stripped upstream by split('\r')
+        assert_eq!(parse_curl_progress("45.2%"), Some(45.2));
+        assert_eq!(parse_curl_progress("100%"), Some(100.0));
+        assert_eq!(parse_curl_progress("0.5%"), Some(0.5));
+    }
+
+    #[test]
+    fn parse_curl_progress_no_percent() {
+        assert_eq!(parse_curl_progress("downloading..."), None);
+        assert_eq!(parse_curl_progress(""), None);
+    }
+
+    // ===== SshCache =====
+
+    #[tokio::test]
+    async fn cache_put_and_get() {
+        let cache = SshCache::new();
+        cache.put("s1", "system_info", "ubuntu".to_string());
+        assert_eq!(cache.get("s1", "system_info", 60), Some("ubuntu".to_string()));
+    }
+
+    #[tokio::test]
+    async fn cache_miss_returns_none() {
+        let cache = SshCache::new();
+        assert_eq!(cache.get("s1", "nonexistent", 60), None);
+    }
+
+    #[tokio::test]
+    async fn cache_ttl_zero_always_valid() {
+        // ttl_secs=0 means no expiry check
+        let cache = SshCache::new();
+        cache.put("s1", "k", "v".to_string());
+        assert_eq!(cache.get("s1", "k", 0), Some("v".to_string()));
+    }
+
+    #[tokio::test]
+    async fn cache_invalidate_specific_keys() {
+        let cache = SshCache::new();
+        cache.put("s1", "a", "1".to_string());
+        cache.put("s1", "b", "2".to_string());
+        cache.invalidate("s1", &["a"]);
+        assert_eq!(cache.get("s1", "a", 60), None);
+        assert_eq!(cache.get("s1", "b", 60), Some("2".to_string()));
+    }
+
+    #[tokio::test]
+    async fn cache_clear_session() {
+        let cache = SshCache::new();
+        cache.put("s1", "k1", "v1".to_string());
+        cache.put("s1", "k2", "v2".to_string());
+        cache.put("s2", "k1", "other".to_string());
+        cache.clear_session("s1");
+        assert_eq!(cache.get("s1", "k1", 60), None);
+        assert_eq!(cache.get("s1", "k2", 60), None);
+        assert_eq!(cache.get("s2", "k1", 60), Some("other".to_string()));
+    }
+
+    #[tokio::test]
+    async fn cache_session_isolation() {
+        let cache = SshCache::new();
+        cache.put("s1", "key", "val1".to_string());
+        cache.put("s2", "key", "val2".to_string());
+        assert_eq!(cache.get("s1", "key", 60), Some("val1".to_string()));
+        assert_eq!(cache.get("s2", "key", 60), Some("val2".to_string()));
+    }
+}

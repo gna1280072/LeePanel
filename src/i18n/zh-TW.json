@@ -83,9 +83,9 @@
     "resume": "繼續",
     "stop": "停止",
     "confirmStop": "確定停止上傳？",
-        "confirmStopTitle": "確認停止上傳",
-        "confirmStopMsg": "您是否要停止所有檔案的上傳？此操作無法復原。",
-        "confirmStopPlaceholder": "請輸入 stop 以確認",
+    "confirmStopTitle": "確認停止上傳",
+    "confirmStopMsg": "您是否要停止所有檔案的上傳？此操作無法復原。",
+    "confirmStopPlaceholder": "請輸入 stop 以確認",
     "remaining": "剩餘",
     "retryFailed": "重試失敗"
   },
@@ -220,7 +220,7 @@
     "noSearchResults": "無匹配檔案",
     "uploadFiles": "上傳檔案",
     "uploadFolder": "上傳資料夾",
-        "dragUploadEnabled": "已開啟拖動檔案上傳功能",
+    "dragUploadEnabled": "已開啟拖動檔案上傳功能",
     "dropFilesHere": "拖曳檔案到此處上傳",
     "emptyDir": "空目錄",
     "selected": "已選擇",
@@ -310,10 +310,10 @@
     "skipped": "已跳過: {{name}}",
     "extracted": "已解壓: {{name}} → {{dest}}/",
     "extractFailed": "解壓失敗: {{error}}",
-        "missingToolTitle": "缺少工具",
-        "missingZipTool": "伺服器未安裝 zip 工具，請前往軟體倉庫安裝。",
-        "missingUnzipTool": "伺服器未安裝 unzip 工具，請前往軟體倉庫安裝。",
-        "goToSoftware": "前往軟體倉庫",
+    "missingToolTitle": "缺少工具",
+    "missingZipTool": "伺服器未安裝 zip 工具，請前往軟體倉庫安裝。",
+    "missingUnzipTool": "伺服器未安裝 unzip 工具，請前往軟體倉庫安裝。",
+    "goToSoftware": "前往軟體倉庫",
     "startingDownload": "開始下載: {{name}}",
     "downloadError": "下載出錯: {{error}}",
     "openImage": "已開啟: {{name}}",
@@ -345,7 +345,7 @@
     "connectToView": "連線伺服器以檢視儀表板",
     "loadingSystem": "載入系統資訊中...",
     "cores": "核心",
-        "welcome": "歡迎使用 LeePanel"
+    "welcome": "歡迎使用 LeePanel"
   },
   "database": {
     "title": "資料庫管理",
@@ -404,7 +404,9 @@
     "deleteBatchConfirm": "確定要刪除 {{count}} 個資料庫嗎",
     "backupAll": "備份所選 ({{count}})",
     "deleteSelected": "刪除所選 ({{count}})",
-    "batchOperations": "批次操作"
+    "batchOperations": "批次操作",
+    "allHosts": "All hosts (%)",
+    "localServer": "Local server (localhost)"
   },
   "redis": {
     "title": "Redis 管理",
@@ -699,7 +701,7 @@
     "webServer": "Web 伺服器",
     "database": "資料庫",
     "runtime": "執行環境",
-        "tools": "工具",
+    "tools": "工具",
     "container": "容器",
     "checkingStatus": "檢查軟體狀態中...",
     "notInstalledLabel": "未安裝",
@@ -766,7 +768,17 @@
     "uninstallCustomWarning": "這將從伺服器上解除安裝 {{name}}。",
     "remove": "移除",
     "removeFromList": "從清單移除",
-    "installMultiplePHP": "在此安裝多版本php"
+    "installMultiplePHP": "在此安裝多版本php",
+    "selectMysqlVersion": "Select MySQL Variant",
+    "noMysqlVersionsAvailable": "No MySQL or MariaDB packages available in system repositories.",
+    "installMysqlVersion": "Install {{version}}",
+    "installingMysqlVersion": "Installing {{version}}...",
+    "installMysqlVersionWarning": "This will install {{version}} using the system package manager.",
+    "mysqlLabel": "MySQL (Oracle)",
+    "mariadbLabel": "MariaDB (Community)",
+    "mysqlDesc": "Official MySQL by Oracle. Enterprise-grade, widely adopted.",
+    "mariadbDesc": "Community fork of MySQL. Fully compatible, faster release cycle, default on most Linux distros.",
+    "mysqlVersionInfo": "Available version: {{version}}"
   },
   "logs": {
     "title": "站點日誌",

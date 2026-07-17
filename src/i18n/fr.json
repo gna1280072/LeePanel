@@ -83,9 +83,9 @@
     "resume": "Reprendre",
     "stop": "Arrêter",
     "confirmStop": "Arrêter le téléversement ?",
-        "confirmStopTitle": "Confirmer l'arrêt du téléversement",
-        "confirmStopMsg": "Voulez-vous vraiment arrêter le téléversement de tous les fichiers ? Cette action est irréversible.",
-        "confirmStopPlaceholder": "Tapez \"stop\" pour confirmer",
+    "confirmStopTitle": "Confirmer l'arrêt du téléversement",
+    "confirmStopMsg": "Voulez-vous vraiment arrêter le téléversement de tous les fichiers ? Cette action est irréversible.",
+    "confirmStopPlaceholder": "Tapez \"stop\" pour confirmer",
     "remaining": "Restant",
     "retryFailed": "Réessayer les échoués"
   },
@@ -220,7 +220,7 @@
     "noSearchResults": "Aucun fichier correspondant",
     "uploadFiles": "Téléverser des fichiers",
     "uploadFolder": "Téléverser un dossier",
-        "dragUploadEnabled": "Le téléversement par glisser-déposer est activé",
+    "dragUploadEnabled": "Le téléversement par glisser-déposer est activé",
     "dropFilesHere": "Déposez les fichiers ici pour les téléverser",
     "emptyDir": "Répertoire vide",
     "selected": "sélectionné",
@@ -310,10 +310,10 @@
     "skipped": "Ignoré : {{name}}",
     "extracted": "Extrait : {{name}} → {{dest}}/",
     "extractFailed": "Échec de l'extraction : {{error}}",
-        "missingToolTitle": "Outil manquant",
-        "missingZipTool": "L'outil zip n'est pas installé sur ce serveur. Veuillez l'installer depuis le dépôt logiciel.",
-        "missingUnzipTool": "L'outil unzip n'est pas installé sur ce serveur. Veuillez l'installer depuis le dépôt logiciel.",
-        "goToSoftware": "Aller aux logiciels",
+    "missingToolTitle": "Outil manquant",
+    "missingZipTool": "L'outil zip n'est pas installé sur ce serveur. Veuillez l'installer depuis le dépôt logiciel.",
+    "missingUnzipTool": "L'outil unzip n'est pas installé sur ce serveur. Veuillez l'installer depuis le dépôt logiciel.",
+    "goToSoftware": "Aller aux logiciels",
     "startingDownload": "Démarrage du téléchargement : {{name}}",
     "downloadError": "Erreur de téléchargement : {{error}}",
     "openImage": "Ouvert : {{name}}",
@@ -345,7 +345,7 @@
     "connectToView": "Connectez-vous à un serveur pour voir le tableau de bord",
     "loadingSystem": "Chargement des informations système...",
     "cores": "cœurs",
-        "welcome": "Bienvenue sur LeePanel"
+    "welcome": "Bienvenue sur LeePanel"
   },
   "database": {
     "title": "Gestion de base de données",
@@ -404,7 +404,9 @@
     "deleteBatchConfirm": "Êtes-vous sûr de vouloir supprimer {{count}} bases de données",
     "backupAll": "Sauvegarder la sélection ({{count}})",
     "deleteSelected": "Supprimer la sélection ({{count}})",
-    "batchOperations": "Opérations par lot"
+    "batchOperations": "Opérations par lot",
+    "allHosts": "All hosts (%)",
+    "localServer": "Local server (localhost)"
   },
   "redis": {
     "title": "Gestion Redis",
@@ -699,7 +701,7 @@
     "webServer": "Serveur Web",
     "database": "Base de données",
     "runtime": "Environnement d'exécution",
-        "tools": "Outils",
+    "tools": "Outils",
     "container": "Conteneur",
     "checkingStatus": "Vérification du statut des logiciels...",
     "notInstalledLabel": "Non installé",
@@ -766,7 +768,17 @@
     "uninstallCustomWarning": "Cela désinstallera {{name}} du serveur.",
     "remove": "Retirer",
     "removeFromList": "Retirer de la liste",
-    "installMultiplePHP": "Installer plusieurs versions PHP ici"
+    "installMultiplePHP": "Installer plusieurs versions PHP ici",
+    "selectMysqlVersion": "Select MySQL Variant",
+    "noMysqlVersionsAvailable": "No MySQL or MariaDB packages available in system repositories.",
+    "installMysqlVersion": "Install {{version}}",
+    "installingMysqlVersion": "Installing {{version}}...",
+    "installMysqlVersionWarning": "This will install {{version}} using the system package manager.",
+    "mysqlLabel": "MySQL (Oracle)",
+    "mariadbLabel": "MariaDB (Community)",
+    "mysqlDesc": "Official MySQL by Oracle. Enterprise-grade, widely adopted.",
+    "mariadbDesc": "Community fork of MySQL. Fully compatible, faster release cycle, default on most Linux distros.",
+    "mysqlVersionInfo": "Available version: {{version}}"
   },
   "logs": {
     "title": "Journaux du site",

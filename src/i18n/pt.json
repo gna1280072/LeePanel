@@ -83,9 +83,9 @@
     "resume": "Retomar",
     "stop": "Parar",
     "confirmStop": "Parar o upload?",
-        "confirmStopTitle": "Confirmar parada do upload",
-        "confirmStopMsg": "Tem certeza de que deseja parar o upload de todos os arquivos? Esta ação não pode ser desfeita.",
-        "confirmStopPlaceholder": "Digite \"stop\" para confirmar",
+    "confirmStopTitle": "Confirmar parada do upload",
+    "confirmStopMsg": "Tem certeza de que deseja parar o upload de todos os arquivos? Esta ação não pode ser desfeita.",
+    "confirmStopPlaceholder": "Digite \"stop\" para confirmar",
     "remaining": "Restante",
     "retryFailed": "Repetir falhas"
   },
@@ -220,7 +220,7 @@
     "noSearchResults": "Nenhum arquivo correspondente",
     "uploadFiles": "Enviar arquivos",
     "uploadFolder": "Enviar pasta",
-        "dragUploadEnabled": "Upload de arquivos por arrastar e soltar está ativado",
+    "dragUploadEnabled": "Upload de arquivos por arrastar e soltar está ativado",
     "dropFilesHere": "Solte arquivos aqui para enviar",
     "emptyDir": "Diretório vazio",
     "selected": "selecionado",
@@ -310,10 +310,10 @@
     "skipped": "Ignorado: {{name}}",
     "extracted": "Extraído: {{name}} → {{dest}}/",
     "extractFailed": "Falha ao extrair: {{error}}",
-        "missingToolTitle": "Ferramenta ausente",
-        "missingZipTool": "A ferramenta zip não está instalada neste servidor. Instale-a no repositório de software.",
-        "missingUnzipTool": "A ferramenta unzip não está instalada neste servidor. Instale-a no repositório de software.",
-        "goToSoftware": "Ir para Software",
+    "missingToolTitle": "Ferramenta ausente",
+    "missingZipTool": "A ferramenta zip não está instalada neste servidor. Instale-a no repositório de software.",
+    "missingUnzipTool": "A ferramenta unzip não está instalada neste servidor. Instale-a no repositório de software.",
+    "goToSoftware": "Ir para Software",
     "startingDownload": "Iniciando download: {{name}}",
     "downloadError": "Erro no download: {{error}}",
     "openImage": "Aberto: {{name}}",
@@ -345,7 +345,7 @@
     "connectToView": "Conecte-se a um servidor para ver o painel",
     "loadingSystem": "Carregando informações do sistema...",
     "cores": "núcleos",
-        "welcome": "Bem-vindo ao LeePanel"
+    "welcome": "Bem-vindo ao LeePanel"
   },
   "database": {
     "title": "Gerenciamento de banco de dados",
@@ -404,7 +404,9 @@
     "deleteBatchConfirm": "Tem certeza de que deseja excluir {{count}} bancos de dados",
     "backupAll": "Backup dos selecionados ({{count}})",
     "deleteSelected": "Excluir selecionados ({{count}})",
-    "batchOperations": "Operações em lote"
+    "batchOperations": "Operações em lote",
+    "allHosts": "All hosts (%)",
+    "localServer": "Local server (localhost)"
   },
   "redis": {
     "title": "Gerenciamento Redis",
@@ -699,7 +701,7 @@
     "webServer": "Servidor Web",
     "database": "Banco de dados",
     "runtime": "Ambiente de execução",
-        "tools": "Ferramentas",
+    "tools": "Ferramentas",
     "container": "Contêiner",
     "checkingStatus": "Verificando status do software...",
     "notInstalledLabel": "Não instalado",
@@ -766,7 +768,17 @@
     "uninstallCustomWarning": "Isso desinstalará {{name}} do servidor.",
     "remove": "Remover",
     "removeFromList": "Remover da lista",
-    "installMultiplePHP": "Instale várias versões do PHP aqui"
+    "installMultiplePHP": "Instale várias versões do PHP aqui",
+    "selectMysqlVersion": "Select MySQL Variant",
+    "noMysqlVersionsAvailable": "No MySQL or MariaDB packages available in system repositories.",
+    "installMysqlVersion": "Install {{version}}",
+    "installingMysqlVersion": "Installing {{version}}...",
+    "installMysqlVersionWarning": "This will install {{version}} using the system package manager.",
+    "mysqlLabel": "MySQL (Oracle)",
+    "mariadbLabel": "MariaDB (Community)",
+    "mysqlDesc": "Official MySQL by Oracle. Enterprise-grade, widely adopted.",
+    "mariadbDesc": "Community fork of MySQL. Fully compatible, faster release cycle, default on most Linux distros.",
+    "mysqlVersionInfo": "Available version: {{version}}"
   },
   "logs": {
     "title": "Logs do site",

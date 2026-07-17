@@ -267,3 +267,142 @@ impl SettingsManager {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_conn() -> SqliteConn {
+        let conn = SqliteConn::open(":memory:").unwrap();
+        conn.execute_batch(
+            "CREATE TABLE connections (
+                id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', host TEXT NOT NULL,
+                port INTEGER NOT NULL DEFAULT 22, username TEXT NOT NULL DEFAULT 'root',
+                auth_type TEXT NOT NULL DEFAULT 'password', key_path TEXT, password TEXT,
+                remember_me INTEGER DEFAULT 0
+            );
+            CREATE TABLE favorites (path TEXT PRIMARY KEY, name TEXT NOT NULL);
+            CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
+        ).unwrap();
+        conn
+    }
+
+    // ===== ConfigManager =====
+
+    #[test]
+    fn config_save_and_list() {
+        let conn = test_conn();
+        let c = Connection {
+            id: "1".into(), name: "My Server".into(), host: "1.2.3.4".into(),
+            port: 22, username: "root".into(), auth_type: "password".into(),
+            key_path: None, password: Some("pass".into()), remember_me: false,
+        };
+        ConfigManager::save(&conn, &c).unwrap();
+        let list = ConfigManager::list(&conn);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].host, "1.2.3.4");
+        assert_eq!(list[0].name, "My Server");
+    }
+
+    #[test]
+    fn config_delete() {
+        let conn = test_conn();
+        let c = Connection {
+            id: "1".into(), name: "S".into(), host: "1.2.3.4".into(),
+            port: 22, username: "root".into(), auth_type: "password".into(),
+            key_path: None, password: None, remember_me: false,
+        };
+        ConfigManager::save(&conn, &c).unwrap();
+        ConfigManager::delete(&conn, "1").unwrap();
+        assert!(ConfigManager::list(&conn).is_empty());
+    }
+
+    #[test]
+    fn config_remember_me_roundtrip() {
+        let conn = test_conn();
+        let c = Connection {
+            id: "1".into(), name: "S".into(), host: "1.2.3.4".into(),
+            port: 22, username: "root".into(), auth_type: "key".into(),
+            key_path: Some("/root/.ssh/id_rsa".into()), password: None, remember_me: true,
+        };
+        ConfigManager::save(&conn, &c).unwrap();
+        let list = ConfigManager::list(&conn);
+        assert!(list[0].remember_me);
+        assert_eq!(list[0].key_path, Some("/root/.ssh/id_rsa".to_string()));
+    }
+
+    #[test]
+    fn config_save_credentials() {
+        let conn = test_conn();
+        let c = Connection {
+            id: "1".into(), name: "S".into(), host: "1.2.3.4".into(),
+            port: 22, username: "root".into(), auth_type: "password".into(),
+            key_path: None, password: None, remember_me: false,
+        };
+        ConfigManager::save(&conn, &c).unwrap();
+        ConfigManager::save_credentials(&conn, "1", "admin", "key", Some("/key"), None, true).unwrap();
+        let list = ConfigManager::list(&conn);
+        assert_eq!(list[0].username, "admin");
+        assert_eq!(list[0].auth_type, "key");
+        assert!(list[0].remember_me);
+    }
+
+    // ===== FavoritesManager =====
+
+    #[test]
+    fn favorites_add_and_list() {
+        let conn = test_conn();
+        FavoritesManager::add(&conn, &Favorite { path: "/home".into(), name: "Home".into() }).unwrap();
+        let list = FavoritesManager::list(&conn);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "Home");
+    }
+
+    #[test]
+    fn favorites_remove() {
+        let conn = test_conn();
+        FavoritesManager::add(&conn, &Favorite { path: "/home".into(), name: "Home".into() }).unwrap();
+        FavoritesManager::remove(&conn, "/home").unwrap();
+        assert!(FavoritesManager::list(&conn).is_empty());
+    }
+
+    // ===== SettingsManager =====
+
+    #[test]
+    fn settings_load_defaults_when_empty() {
+        let conn = test_conn();
+        let s = SettingsManager::load(&conn);
+        assert!(s.auto_reconnect);
+        assert_eq!(s.reconnect_interval, 5);
+        assert_eq!(s.command_timeout_minutes, 30);
+        assert_eq!(s.upload_workers, 3);
+    }
+
+    #[test]
+    fn settings_save_and_load_roundtrip() {
+        let conn = test_conn();
+        let s = Settings {
+            auto_reconnect: false,
+            reconnect_interval: 10,
+            max_reconnect_attempts: 5,
+            cache_ttl_hours: 48,
+            cache_max_files: 1000,
+            cache_enabled: false,
+            command_timeout_minutes: 60,
+            upload_workers: 5,
+        };
+        SettingsManager::save(&conn, &s).unwrap();
+        let loaded = SettingsManager::load(&conn);
+        assert!(!loaded.auto_reconnect);
+        assert_eq!(loaded.reconnect_interval, 10);
+        assert_eq!(loaded.cache_ttl_hours, 48);
+        assert_eq!(loaded.upload_workers, 5);
+    }
+
+    #[test]
+    fn settings_default_trait() {
+        let s = Settings::default();
+        assert!(s.auto_reconnect);
+        assert_eq!(s.cache_max_files, 500);
+    }
+}

@@ -1587,7 +1587,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                 <label>{t('database.importFile')}:</label>
                 <input
                   type="file"
-                  accept=".sql"
+                  accept="*"
                   onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
                   className="form-input"
                   style={{ padding: '8px' }}

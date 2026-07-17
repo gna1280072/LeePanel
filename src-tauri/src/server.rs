@@ -8750,14 +8750,8 @@ pub async fn import_database_from_file(
     
     let temp_path = format!("/tmp/import_{}.sql", timestamp);
 
-    // Write SQL content to temporary file
-    let write_cmd = format!("cat > {} << 'SQLEOF'\n{}\nSQLEOF", temp_path, sql_content);
-    let (_stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &write_cmd, 10)
-        .await?;
-    
-    if code != 0 {
-        return Err(format!("Failed to write SQL file: {}", stderr));
-    }
+    // Write SQL content to temporary file via SFTP (reliable for large files)
+    crate::ssh::session_write_file(session, &temp_path, sql_content).await?;
 
     // Write temp credentials file to avoid shell special-character issues with inline passwords
     let cnf_path = write_mysql_cnf_file(session, db_user, db_password).await?;

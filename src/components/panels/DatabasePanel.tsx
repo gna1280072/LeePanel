@@ -60,6 +60,11 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
   const [deleting, setDeleting] = useState(false)
   const [deleteConfirmName, setDeleteConfirmName] = useState('')
   
+  // Clear database dialog
+  const [clearTarget, setClearTarget] = useState<DbInfo | null>(null)
+  const [clearing, setClearing] = useState(false)
+  const [clearConfirmText, setClearConfirmText] = useState('')
+  
   // Password visibility
   const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set())
   
@@ -272,6 +277,27 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
     }
   }
   
+  const handleClearDatabase = async () => {
+    if (!clearTarget) return
+    
+    setClearing(true)
+    setMsg('')
+    try {
+      const result = await invoke<string>('server_mysql_clear_database', {
+        sessionId,
+        dbName: clearTarget.name,
+      })
+      setMsg(result)
+      setClearTarget(null)
+      setClearConfirmText('')
+      await fetchDatabases()
+    } catch (e) {
+      setMsg(`Clear failed: ${String(e)}`)
+    } finally {
+      setClearing(false)
+    }
+  }
+  
   const handleChangeAccess = async () => {
     if (!accessTarget) return
     
@@ -352,7 +378,6 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
     setMsg(t('database.copiedToClipboard'))
-    setTimeout(() => setMsg(''), 2000)
   }
   
   const toggleSelectAll = () => {
@@ -432,12 +457,10 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       })
       if (trimmed) {
         setMsg(`Updated remark for database "${dbName}"`)
-        setTimeout(() => setMsg(''), 2000)
       }
     } catch (e) {
       console.error('Failed to save remark:', e)
       setMsg(t('database.saveRemarkFailed'))
-      setTimeout(() => setMsg(''), 2000)
     }
   }
   
@@ -476,7 +499,6 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
     const dbPassword = dbCredentials[backupTarget]?.password || ''
     if (!dbPassword) {
       setMsg(t('database.dbNameNotSaved'))
-      setTimeout(() => setMsg(''), 3000)
       return
     }
     setBackingUp(true)
@@ -485,13 +507,11 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
         sessionId, dbName: backupTarget, dbUser: dbCredentials[backupTarget]?.db_user || backupTarget, dbPassword 
       })
       setMsg(result)
-      setTimeout(() => setMsg(''), 3000)
       // Refresh backup list
       const list = await invoke<BackupInfo[]>('server_list_db_backups', { sessionId, dbName: backupTarget })
       setBackups(list)
     } catch (e) {
       setMsg(`${t('common.error')}: ` + String(e))
-      setTimeout(() => setMsg(''), 3000)
     } finally {
       setBackingUp(false)
     }
@@ -502,13 +522,11 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
     try {
       await invoke<string>('server_delete_db_backup', { sessionId, backupFilename: filename })
       setMsg(`Backup deleted: ${filename}`)
-      setTimeout(() => setMsg(''), 2000)
       // Refresh backup list
       const list = await invoke<BackupInfo[]>('server_list_db_backups', { sessionId, dbName: backupTarget })
       setBackups(list)
     } catch (e) {
       setMsg(`${t('common.error')}: ` + String(e))
-      setTimeout(() => setMsg(''), 3000)
     }
   }
   
@@ -522,11 +540,9 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       })
       
       setMsg(`Backup downloaded to: ${localPath}`)
-      setTimeout(() => setMsg(''), 3000)
     } catch (e) {
       if (String(e) !== 'Save cancelled') {
         setMsg('Failed to download backup: ' + String(e))
-        setTimeout(() => setMsg(''), 3000)
       }
     }
   }
@@ -567,7 +583,6 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
     const dbPassword = dbCredentials[importTarget]?.password || ''
     if (!dbPassword) {
       setMsg(t('database.dbNameNotSaved'))
-      setTimeout(() => setMsg(''), 3000)
       return
     }
     
@@ -606,11 +621,9 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
         setImporting(false)
         return
       }
-      setTimeout(() => setMsg(''), 3000)
       setShowImportDialog(false)
     } catch (e) {
       setMsg(t('database.importFailed', { error: String(e) }))
-      setTimeout(() => setMsg(''), 3000)
     } finally {
       setImporting(false)
     }
@@ -621,7 +634,6 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
     const dbPassword = dbCredentials[backupTarget]?.password || ''
     if (!dbPassword) {
       setMsg(t('database.dbNameNotSaved'))
-      setTimeout(() => setMsg(''), 3000)
       return
     }
     // Close backup dialog and import directly
@@ -643,10 +655,8 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
         backupFilename: filename
       })
       setMsg(result)
-      setTimeout(() => setMsg(''), 3000)
     } catch (e) {
       setMsg(t('database.importFailed', { error: String(e) }))
-      setTimeout(() => setMsg(''), 3000)
     } finally {
       setImporting(false)
     }
@@ -674,8 +684,9 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       </div>
       
       {msg && (
-        <div className={`alert ${msg.includes('failed') || msg.includes('Failed') ? 'alert-error' : 'alert-success'}`}>
-          {msg}
+        <div className={`alert ${msg.includes('failed') || msg.includes('Failed') ? 'alert-error' : 'alert-success'}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{msg}</span>
+          <button onClick={() => setMsg('')} style={{ background: 'none', border: 'none', color: '#8b949e', fontSize: '18px', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }} title="Close">×</button>
         </div>
       )}
       
@@ -856,6 +867,14 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                     </button>
                     <span className="separator">|</span>
                     <button className="action-link" onClick={() => { setChangePwTarget({ name: db.name, user: db.user || db.name }); setNewDbPassword(''); setShowChangePwDbDialog(true); }}>{t('database.changePassword')}</button>
+                    <span className="separator">|</span>
+                    <button 
+                      className="action-link"
+                      style={{ color: '#f0883e' }}
+                      onClick={() => { setClearTarget(db); setClearConfirmText(''); }}
+                    >
+                      Clear
+                    </button>
                     <span className="separator">|</span>
                     <button 
                       className="action-link danger"
@@ -1141,6 +1160,58 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                 disabled={deleting || deleteConfirmName.trim().toLowerCase() !== deleteTarget.name.toLowerCase()}
               >
                 {deleting ? t('common.deleting') : t('common.delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Clear Database Dialog */}
+      {clearTarget && (
+        <div className="modal-overlay">
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button 
+              className="modal-close-btn"
+              onClick={() => { setClearTarget(null); setClearConfirmText(''); }}
+              title="Close"
+            >×</button>
+            <h3>Clear Database</h3>
+            <p style={{ color: '#f85149', fontSize: '13px', margin: '8px 0' }}>This will truncate ALL tables in database "<strong>{clearTarget.name}</strong>". The database and user will be preserved. Type <code style={{ background: '#21262d', padding: '2px 6px', borderRadius: '4px' }}>clear</code> to confirm.</p>
+            
+            <div className="form-group">
+              <label style={{ fontSize: '13px' }}>Type "clear" to confirm:</label>
+              <input
+                type="text"
+                value={clearConfirmText}
+                onChange={(e) => setClearConfirmText(e.target.value)}
+                placeholder="clear"
+                className="form-input"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && clearConfirmText.trim().toLowerCase() === 'clear') {
+                    handleClearDatabase()
+                  } else if (e.key === 'Escape') {
+                    setClearTarget(null)
+                    setClearConfirmText('')
+                  }
+                }}
+              />
+            </div>
+            
+            <div className="modal-actions">
+              <button 
+                className="btn-secondary"
+                onClick={() => { setClearTarget(null); setClearConfirmText(''); }}
+                disabled={clearing}
+              >
+                {t('common.cancel')}
+              </button>
+              <button 
+                className="btn-danger"
+                onClick={handleClearDatabase}
+                disabled={clearing || clearConfirmText.trim().toLowerCase() !== 'clear'}
+              >
+                {clearing ? t('common.loading') : 'Clear'}
               </button>
             </div>
           </div>

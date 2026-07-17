@@ -227,7 +227,7 @@
     "dir": "ディレクトリ",
     "open": "開く",
     "edit": "編集",
-    "saveAs": "名前を付けて保存...",
+    "saveAs": "ローカルPCに保存",
     "compress": "圧縮",
     "extract": "展開",
     "fileInfo": "ファイル情報",

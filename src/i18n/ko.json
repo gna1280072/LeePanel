@@ -227,7 +227,7 @@
     "dir": "디렉토리",
     "open": "열기",
     "edit": "편집",
-    "saveAs": "다른 이름으로 저장...",
+    "saveAs": "로컬 컴퓨터에 저장",
     "compress": "압축",
     "extract": "추출",
     "fileInfo": "파일 정보",

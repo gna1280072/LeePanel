@@ -850,6 +850,19 @@ async fn server_mysql_delete_database(
 }
 
 #[tauri::command]
+async fn server_mysql_clear_database(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+    db_name: &str,
+) -> Result<String, String> {
+    let mgr = ssh_mgr.lock().await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::clear_database(&session, &cache, session_id, db_name).await
+}
+
+#[tauri::command]
 async fn server_mysql_change_db_access(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
     session_id: &str,
@@ -2343,6 +2356,7 @@ pub fn run() {
             server_find_php_service, server_find_php_fpm_config,
             server_mysql_processes, server_mysql_query,
             server_list_databases, server_mysql_create_database, server_mysql_delete_database,
+            server_mysql_clear_database,
             server_mysql_change_db_access,
             server_change_mysql_root_password,
             server_change_db_user_password,

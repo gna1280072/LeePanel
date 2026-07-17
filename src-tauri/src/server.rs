@@ -7631,6 +7631,65 @@ pub async fn delete_database(
     Ok(format!("Database '{}' deleted successfully", db_name))
 }
 
+/// Clear (truncate all tables in) a database without dropping it
+pub async fn clear_database(
+    session: &SshSession,
+    cache: &SshCache,
+    session_id: &str,
+    db_name: &str,
+) -> Result<String, String> {
+    let safe_db = db_name.replace('`', "");
+    // ponytail: use stored procedure with cursor to TRUNCATE each table individually
+    // (PREPARE only supports single statement, so GROUP_CONCAT approach fails)
+    let sql = format!(
+        "SET FOREIGN_KEY_CHECKS = 0;\n\
+         DELIMITER //\n\
+         CREATE PROCEDURE `clear_{db}`()\n\
+         BEGIN\n\
+             DECLARE done INT DEFAULT FALSE;\n\
+             DECLARE tname VARCHAR(255);\n\
+             DECLARE cur CURSOR FOR SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = '{db}';\n\
+             DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;\n\
+             OPEN cur;\n\
+             read_loop: LOOP\n\
+                 FETCH cur INTO tname;\n\
+                 IF done THEN LEAVE read_loop; END IF;\n\
+                 SET @s = CONCAT('TRUNCATE TABLE `{db}`.', tname);\n\
+                 PREPARE stmt FROM @s;\n\
+                 EXECUTE stmt;\n\
+                 DEALLOCATE PREPARE stmt;\n\
+             END LOOP;\n\
+             CLOSE cur;\n\
+         END //\n\
+         DELIMITER ;\n\
+         CALL `clear_{db}`();\n\
+         DROP PROCEDURE `clear_{db}`;\n\
+         SET FOREIGN_KEY_CHECKS = 1;\n",
+        db = safe_db
+    );
+
+    let mysql_cmd = get_mysql_cmd(session, cache, session_id).await;
+
+    let tmp_sql = "/tmp/db_clear.sql";
+    crate::ssh::session_write_file(session, tmp_sql, &sql).await?;
+
+    let (db_out, db_err, db_code) = crate::ssh::session_exec_with_output(session, &format!("{} < {} 2>&1", mysql_cmd, tmp_sql), 30)
+        .await?;
+
+    let _ = crate::ssh::session_exec_with_output(session, &format!("rm -f {}", tmp_sql), 5).await;
+
+    if db_code != 0 {
+        let combined = format!("{} {}", db_out, db_err).trim().to_string();
+        return Err(if combined.is_empty() {
+            "Database clear failed (unknown error)".to_string()
+        } else {
+            combined
+        });
+    }
+
+    Ok(format!("Database '{}' cleared successfully (all tables truncated)", db_name))
+}
+
 /// Change database access permission
 pub async fn change_db_access(
     session: &SshSession,
@@ -8563,6 +8622,9 @@ pub async fn list_db_backups(
             let time_or_year = parts[7];
             let filename = parts[8];
             
+            // Extract basename (in case ls returns full path)
+            let basename = filename.rsplit('/').next().unwrap_or(filename);
+            
             // Parse size
             let size_bytes = parse_size_string(size_str);
             
@@ -8570,7 +8632,7 @@ pub async fn list_db_backups(
             let created_at = format!("{} {} {}", month, day, time_or_year);
             
             backups.push(BackupInfo {
-                filename: filename.to_string(),
+                filename: basename.to_string(),
                 size_bytes,
                 created_at,
             });

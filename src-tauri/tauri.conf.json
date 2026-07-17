@@ -42,7 +42,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://taichipanel.com/update.json",
+        "https://leepanel.com/update.json",
         "https://raw.githubusercontent.com/taichipanel/taichipanel.github.io/main/update.json"
       ],
       "pubkey": "",

@@ -673,24 +673,10 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
           <div className="sw-sources-actions">
             <button
               className="sw-action-btn small primary"
-              onClick={handleManageSourcesClick}
-              disabled={cleaningSources}
-            >
-              {t('software.manageSources')}
-            </button>
-            <button
-              className="sw-action-btn small primary"
               onClick={handleCleanAndUpdateSources}
               disabled={cleaningSources}
             >
               {cleaningSources ? t('software.updatingSources') : t('software.cleanSources')}
-            </button>
-            <button
-              className="sw-action-btn small primary"
-              onClick={() => { setAddSourceModalOpen(true); setAddSourceError('') }}
-              disabled={cleaningSources}
-            >
-              {t('software.addSource')}
             </button>
           </div>
         </div>

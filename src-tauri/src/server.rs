@@ -8473,9 +8473,9 @@ pub async fn backup_database(
         .as_secs();
     
     let sql_filename = format!("{}_{}.sql", db_name, timestamp);
-    let zip_filename = format!("{}_{}.zip", db_name, timestamp);
+    let tar_filename = format!("{}_{}.tar.gz", db_name, timestamp);
     let sql_path = format!("/tmp/db_backups/{}", sql_filename);
-    let zip_path = format!("/tmp/db_backups/{}", zip_filename);
+    let tar_path = format!("/tmp/db_backups/{}", tar_filename);
 
     // Write temp credentials file to avoid shell special-character issues with inline passwords
     let cnf_path = write_mysql_cnf_file(session, db_user, db_password).await?;
@@ -8505,10 +8505,10 @@ pub async fn backup_database(
         return Err("SQL backup file was not created".to_string());
     }
 
-    // Compress to zip and remove original SQL file
+    // Compress to tar.gz and remove original SQL file
     let compress_cmd = format!(
-        "cd /tmp/db_backups && zip -9 {} {} && rm -f {}",
-        zip_filename, sql_filename, sql_filename
+        "cd /tmp/db_backups && tar -czf {} {} && rm -f {}",
+        tar_filename, sql_filename, sql_filename
     );
     
     let (_, stderr, code) = crate::ssh::session_exec_with_output(session, &compress_cmd, 60)
@@ -8518,16 +8518,16 @@ pub async fn backup_database(
         return Err(format!("Compression failed: {}", stderr));
     }
 
-    // Verify zip file exists
-    let verify_zip_cmd = format!("test -f {} && echo 'exists'", zip_path);
-    let (verify_zip_out, _, verify_zip_code) = crate::ssh::session_exec_with_output(session, &verify_zip_cmd, 5)
+    // Verify tar.gz file exists
+    let verify_tar_cmd = format!("test -f {} && echo 'exists'", tar_path);
+    let (verify_tar_out, _, verify_tar_code) = crate::ssh::session_exec_with_output(session, &verify_tar_cmd, 5)
         .await?;
     
-    if verify_zip_code != 0 || !verify_zip_out.trim().contains("exists") {
-        return Err("ZIP backup file was not created".to_string());
+    if verify_tar_code != 0 || !verify_tar_out.trim().contains("exists") {
+        return Err("tar.gz backup file was not created".to_string());
     }
 
-    Ok(zip_filename)
+    Ok(tar_filename)
 }
 
 /// List all backup files for a specific database
@@ -8542,9 +8542,9 @@ pub async fn list_db_backups(
         return Err("Invalid database name".to_string());
     }
 
-    // List backup files for this database (both .sql and .zip)
+    // List backup files for this database (.sql, .tar.gz, and .zip)
     let pattern = format!("/tmp/db_backups/{}*", db_name);
-    let cmd = format!("ls -lht {} 2>/dev/null | grep -E '\\.(sql|zip)$'", pattern);
+    let cmd = format!("ls -lht {} 2>/dev/null | grep -E '\\.(sql|tar\\.gz|zip)$'", pattern);
     
     let (out, _, code) = crate::ssh::session_exec_with_output(session, &cmd, 5)
         .await?;
@@ -8592,7 +8592,7 @@ pub async fn delete_db_backup(
         return Err("Invalid backup filename".to_string());
     }
     
-    if !backup_filename.ends_with(".sql") && !backup_filename.ends_with(".zip") {
+    if !backup_filename.ends_with(".sql") && !backup_filename.ends_with(".tar.gz") && !backup_filename.ends_with(".zip") {
         return Err("Invalid backup file extension".to_string());
     }
 
@@ -8627,11 +8627,11 @@ pub async fn download_db_backup(
         return Err("Invalid backup filename".to_string());
     }
     
-    if !backup_filename.ends_with(".sql") && !backup_filename.ends_with(".zip") {
+    if !backup_filename.ends_with(".sql") && !backup_filename.ends_with(".tar.gz") && !backup_filename.ends_with(".zip") {
         return Err("Invalid backup file extension".to_string());
     }
 
-    // Use the provided path directly (it should already be /tmp/db_backups/filename.sql or .zip)
+    // Use the provided path directly (it should already be /tmp/db_backups/filename.sql or .tar.gz)
     let backup_path = if backup_filename.starts_with("/") {
         backup_filename.to_string()
     } else {
@@ -8737,7 +8737,7 @@ pub async fn import_database_from_backup(
         return Err("Invalid backup filename".to_string());
     }
     
-    if !backup_filename.ends_with(".sql") && !backup_filename.ends_with(".zip") {
+    if !backup_filename.ends_with(".sql") && !backup_filename.ends_with(".tar.gz") && !backup_filename.ends_with(".zip") {
         return Err("Invalid backup file extension".to_string());
     }
 
@@ -8756,8 +8756,22 @@ pub async fn import_database_from_backup(
         return Err("Backup file not found".to_string());
     }
 
-    // If it's a zip file, extract it first
-    let sql_path = if backup_filename.ends_with(".zip") {
+    // If it's a tar.gz or zip file, extract it first
+    let sql_path = if backup_filename.ends_with(".tar.gz") {
+        let temp_sql = format!("/tmp/import_{}.sql", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| format!("Time error: {}", e))?
+            .as_secs());
+        
+        let tar_cmd = format!("tar -xzf {} -O > {}", backup_path, temp_sql);
+        let (_, stderr, code) = crate::ssh::session_exec_with_output(session, &tar_cmd, 60)
+            .await?;
+        
+        if code != 0 {
+            return Err(format!("Failed to extract tar.gz: {}", stderr));
+        }
+        temp_sql
+    } else if backup_filename.ends_with(".zip") {
         let temp_sql = format!("/tmp/import_{}.sql", std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|e| format!("Time error: {}", e))?
@@ -8787,8 +8801,8 @@ pub async fn import_database_from_backup(
     let (_import_stdout, import_stderr, import_code) = crate::ssh::session_exec_with_output(session, &import_cmd, 300)
         .await?;
     
-    // Clean up extracted SQL file if it was a zip, and credentials file
-    let cleanup_files = if backup_filename.ends_with(".zip") {
+    // Clean up extracted SQL file if it was a tar.gz or zip, and credentials file
+    let cleanup_files = if backup_filename.ends_with(".tar.gz") || backup_filename.ends_with(".zip") {
         format!("{} {}", sql_path, cnf_path)
     } else {
         cnf_path.clone()

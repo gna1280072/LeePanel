@@ -107,6 +107,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
   const [importing, setImporting] = useState(false)
   const [importBackups, setImportBackups] = useState<BackupInfo[]>([])
   const [loadingImportBackups, setLoadingImportBackups] = useState(false)
+  const [missingToolModal, setMissingToolModal] = useState(false)
   
   // Database credentials from SQLite (key: dbName)
   const [dbCredentials, setDbCredentials] = useState<Record<string, DbCredential>>({})
@@ -548,6 +549,19 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
     }
   }
   
+  const checkUnzipAvailable = async (): Promise<boolean> => {
+    if (!sessionId) return false
+    try {
+      const [, , exitCode] = await invoke<[string, string, number]>('ssh_exec', {
+        sessionId,
+        command: 'command -v unzip',
+      })
+      return exitCode === 0
+    } catch {
+      return false
+    }
+  }
+  
   const handleImport = async () => {
     if (!importTarget || !sessionId) return
     const dbPassword = dbCredentials[importTarget]?.password || ''
@@ -571,6 +585,14 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
         })
         setMsg(result)
       } else if (importMode === 'backup' && selectedBackup) {
+        if (selectedBackup.endsWith('.zip')) {
+          const hasUnzip = await checkUnzipAvailable()
+          if (!hasUnzip) {
+            setMissingToolModal(true)
+            setImporting(false)
+            return
+          }
+        }
         const result = await invoke<string>('server_import_database_from_backup', {
           sessionId,
           dbName: importTarget,
@@ -604,6 +626,13 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
     }
     // Close backup dialog and import directly
     setShowBackupDialog(false)
+    if (filename.endsWith('.zip')) {
+      const hasUnzip = await checkUnzipAvailable()
+      if (!hasUnzip) {
+        setMissingToolModal(true)
+        return
+      }
+    }
     setImporting(true)
     try {
       const result = await invoke<string>('server_import_database_from_backup', {
@@ -1374,7 +1403,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
             </div>
             
             <div style={{ marginBottom: '16px', fontSize: '13px', color: '#8b949e' }}>
-              Backup files are saved in /tmp/db_backups/ on the server (.zip format)
+              Backup files are saved in /tmp/db_backups/ on the server (.tar.gz format)
             </div>
             
             {/* Backup list */}
@@ -1542,6 +1571,30 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                 disabled={importing || (importMode === 'upload' ? !selectedFile : !selectedBackup)}
               >
                 {importing ? t('common.loading') : t('database.importDatabase')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Missing unzip tool modal */}
+      {missingToolModal && (
+        <div className="modal-overlay" onClick={() => setMissingToolModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px', textAlign: 'center' }}>
+            <button className="modal-close-btn" onClick={() => setMissingToolModal(false)} title="Close">×</button>
+            <div style={{ marginBottom: '16px', fontSize: '16px', fontWeight: 600 }}>{t('files.missingToolTitle')}</div>
+            <div style={{ marginBottom: '20px', fontSize: '13px', color: '#8b949e' }}>
+              {t('files.missingUnzipTool')}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+              <button className="btn-secondary" onClick={() => setMissingToolModal(false)}>
+                {t('common.cancel')}
+              </button>
+              <button className="btn-primary" onClick={() => {
+                setMissingToolModal(false)
+                onNavigateToSoftware?.()
+              }}>
+                {t('database.goToSoftware')}
               </button>
             </div>
           </div>

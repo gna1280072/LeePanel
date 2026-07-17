@@ -100,21 +100,6 @@ function getFileExtension(name: string): string {
   return i > 0 ? name.substring(i + 1).toLowerCase() : ''
 }
 
-const TEXT_EXTS = new Set([
-  'txt', 'md', 'log', 'json', 'xml', 'yml', 'yaml', 'toml', 'ini', 'cfg', 'conf',
-  'js', 'ts', 'jsx', 'tsx', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp',
-  'css', 'html', 'htm', 'scss', 'less', 'vue', 'svelte',
-  'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
-  'sql', 'graphql', 'proto', 'dockerfile', 'makefile',
-  'env', 'gitignore', 'editorconfig', 'htaccess',
-  'php', 'lua', 'pl', 'swift', 'kt', 'scala', 'r', 'm',
-])
-
-function isTextFile(name: string): boolean {
-  const ext = getFileExtension(name)
-  return TEXT_EXTS.has(ext) || name.startsWith('.') || !name.includes('.')
-}
-
 const IMAGE_EXTS = new Set([
   'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif',
 ])

@@ -56,7 +56,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
 
   // PHP version selection modal state
   const [phpVersionModalOpen, setPhpVersionModalOpen] = useState(false)
-  const [sourceCompile, setSourceCompile] = useState(false)
+  const [sourceCompile] = useState(false)
   const [dockerSourceModal, setDockerSourceModal] = useState<SoftwareInfo | null>(null)
   const [dockerSourceSelected, setDockerSourceSelected] = useState<'official' | 'aliyun'>('official')
   const [availableVersions, setAvailableVersions] = useState<string[]>([])

@@ -43,7 +43,7 @@
     "updater": {
       "endpoints": [
         "https://leepanel.com/update.json",
-        "https://raw.githubusercontent.com/taichipanel/taichipanel.github.io/main/update.json"
+        "https://raw.githubusercontent.com/leepanel/leepanel.github.io/main/update.json"
       ],
       "pubkey": "",
       "dialog": true

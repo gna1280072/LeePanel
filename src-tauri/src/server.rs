@@ -7643,6 +7643,7 @@ pub async fn clear_database(
     // (PREPARE only supports single statement, so GROUP_CONCAT approach fails)
     let sql = format!(
         "SET FOREIGN_KEY_CHECKS = 0;\n\
+         USE `{db}`;\n\
          DELIMITER //\n\
          CREATE PROCEDURE `clear_{db}`()\n\
          BEGIN\n\

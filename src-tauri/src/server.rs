@@ -8795,21 +8795,6 @@ pub async fn import_database_from_file_bytes(
     let upload_path = format!("/tmp/import_{}_{}", timestamp, file_name);
     crate::ssh::session_write_file_bytes(session, &upload_path, &file_bytes).await?;
 
-    // Verify file integrity after write
-    let verify_cmd = format!("wc -c < {} && head -c 2 {} | xxd -p | head -1", upload_path, upload_path);
-    let (verify_out, _, _) = crate::ssh::session_exec_with_output(session, &verify_cmd, 5).await?;
-    
-    // For tar.gz files, check gzip magic number (0x1f 0x8b)
-    if file_name.ends_with(".tar.gz") {
-        if !verify_out.contains("1f8b") && !verify_out.contains("1f 8b") {
-            let _ = crate::ssh::session_exec_with_output(session, &format!("rm -f {}", upload_path), 5).await;
-            return Err(format!(
-                "File verification failed: uploaded file is not valid gzip format. File info: {}, sent {} bytes",
-                verify_out.trim(), file_bytes.len()
-            ));
-        }
-    }
-
     // Determine SQL path based on file extension
     let sql_path = if file_name.ends_with(".tar.gz") {
         let temp_sql = format!("/tmp/import_{}.sql", timestamp);

@@ -8775,6 +8775,83 @@ pub async fn import_database_from_file(
     Ok(format!("Database {} imported successfully", db_name))
 }
 
+/// Import database from uploaded raw bytes (supports .sql, .tar.gz, .zip)
+pub async fn import_database_from_file_bytes(
+    session: &SshSession,
+    cache: &SshCache,
+    session_id: &str,
+    db_name: &str,
+    db_user: &str,
+    db_password: &str,
+    file_name: &str,
+    file_bytes: Vec<u8>,
+) -> Result<String, String> {
+    // Validate database name
+    if !db_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        return Err("Invalid database name".to_string());
+    }
+
+    if db_user.is_empty() || db_password.is_empty() {
+        return Err("数据库账号或密码为空，请先在本地保存密码".to_string());
+    }
+
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("Time error: {}", e))?
+        .as_secs();
+
+    // Write uploaded bytes to temp file
+    let upload_path = format!("/tmp/import_{}_{}", timestamp, file_name);
+    crate::ssh::session_write_file_bytes(session, &upload_path, &file_bytes).await?;
+
+    // Determine SQL path based on file extension
+    let sql_path = if file_name.ends_with(".tar.gz") {
+        let temp_sql = format!("/tmp/import_{}.sql", timestamp);
+        let tar_cmd = format!("tar -xzf {} -O > {}", upload_path, temp_sql);
+        let (_, stderr, code) = crate::ssh::session_exec_with_output(session, &tar_cmd, 60).await?;
+        if code != 0 {
+            let _ = crate::ssh::session_exec_with_output(session, &format!("rm -f {}", upload_path), 5).await;
+            return Err(format!("Failed to extract tar.gz: {}", stderr));
+        }
+        temp_sql
+    } else if file_name.ends_with(".zip") {
+        let temp_sql = format!("/tmp/import_{}.sql", timestamp);
+        let unzip_cmd = format!("unzip -p {} > {}", upload_path, temp_sql);
+        let (_, stderr, code) = crate::ssh::session_exec_with_output(session, &unzip_cmd, 60).await?;
+        if code != 0 {
+            let _ = crate::ssh::session_exec_with_output(session, &format!("rm -f {}", upload_path), 5).await;
+            return Err(format!("Failed to extract zip: {}", stderr));
+        }
+        temp_sql
+    } else {
+        upload_path.clone()
+    };
+
+    // Write temp credentials file
+    let cnf_path = write_mysql_cnf_file(session, db_user, db_password).await?;
+
+    // Import SQL into database
+    let import_cmd = format!(
+        "mysql --defaults-extra-file={} {} < {}",
+        cnf_path, db_name, sql_path
+    );
+    let (_import_stdout, import_stderr, import_code) = crate::ssh::session_exec_with_output(session, &import_cmd, 300).await?;
+
+    // Cleanup
+    let cleanup = if file_name.ends_with(".tar.gz") || file_name.ends_with(".zip") {
+        format!("{} {} {}", upload_path, sql_path, cnf_path)
+    } else {
+        format!("{} {}", upload_path, cnf_path)
+    };
+    let _ = crate::ssh::session_exec_with_output(session, &format!("rm -f {}", cleanup), 5).await;
+
+    if import_code != 0 {
+        return Err(format!("Import failed: {}", import_stderr));
+    }
+
+    Ok(format!("Database {} imported successfully", db_name))
+}
+
 /// Import database from existing backup file
 pub async fn import_database_from_backup(
     session: &SshSession,

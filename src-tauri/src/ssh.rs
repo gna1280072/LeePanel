@@ -1558,11 +1558,15 @@ pub async fn session_open_sftp(session: &SshSession) -> Result<Arc<russh_sftp::c
 }
 
 pub async fn session_write_file(session: &SshSession, path: &str, content: &str) -> Result<(), String> {
+    session_write_file_bytes(session, path, content.as_bytes()).await
+}
+
+pub async fn session_write_file_bytes(session: &SshSession, path: &str, content: &[u8]) -> Result<(), String> {
     let sftp = session_open_sftp(session).await?;
     use tokio::io::AsyncWriteExt;
     let mut file = sftp.create(path).await
         .map_err(|e| format!("Failed to create file: {}", e))?;
-    file.write_all(content.as_bytes()).await
+    file.write_all(content).await
         .map_err(|e| format!("Failed to write file: {}", e))?;
     file.shutdown().await
         .map_err(|e| format!("Failed to flush file: {}", e))?;

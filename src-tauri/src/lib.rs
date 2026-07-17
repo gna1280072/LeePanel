@@ -1101,6 +1101,23 @@ async fn server_import_database_from_file(
 }
 
 #[tauri::command]
+async fn server_import_database_from_file_bytes(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+    db_name: &str,
+    db_user: &str,
+    db_password: &str,
+    file_name: &str,
+    file_bytes: Vec<u8>,
+) -> Result<String, String> {
+    let mgr = ssh_mgr.lock().await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::import_database_from_file_bytes(&session, &cache, session_id, db_name, db_user, db_password, file_name, file_bytes).await
+}
+
+#[tauri::command]
 async fn server_import_database_from_backup(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
     session_id: &str,
@@ -2401,7 +2418,7 @@ pub fn run() {
             // Database Backup & Import
             server_backup_database, server_list_db_backups, server_delete_db_backup,
             server_download_db_backup, server_save_db_backup_to_local,
-            server_import_database_from_file, server_import_database_from_backup,
+            server_import_database_from_file, server_import_database_from_file_bytes, server_import_database_from_backup,
             // Custom Software
             custom_software_list, custom_software_add, custom_software_remove, custom_software_action,
             server_check_installation,

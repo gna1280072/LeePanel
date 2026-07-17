@@ -589,14 +589,25 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
     setImporting(true)
     try {
       if (importMode === 'upload' && selectedFile) {
-        // Read file content as text
-        const sqlContent = await selectedFile.text()
-        const result = await invoke<string>('server_import_database_from_file', {
+        // Check unzip availability for zip files
+        if (selectedFile.name.endsWith('.zip')) {
+          const hasUnzip = await checkUnzipAvailable()
+          if (!hasUnzip) {
+            setMissingToolModal(true)
+            setImporting(false)
+            return
+          }
+        }
+        // Read file as raw bytes (supports .sql, .tar.gz, .zip)
+        const buffer = await selectedFile.arrayBuffer()
+        const fileBytes = Array.from(new Uint8Array(buffer))
+        const result = await invoke<string>('server_import_database_from_file_bytes', {
           sessionId,
           dbName: importTarget,
           dbUser: dbCredentials[importTarget]?.db_user || importTarget,
           dbPassword,
-          sqlContent
+          fileName: selectedFile.name,
+          fileBytes
         })
         setMsg(result)
       } else if (importMode === 'backup' && selectedBackup) {

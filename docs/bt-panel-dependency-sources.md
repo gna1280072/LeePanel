@@ -54,7 +54,7 @@
 | `libtidy-devel` | tidy | HTML 清理，很少用 |
 | `libwebp-devel` | webp | WebP 图片格式支持 |
 
-## TaiChi Panel 当前实现
+## LeePanel 当前实现
 
 ### 下载源
 

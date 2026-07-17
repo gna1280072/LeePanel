@@ -1,4 +1,4 @@
-# TaiChi Panel E2E 测试详细方案
+# LeePanel E2E 测试详细方案
 
 ## 一、项目 Invoke 命令全清单（共 143 个）
 

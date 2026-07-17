@@ -18,16 +18,16 @@ jobs:
         include:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: taichi-panel-windows
+            artifact_name: leepanel-windows
           - platform: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: taichi-panel-macos-intel
+            artifact_name: leepanel-macos-intel
           - platform: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: taichi-panel-macos-arm
+            artifact_name: leepanel-macos-arm
           - platform: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: taichi-panel-linux
+            artifact_name: leepanel-linux
     runs-on: ${{ matrix.platform }}
     outputs:
       version: ${{ steps.get_version.outputs.version }}
@@ -67,7 +67,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "TaiChi Panel ${{ github.ref_name }}"
+          releaseName: "LeePanel ${{ github.ref_name }}"
           releaseBody: "See the assets to download this version and install."
           releaseDraft: true
           prerelease: false
@@ -148,7 +148,7 @@ jobs:
           cat > update.json << EOF
           {
             "version": "$VERSION",
-            "notes": "TaiChi Panel $TAG",
+            "notes": "LeePanel $TAG",
             "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "platforms": {
               "windows-x86_64": {

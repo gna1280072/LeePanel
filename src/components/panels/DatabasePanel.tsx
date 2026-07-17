@@ -867,8 +867,6 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                     )}
                   </td>
                   <td className="actions">
-                    <button className="action-link">Manage</button>
-                    <span className="separator">|</span>
                     <button 
                       className="action-link"
                       onClick={() => openAccessDialog(db)}

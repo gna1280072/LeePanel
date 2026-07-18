@@ -1,8 +1,9 @@
 # LeePanel
+[中文文档](README.zh-CN.md)
 
-LeePanel — Free and open-source, the next-generation Linux server management panel.
+LeePanel — Free and open-source, the NEXT-generation Linux server management panel.
 
-Most popular server panels today need to be installed directly on the server. These panels frequently suffer from security vulnerabilities, causing endless headaches for server administrators worldwide.
+Most popular server panels today are installed directly on the server, and these panels themselves frequently suffer from security vulnerabilities, causing endless headaches for server administrators worldwide.
 
 We built LeePanel to solve this problem once and for all.
 
@@ -10,15 +11,15 @@ What makes us different: all operations are performed by sending SSH commands fr
 
 A lightweight cross-platform desktop app built with Tauri 2 + React, replacing traditional browser-based panels.
 
-Manage SSH connections, files (SFTP), Nginx, MySQL/MariaDB, PHP, Redis, Docker, firewall, SSL certificates and more — all from a single native desktop client...
+Manage SSH connections, files (SFTP), Nginx, MySQL/MariaDB, PHP, Redis, Docker, firewalls, SSL certificates and more — all from a single native desktop client...
 
-The project was released on July 18, 2026 — it's still a baby! 
+Released on July 18, 2026, LeePanel is still in its early stages. We've currently tested and verified compatibility with mainstream Ubuntu/Debian versions, with support for more Linux distributions in progress.
 
-We've tested it on mainstream versions of Ubuntu/Debian, with support for more Linux distributions coming soon. If you have any suggestions or feedback, feel free to share them in our Discussions.Website: https://www.LeePanel.com
+If you have any suggestions or feedback during use, feel free to share them in GitHub Discussions.
+
+Website: https://www.LeePanel.com
+
  
-
-[中文文档](README.zh-CN.md)
-
 ## Features
 
 ### Connection & Terminal

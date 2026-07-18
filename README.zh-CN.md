@@ -1,8 +1,10 @@
 # LeePanel
 
+[English](README.md)
+
 LeePanel — 免费开源，下一代 Linux 服务器管理面板。
 
-因目前流行的各种服务器面板软件，大多要安装到服务器上，这些面板在服务器上经常爆出安全问题，令广大的服务器管理员苦不堪言。
+因目前流行的各种安装在服务器上的面板软件，这些面板自身经常发现安全问题，令广大的服务器管理员苦不堪言。
 
 我们开发LeePanel，希望彻底解决这个问题。
 
@@ -12,13 +14,12 @@ LeePanel — 免费开源，下一代 Linux 服务器管理面板。
 
 通过单一原生客户端统一管理 SSH 连接、文件（SFTP）、Nginx、MySQL/MariaDB、PHP、Redis、Docker、防火墙、SSL 证书等功能.....
 
-当前项目发布于2026年7月18日，还是个宝宝，我们当前在ubuntu/debian上主流版本测试通过，更多的LINUX版本正在适配中。如果您在使用过程有任何建议和意见，欢迎到Discussions里提出。 
+当前项目发布于2026年7月18日，还是个宝宝，我们当前在ubuntu/debian上主流版本测试通过，更多的LINUX版本正在适配中。
+
+如果您在使用过程有任何建议和意见，欢迎到github Discussions 里提出。
 
 官网: https://www.LeePanel.com
  
-
-
-[English](README.md)
 
 ## 功能特性
 

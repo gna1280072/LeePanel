@@ -780,6 +780,19 @@
     "removeFromList": "从列表移除",
     "installMultiplePHP": "在此安装多版本php"
   },
+  "about": {
+    "title": "关于 LeePanel",
+    "line1": "LeePanel — 免费开源，下一代 Linux 服务器管理面板。",
+    "line2": "因目前流行的各种安装在服务器上的面板软件，这些面板自身经常发现安全问题，令广大的服务器管理员苦不堪言。",
+    "line3": "我们开发LeePanel，希望彻底解决这个问题。",
+    "line4": "我们的创新之处在于：所有操作通过本地电脑向服务器发送SSH命令进行，不需要在服务器上安装任何一行的面板代码，让服务器更安全！",
+    "line5": "基于 Tauri 2 + React 构建的轻量级跨平台桌面应用，取代传统浏览器面板。",
+    "line6": "通过单一原生客户端统一管理 SSH 连接、文件（SFTP）、Nginx、MySQL/MariaDB、PHP、Redis、Docker、防火墙、SSL 证书等功能。",
+    "line7": "当前项目发布于2026年7月18日，还是个宝宝，我们当前在ubuntu/debian上主流版本测试通过，更多的LINUX版本正在适配中。",
+    "line8": "如果您在使用过程有任何建议和意见，欢迎到",
+    "line9": "官网",
+    "github": "GitHub Discussions"
+  },
   "logs": {
     "title": "站点日志",
     "loadingSites": "加载站点中...",

@@ -1866,14 +1866,6 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
                 <span class="info-label">Domain</span>
                 <span class="info-value"><?= htmlspecialchars($domain) ?></span>
             </div>
-            <div class="info-row">
-                <span class="info-label">PHP Version</span>
-                <span class="info-value"><?= PHP_VERSION ?></span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Server Software</span>
-                <span class="info-value"><?= $_SERVER['SERVER_SOFTWARE'] ?? 'Nginx' ?></span>
-            </div>
         </div>
         <div class="features">
             <span>&#10003; Secure Connections</span>

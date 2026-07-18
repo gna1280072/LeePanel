@@ -3132,9 +3132,7 @@ body.dragging-files * {
 
 /* About Card */
 .sp-about-content {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  max-width: 720px;
 }
 
 .sp-about-section p {
@@ -3155,18 +3153,6 @@ body.dragging-files * {
 
 .sp-about-divider {
   display: none;
-}
-
-@media (max-width: 768px) {
-  .sp-about-content {
-    grid-template-columns: 1fr;
-  }
-  .sp-about-divider {
-    display: block;
-    height: 1px;
-    background: #30363d;
-    margin: 16px 0;
-  }
 }
 
 /* Info Grid */

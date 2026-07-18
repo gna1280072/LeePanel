@@ -780,6 +780,19 @@
     "removeFromList": "Remove from list",
     "installMultiplePHP": "Install multiple PHP versions here"
   },
+  "about": {
+    "title": "About LeePanel",
+    "line1": "LeePanel — Free and open-source, the next-generation Linux server management panel.",
+    "line2": "Most popular server panels today are installed directly on the server, and these panels themselves frequently suffer from security vulnerabilities, causing endless headaches for server administrators worldwide.",
+    "line3": "We built LeePanel to solve this problem once and for all.",
+    "line4": "What makes us different: all operations are performed by sending SSH commands from your local machine to the server. Not a single line of panel code needs to be installed on the server — making it fundamentally more secure!",
+    "line5": "A lightweight cross-platform desktop app built with Tauri 2 + React, replacing traditional browser-based panels.",
+    "line6": "Manage SSH connections, files (SFTP), Nginx, MySQL/MariaDB, PHP, Redis, Docker, firewalls, SSL certificates and more — all from a single native desktop client.",
+    "line7": "Released on July 18, 2026, LeePanel is still in its early stages. We've currently tested and verified compatibility with mainstream Ubuntu/Debian versions, with support for more Linux distributions in progress.",
+    "line8": "If you have any suggestions or feedback during use, feel free to share them in",
+    "line9": "Website",
+    "github": "GitHub Discussions"
+  },
   "logs": {
     "title": "Site Logs",
     "loadingSites": "Loading sites...",

@@ -780,6 +780,19 @@
     "mariadbDesc": "Community fork of MySQL. Fully compatible, faster release cycle, default on most Linux distros.",
     "mysqlVersionInfo": "Available version: {{version}}"
   },
+  "about": {
+    "title": "Sobre o LeePanel",
+    "line1": "LeePanel — Gratuito e de código aberto, o painel de gerenciamento de servidores Linux de próxima geração.",
+    "line2": "A maioria dos painéis de servidor populares são instalados diretamente no servidor, e esses próprios painéis frequentemente sofrem com vulnerabilidades de segurança, causando dores de cabeça intermináveis para administradores de servidores em todo o mundo.",
+    "line3": "Criamos o LeePanel para resolver esse problema de uma vez por todas.",
+    "line4": "O que nos diferencia: todas as operações são realizadas enviando comandos SSH da sua máquina local para o servidor. Nem uma única linha de código do painel precisa ser instalada no servidor — tornando-o fundamentalmente mais seguro!",
+    "line5": "Um aplicativo de desktop multiplataforma leve construído com Tauri 2 + React, substituindo painéis tradicionais baseados em navegador.",
+    "line6": "Gerencie conexões SSH, arquivos (SFTP), Nginx, MySQL/MariaDB, PHP, Redis, Docker, firewalls, certificados SSL e mais — tudo a partir de um único cliente de desktop nativo.",
+    "line7": "Lançado em 18 de julho de 2026, o LeePanel ainda está em seus estágios iniciais. Atualmente testamos e verificamos a compatibilidade com as versões principais do Ubuntu/Debian, com suporte a mais distribuições Linux em andamento.",
+    "line8": "Se você tiver sugestões ou feedback durante o uso, sinta-se à vontade para compartilhá-los no",
+    "line9": "Site",
+    "github": "GitHub Discussions"
+  },
   "logs": {
     "title": "Logs do site",
     "loadingSites": "Carregando sites...",

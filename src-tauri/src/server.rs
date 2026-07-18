@@ -1818,37 +1818,8 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
         .subtitle {
             font-size: 1.1em;
             color: #8b949e;
-            margin-bottom: 40px;
-        }
-        .info {
-            background: rgba(88, 166, 255, 0.08);
-            border: 1px solid rgba(88, 166, 255, 0.2);
-            border-radius: 12px;
-            padding: 24px;
-            margin-bottom: 30px;
-        }
-        .info-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-        }
-        .info-row:last-child { border-bottom: none; }
-        .info-label { color: #8b949e; }
-        .info-value { color: #58a6ff; font-weight: 600; }
-        .features {
-            display: flex;
-            gap: 12px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-        .features span {
-            background: rgba(35, 134, 54, 0.15);
-            border: 1px solid rgba(35, 134, 54, 0.3);
-            color: #3fb950;
-            padding: 6px 16px;
-            border-radius: 20px;
-            font-size: 0.9em;
+            margin-bottom: 24px;
+            line-height: 1.7;
         }
         .footer {
             margin-top: 40px;
@@ -1860,26 +1831,12 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
 <body>
     <div class="container">
         <h1>Welcome to LeePanel</h1>
-        <p class="subtitle">Your powerful SSH server management companion</p>
-        <div class="info">
-            <div class="info-row">
-                <span class="info-label">Domain</span>
-                <span class="info-value"><?= htmlspecialchars($domain) ?></span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">PHP Version</span>
-                <span class="info-value"><?= PHP_VERSION ?></span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Server Software</span>
-                <span class="info-value"><?= $_SERVER['SERVER_SOFTWARE'] ?? 'Nginx' ?></span>
-            </div>
-        </div>
-        <div class="features">
-            <span>&#10003; Secure Connections</span>
-            <span>&#10003; File Management</span>
-            <span>&#10003; Server Control</span>
-        </div>
+        <p class="subtitle">
+            LeePanel — Free and open-source, the NEXT-generation Linux server management panel.<br><br>
+            Today's widely-used server panels frequently suffer from security vulnerabilities. We built LeePanel to solve this problem once and for all.<br><br>
+            What makes us different: all operations are performed by sending SSH commands from your local machine to the server. Not a single line of panel code needs to be installed on the server — making it fundamentally more secure.<br><br>
+            A lightweight cross-platform desktop app built with Tauri 2 + React, replacing traditional browser-based panels.
+        </p>
         <p class="footer">Powered by LeePanel</p>
     </div>
 </body>
@@ -1924,21 +1881,8 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
         .subtitle {
             font-size: 1.1em;
             color: #8b949e;
-            margin-bottom: 40px;
-        }
-        .features {
-            display: flex;
-            gap: 12px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-        .features span {
-            background: rgba(35, 134, 54, 0.15);
-            border: 1px solid rgba(35, 134, 54, 0.3);
-            color: #3fb950;
-            padding: 6px 16px;
-            border-radius: 20px;
-            font-size: 0.9em;
+            margin-bottom: 24px;
+            line-height: 1.7;
         }
         .footer {
             margin-top: 40px;
@@ -1950,12 +1894,12 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
 <body>
     <div class="container">
         <h1>Welcome to LeePanel</h1>
-        <p class="subtitle">Your powerful SSH server management companion</p>
-        <div class="features">
-            <span>&#10003; Secure Connections</span>
-            <span>&#10003; File Management</span>
-            <span>&#10003; Server Control</span>
-        </div>
+        <p class="subtitle">
+            LeePanel — Free and open-source, the NEXT-generation Linux server management panel.<br><br>
+            Today's widely-used server panels frequently suffer from security vulnerabilities. We built LeePanel to solve this problem once and for all.<br><br>
+            What makes us different: all operations are performed by sending SSH commands from your local machine to the server. Not a single line of panel code needs to be installed on the server — making it fundamentally more secure.<br><br>
+            A lightweight cross-platform desktop app built with Tauri 2 + React, replacing traditional browser-based panels.
+        </p>
         <p class="footer">Powered by LeePanel</p>
     </div>
 </body>

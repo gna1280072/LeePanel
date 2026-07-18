@@ -1,6 +1,21 @@
 # LeePanel
 
-A cross-platform desktop application for SSH server management, built with Tauri 2 and React. LeePanel provides an all-in-one remote management experience for DevOps engineers and developers.
+LeePanel — Free and open-source, the next-generation Linux server management panel.
+
+Most popular server panels today need to be installed directly on the server. These panels frequently suffer from security vulnerabilities, causing endless headaches for server administrators worldwide.
+
+We built LeePanel to solve this problem once and for all.
+
+What makes us different: all operations are performed by sending SSH commands from your local machine to the server. Not a single line of panel code needs to be installed on the server — making it fundamentally more secure!
+
+A lightweight cross-platform desktop app built with Tauri 2 + React, replacing traditional browser-based panels.
+
+Manage SSH connections, files (SFTP), Nginx, MySQL/MariaDB, PHP, Redis, Docker, firewall, SSL certificates and more — all from a single native desktop client...
+
+The project was released on July 18, 2026 — it's still a baby! 
+
+We've tested it on mainstream versions of Ubuntu/Debian, with support for more Linux distributions coming soon. If you have any suggestions or feedback, feel free to share them in our Discussions.Website: https://www.LeePanel.com
+ 
 
 [中文文档](README.zh-CN.md)
 

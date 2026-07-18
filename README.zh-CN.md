@@ -1,6 +1,22 @@
 # LeePanel
 
-基于 Tauri 2 和 React 构建的跨平台 SSH 服务器管理桌面应用。LeePanel 为运维工程师和开发者提供一站式远程管理体验。
+LeePanel — 免费开源，下一代 Linux 服务器管理面板。
+
+因目前流行的各种服务器面板软件，大多要安装到服务器上，这些面板在服务器上经常爆出安全问题，令广大的服务器管理员苦不堪言。
+
+我们开发LeePanel，希望彻底解决这个问题。
+
+我们的创新之处在于：所有操作通过本地电脑向服务器发送SSH命令进行，不需要在服务器上安装任何一行的面板代码，让服务器更安全！
+
+基于 Tauri 2 + React 构建的轻量级跨平台桌面应用，取代传统浏览器面板。
+
+通过单一原生客户端统一管理 SSH 连接、文件（SFTP）、Nginx、MySQL/MariaDB、PHP、Redis、Docker、防火墙、SSL 证书等功能.....
+
+当前项目发布于2026年7月18日，还是个宝宝，我们当前在ubuntu/debian上主流版本测试通过，更多的LINUX版本正在适配中。如果您在使用过程有任何建议和意见，欢迎到Discussions里提出。 
+
+官网: https://www.LeePanel.com
+ 
+
 
 [English](README.md)
 

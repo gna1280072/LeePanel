@@ -75,7 +75,10 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
     setUpdateChecking(true)
     setUpdateMessage('')
     try {
-      const update = await check()
+      const update = await Promise.race([
+        check(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000)),
+      ])
       if (update?.available) {
         setUpdateMessage(`New version ${update.version} found, downloading...`)
         await update.downloadAndInstall()
@@ -84,7 +87,8 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
         setUpdateMessage('You are on the latest version')
       }
     } catch (e) {
-      setUpdateMessage(`Update check failed: ${String(e).slice(0, 100)}`)
+      const msg = String(e)
+      setUpdateMessage(msg.includes('Timeout') ? 'Update check timed out, please try again later.' : `Update check failed: ${msg.slice(0, 100)}`)
     } finally {
       setUpdateChecking(false)
     }

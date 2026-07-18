@@ -469,10 +469,15 @@ function App() {
       setSettings(s)
       autoReconnectRef.current = s.auto_reconnect
     }).catch(() => {})
-    // ponytail: auto-check for updates on startup, silent if no update or offline
-    check().then(update => {
+    // ponytail: auto-check for updates on startup, ask user before downloading
+    Promise.race([
+      check(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000)),
+    ]).then(async update => {
       if (update?.available) {
-        update.downloadAndInstall().catch(console.error)
+        const { ask } = await import('@tauri-apps/plugin-dialog')
+        const yes = await ask(`New version ${update.version} available. Update now?`, { title: 'Update Available', kind: 'info' })
+        if (yes) update.downloadAndInstall().catch(console.error)
       }
     }).catch(() => {})
   }, [])

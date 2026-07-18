@@ -44,3 +44,6 @@ src-tauri/target/
 
 # Documentation
 docs/
+
+# Website
+website/

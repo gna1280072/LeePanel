@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { getVersion } from '@tauri-apps/api/app'
 import { check } from '@tauri-apps/plugin-updater'
 import { useTranslation } from 'react-i18next'
 
@@ -63,6 +64,12 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
   // Update check state
   const [updateChecking, setUpdateChecking] = useState(false)
   const [updateMessage, setUpdateMessage] = useState('')
+  const [appVersion, setAppVersion] = useState('')
+
+  // Fetch app version
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => {})
+  }, [])
 
   const handleCheckUpdate = async () => {
     setUpdateChecking(true)
@@ -444,7 +451,7 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
           <div className="settings-card-body">
             <div className="settings-row">
               <span className="settings-label">{t('settings.currentVersion')}</span>
-              <span className="settings-value" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: '#8b949e' }}>1.0.0</span>
+              <span className="settings-value" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: '#8b949e' }}>{appVersion || '—'}</span>
             </div>
             <button
               className="svc-cfg-btn primary"

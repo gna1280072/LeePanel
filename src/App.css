@@ -3085,8 +3085,9 @@ body.dragging-files * {
 }
 
 .sp-dash-welcome {
-  margin: 6px 0 0;
-  font-size: 13px;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
   color: #8b949e;
 }
 
@@ -3127,6 +3128,45 @@ body.dragging-files * {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 12px;
+}
+
+/* About Card */
+.sp-about-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.sp-about-section p {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #c9d1d9;
+  margin-bottom: 10px;
+}
+
+.sp-about-section a {
+  color: #58a6ff;
+  text-decoration: none;
+}
+
+.sp-about-section a:hover {
+  text-decoration: underline;
+}
+
+.sp-about-divider {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .sp-about-content {
+    grid-template-columns: 1fr;
+  }
+  .sp-about-divider {
+    display: block;
+    height: 1px;
+    background: #30363d;
+    margin: 16px 0;
+  }
 }
 
 /* Info Grid */

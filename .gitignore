@@ -41,3 +41,6 @@ src-tauri/target/
 
 # Qoder AI assistant
 .qoder/
+
+# Documentation
+docs/

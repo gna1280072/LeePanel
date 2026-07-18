@@ -476,7 +476,7 @@ fn generate_install_script(os: &OsInfo, config: &LnmpInstallConfig) -> String {
     if os.family == "debian" {
         script.push_str("\n# Update package index\n");
         script.push_str("log 'Updating package index...'\n");
-        script.push_str("apt-get update -y --allow-releaseinfo-change\n");
+        script.push_str("apt-get update -y --allow-releaseinfo-change || true\n");
 
         if config.install_nginx {
             script.push_str("\n# Install Nginx\n");
@@ -1807,23 +1807,6 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
             padding: 60px 40px;
             max-width: 600px;
         }
-        .logo {
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 30px;
-            background: linear-gradient(135deg, #58a6ff, #238636);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 36px;
-            box-shadow: 0 8px 32px rgba(88, 166, 255, 0.3);
-            animation: pulse 2s ease-in-out infinite;
-        }
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-        }
         h1 {
             font-size: 2.2em;
             background: linear-gradient(135deg, #58a6ff, #79c0ff);
@@ -1876,7 +1859,6 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
 </head>
 <body>
     <div class="container">
-        <div class="logo">&#9775;</div>
         <h1>Welcome to LeePanel</h1>
         <p class="subtitle">Your powerful SSH server management companion</p>
         <div class="info">
@@ -1931,23 +1913,6 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
             padding: 60px 40px;
             max-width: 600px;
         }
-        .logo {
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 30px;
-            background: linear-gradient(135deg, #58a6ff, #238636);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 36px;
-            box-shadow: 0 8px 32px rgba(88, 166, 255, 0.3);
-            animation: pulse 2s ease-in-out infinite;
-        }
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-        }
         h1 {
             font-size: 2.2em;
             background: linear-gradient(135deg, #58a6ff, #79c0ff);
@@ -1984,7 +1949,6 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
 </head>
 <body>
     <div class="container">
-        <div class="logo">&#9775;</div>
         <h1>Welcome to LeePanel</h1>
         <p class="subtitle">Your powerful SSH server management companion</p>
         <div class="features">
@@ -4741,7 +4705,7 @@ if [ -f /etc/os-release ]; then
 fi
 
 if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
-  apt-get update -qq 2>/dev/null
+  apt-get update -qq --allow-releaseinfo-change 2>/dev/null || true
   M_CAND=$(apt-cache policy mariadb-server 2>/dev/null | grep 'Candidate:' | awk '{print $2}')
   if [ -n "$M_CAND" ] && [ "$M_CAND" != "(none)" ]; then
     echo "mariadb:$M_CAND"
@@ -5262,7 +5226,7 @@ install_deps() {{
       echo "Waiting for package manager lock... ($i/60)"
       sleep 1
     done
-    apt-get update -qq
+    apt-get update -qq --allow-releaseinfo-change || true
     # Core build tools (always install)
     apt-get install -y build-essential autoconf pkg-config libtool re2c bison flex
     # Each lib individually — failures recorded but not fatal
@@ -5564,7 +5528,7 @@ if [ "{}" = "install" ]; then
       echo "Waiting for package manager lock... ($i/60)"
       sleep 1
     done
-    apt-get update -qq
+    apt-get update -qq --allow-releaseinfo-change || true
     apt-get install -y redis-server
   else
     yum install -y --nogpgcheck --assumeyes epel-release
@@ -5613,7 +5577,7 @@ if [ "{}" = "install" ]; then
         echo "Waiting for package manager lock... ($i/60)"
         sleep 1
       done
-      apt-get update -qq
+      apt-get update -qq --allow-releaseinfo-change || true
       apt-get install -y nodejs npm
     else
       yum install -y --nogpgcheck --assumeyes nodejs npm
@@ -5645,12 +5609,12 @@ echo "ACTION_SUCCESS"
                 // ponytail: bypass get.docker.com (blocked by GFW) — use Aliyun Docker CE repo directly
                 format!(r#"{} && . /etc/os-release
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
-    apt-get update -qq && apt-get install -y ca-certificates curl gnupg
+    apt-get update -qq --allow-releaseinfo-change || true; apt-get install -y ca-certificates curl gnupg
     install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/$ID/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
     chmod a+r /etc/apt/keyrings/docker.gpg
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://mirrors.aliyun.com/docker-ce/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
-    apt-get update -qq
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://mirrors.aliyun.com/docker-ce/linux/$ID $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
+    apt-get update -qq --allow-releaseinfo-change || true
     apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
   else
     yum install -y --nogpgcheck --assumeyes yum-utils
@@ -5732,7 +5696,7 @@ if [ "__ACTION__" = "install" ]; then
       echo "Waiting for package manager lock... ($i/60)"
       sleep 1
     done
-    apt-get update -qq
+    apt-get update -qq --allow-releaseinfo-change || true
     
     # Auto-detect variant if not specified
     if [ -z "$VARIANT" ]; then

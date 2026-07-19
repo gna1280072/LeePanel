@@ -1809,11 +1809,11 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
         }
         h1 {
             font-size: 2.2em;
-            background: linear-gradient(135deg, #58a6ff, #79c0ff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            white-space: nowrap;
             margin-bottom: 12px;
+        }
+        h1.success-title {
+            color: #3fb950;
         }
         .subtitle {
             font-size: 1.1em;
@@ -1859,14 +1859,9 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
 </head>
 <body>
     <div class="container">
-        <h1>Congratulations! Your website has been created successfully.</h1>
+        <h1 class="success-title">Congratulations!</h1>
+        <h1>Your website has been created successfully.</h1>
         <p class="subtitle">LeePanel, Your powerful SSH server management companion.</p>
-        <div class="info">
-            <div class="info-row">
-                <span class="info-label">Domain</span>
-                <span class="info-value"><?= htmlspecialchars($domain) ?></span>
-            </div>
-        </div>
         <div class="features">
             <span>&#10003; Secure Connections</span>
             <span>&#10003; File Management</span>
@@ -1907,11 +1902,11 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
         }
         h1 {
             font-size: 2.2em;
-            background: linear-gradient(135deg, #58a6ff, #79c0ff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            white-space: nowrap;
             margin-bottom: 12px;
+        }
+        h1.success-title {
+            color: #3fb950;
         }
         .subtitle {
             font-size: 1.1em;
@@ -1941,7 +1936,8 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
 </head>
 <body>
     <div class="container">
-        <h1>Congratulations! Your website has been created successfully.</h1>
+        <h1 class="success-title">Congratulations!</h1>
+        <h1>Your website has been created successfully.</h1>
         <p class="subtitle">LeePanel, Your powerful SSH server management companion.</p>
         <div class="features">
             <span>&#10003; Secure Connections</span>

@@ -479,14 +479,10 @@ function App() {
         const yes = await ask(`New version ${update.version} available. Update now?`, { title: 'Update Available', kind: 'info' })
         if (yes) {
           showToast(`Downloading v${update.version}...`)
-          Promise.race([
-            update.downloadAndInstall(),
-            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Download timeout')), 120000)),
-          ]).then(() => {
+          update.downloadAndInstall().then(() => {
             showToast(`v${update.version} installed, restarting...`)
           }).catch(e => {
-            const msg = String(e)
-            showToast(msg.includes('timeout') ? `Update failed: download timed out.` : `Update failed: ${msg.slice(0, 80)}`)
+            showToast(`Update failed: ${String(e).slice(0, 80)}`)
           })
         }
       }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { check } from '@tauri-apps/plugin-updater'
+import { check, type Update } from '@tauri-apps/plugin-updater'
 import { useTranslation } from 'react-i18next'
 import Sidebar from './components/Sidebar'
 import ServerPanel from './components/ServerPanel'
@@ -60,6 +60,7 @@ function App() {
   const [showWelcome, setShowWelcome] = useState(false)
   const termRef = useRef<TerminalHandle | null>(null)
   const [errorDialog, setErrorDialog] = useState<{ visible: boolean; message: string; type: 'auth' | 'network' | 'connection' | 'other' } | null>(null)
+  const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null)
 
   // Settings
   const [settings, setSettings] = useState<Settings>({
@@ -479,11 +480,18 @@ function App() {
         const yes = await ask(`New version ${update.version} available. Update now?`, { title: 'Update Available', kind: 'info' })
         if (yes) {
           showToast(`Downloading v${update.version}...`)
-          update.downloadAndInstall().then(() => {
-            showToast(`v${update.version} installed, restarting...`)
-          }).catch(e => {
+          try {
+            await update.download()
+            const restart = await ask(`v${update.version} has been downloaded. Restart now to apply the update?`, { title: 'Update Ready', kind: 'info' })
+            if (restart) {
+              await update.install()
+            } else {
+              setPendingUpdate(update)
+              showToast('Update ready. Click "Restart Now" when you are ready.')
+            }
+          } catch (e) {
             showToast(`Update failed: ${String(e).slice(0, 80)}`)
-          })
+          }
         }
       }
     }).catch(() => {})
@@ -716,6 +724,12 @@ function App() {
         <div className="top-bar">
           {error && <div className="error-bar">{error}</div>}
           {toast && <div className="toast-bar">{toast}</div>}
+          {pendingUpdate && (
+            <div className="update-ready-bar">
+              <span>🔄 Update v{pendingUpdate.version} ready</span>
+              <button className="update-restart-btn" onClick={async () => { await pendingUpdate.install() }}>Restart Now</button>
+            </div>
+          )}
         </div>
         
         {/* Error Dialog */}

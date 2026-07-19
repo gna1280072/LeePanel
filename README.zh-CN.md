@@ -1,6 +1,6 @@
 # LeePanel
 
-[English](README.md)
+[English](README.md) | [下载软件](https://github.com/gna1280072/LeePanel/releases)
 
 LeePanel — 免费开源，下一代 Linux 服务器管理面板。
 

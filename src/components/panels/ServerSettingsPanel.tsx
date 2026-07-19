@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { getVersion } from '@tauri-apps/api/app'
-import { check } from '@tauri-apps/plugin-updater'
+import { check, type Update } from '@tauri-apps/plugin-updater'
 import { useTranslation } from 'react-i18next'
 
 interface SshKeyPair {
@@ -65,6 +65,7 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
   const [updateChecking, setUpdateChecking] = useState(false)
   const [updateMessage, setUpdateMessage] = useState('')
   const [appVersion, setAppVersion] = useState('')
+  const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null)
 
   // Fetch app version
   useEffect(() => {
@@ -81,8 +82,16 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
       ])
       if (update?.available) {
         setUpdateMessage(`New version ${update.version} found, downloading...`)
-        await update.downloadAndInstall()
-        setUpdateMessage(`Version ${update.version} installed, restarting...`)
+        await update.download()
+        const { ask } = await import('@tauri-apps/plugin-dialog')
+        const restart = await ask(`v${update.version} has been downloaded. Restart now to apply the update?`, { title: 'Update Ready', kind: 'info' })
+        if (restart) {
+          setUpdateMessage(`Installing v${update.version}, restarting...`)
+          await update.install()
+        } else {
+          setPendingUpdate(update)
+          setUpdateMessage(`v${update.version} downloaded. Click "Install & Restart" when ready.`)
+        }
       } else {
         setUpdateMessage('You are on the latest version')
       }
@@ -469,6 +478,15 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
               <div style={{ padding: '8px 12px', background: updateMessage.includes('latest') ? '#1f6feb22' : '#2ea04322', borderRadius: 6, fontSize: 13, color: updateMessage.includes('latest') ? '#58a6ff' : '#3fb950' }}>
                 {updateMessage}
               </div>
+            )}
+            {pendingUpdate && (
+              <button
+                className="svc-cfg-btn primary"
+                style={{ width: '100%', marginTop: 8 }}
+                onClick={async () => { await pendingUpdate.install() }}
+              >
+                Install & Restart
+              </button>
             )}
           </div>
         </div>

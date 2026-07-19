@@ -1,5 +1,5 @@
 # LeePanel
-[中文文档](README.zh-CN.md)
+[中文文档](README.zh-CN.md) | [Download](https://github.com/gna1280072/LeePanel/releases)
 
 LeePanel — Free and open-source, the NEXT-generation Linux server management panel.
 

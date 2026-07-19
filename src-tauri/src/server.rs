@@ -6136,7 +6136,7 @@ pub async fn reboot_server(
     if code != 0 && !stderr.is_empty() && !stderr.contains("Connection") && !stderr.contains("closed") {
         return Err(format!("Reboot failed: {}", stderr.trim()));
     }
-    Ok("Server is rebooting. SSH connection will be disconnected.".to_string())
+    Ok(format!("[{}] Server is rebooting. SSH connection will be disconnected.", cmd))
 }
 
 /// Get server boot time and uptime duration

@@ -209,14 +209,13 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
   const execReboot = async () => {
     if (!sessionId) return
     const force = rebootConfirm.force
-    const cmd = force ? 'reboot -f' : 'reboot'
     setRebootConfirm({ show: false, force: false })
     setRebootLoading(true)
 
     // Show execution panel
     setRebootExecPanel({
       show: true,
-      logs: [`[CMD] ${cmd}`, 'Executing reboot command...'],
+      logs: ['Executing reboot command...'],
       status: 'running',
     })
 
@@ -224,7 +223,7 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
       const result = await invoke<string>('server_reboot', { sessionId, force })
       setRebootExecPanel(prev => ({
         ...prev,
-        logs: [...prev.logs, `[OK] ${result}`, '', 'Server is rebooting. SSH connection will be lost.'],
+        logs: [...prev.logs, `[OK] ${result}`],
         status: 'done',
       }))
     } catch (e) {

@@ -1,5 +1,7 @@
 # LeePanel
 
+<p align="center"><img src="public/app-icon.png" alt="LeePanel Logo" width="128" height="128"></p>
+
 [English](README.md) | [下载软件](https://github.com/gna1280072/LeePanel/releases)
 
 LeePanel — 免费开源，下一代 Linux 服务器管理面板。

@@ -81,7 +81,10 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
       ])
       if (update?.available) {
         setUpdateMessage(`New version ${update.version} found, downloading...`)
-        await update.downloadAndInstall()
+        await Promise.race([
+          update.downloadAndInstall(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Download timeout')), 120000)),
+        ])
         setUpdateMessage(`Version ${update.version} installed, restarting...`)
       } else {
         setUpdateMessage('You are on the latest version')

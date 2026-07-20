@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Download LeePanel for Windows, macOS, and Linux. Free and open-source Linux server management panel." />
+  <title data-zh="下载 — LeePanel" data-en="Download — LeePanel">Download — LeePanel</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ===== NAV ===== -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo">
+      <img src="logo.png" alt="LeePanel" class="nav-logo-img" />
+      <span>LeePanel</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="index.html#features" data-zh="特性" data-en="Features">特性</a></li>
+      <li><a href="index.html#stack" data-zh="技术栈" data-en="Tech Stack">技术栈</a></li>
+      <li><a href="download.html" class="active" data-zh="下载" data-en="Download">下载</a></li>
+      <li><a href="blog.html" data-zh="博客" data-en="Blog">博客</a></li>
+      <li><a href="https://github.com/gna1280072/LeePanel" target="_blank" rel="noopener">GitHub</a></li>
+    </ul>
+    <button class="lang-btn" id="langToggle" data-zh="EN" data-en="中文">EN</button>
+    <button class="nav-hamburger" id="hamburger" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<!-- ===== DOWNLOAD HERO ===== -->
+<section class="dl-hero">
+  <div class="container">
+    <h1 class="dl-title" data-zh="下载 LeePanel" data-en="Download LeePanel">下载 LeePanel</h1>
+    <p class="dl-sub" data-zh="选择你的平台，免费下载安装" data-en="Choose your platform and download for free">选择你的平台，免费下载安装</p>
+    <div class="dl-version" id="dlVersion" data-zh="最新版本：加载中…" data-en="Latest: Loading…">最新版本：加载中…</div>
+  </div>
+</section>
+
+<!-- ===== DOWNLOAD CARDS ===== -->
+<section class="dl-section">
+  <div class="container">
+    <div class="dl-grid">
+      <!-- Windows -->
+      <div class="dl-card fade-in">
+        <div class="dl-card-header">
+          <div class="dl-platform-icon"></div>
+          <h3>Windows</h3>
+        </div>
+        <ul class="dl-file-list">
+          <li>
+            <span class="dl-file-name" data-zh="Windows 安装包 (.exe)" data-en="Windows Installer (.exe)">Windows 安装包 (.exe)</span>
+            <a href="#" class="dl-file-btn" data-platform="windows" data-zh="下载" data-en="Download">下载</a>
+          </li>
+        </ul>
+        <p class="dl-note" data-zh="支持 Windows 10 / 11，64 位" data-en="Supports Windows 10 / 11, 64-bit">支持 Windows 10 / 11，64 位</p>
+      </div>
+
+      <!-- macOS -->
+      <div class="dl-card fade-in">
+        <div class="dl-card-header">
+          <div class="dl-platform-icon">🍎</div>
+          <h3>macOS</h3>
+        </div>
+        <ul class="dl-file-list">
+          <li>
+            <span class="dl-file-name" data-zh="Intel (.dmg)" data-en="Intel (.dmg)">Intel (.dmg)</span>
+            <a href="#" class="dl-file-btn" data-platform="macos-intel" data-zh="下载" data-en="Download">下载</a>
+          </li>
+          <li>
+            <span class="dl-file-name" data-zh="Apple Silicon (.dmg)" data-en="Apple Silicon (.dmg)">Apple Silicon (.dmg)</span>
+            <a href="#" class="dl-file-btn" data-platform="macos-arm" data-zh="下载" data-en="Download">下载</a>
+          </li>
+        </ul>
+        <p class="dl-note" data-zh="支持 macOS 10.15+，Intel & Apple Silicon" data-en="Supports macOS 10.15+, Intel & Apple Silicon">支持 macOS 10.15+，Intel & Apple Silicon</p>
+      </div>
+
+    </div>
+
+    <!-- GitHub link -->
+    <div class="dl-github">
+      <a href="https://github.com/gna1280072/LeePanel/releases" target="_blank" rel="noopener" class="btn btn-outline" data-zh="前往 GitHub Releases 查看所有版本" data-en="View All Versions on GitHub Releases">前往 GitHub Releases 查看所有版本</a>
+    </div>
+
+    <!-- Blog link -->
+    <div class="dl-github" style="margin-top: 16px;">
+      <a href="blog.html" class="btn btn-outline" data-zh="📖 不确定能不能装？查看系统兼容性指南" data-en="📖 Not sure if it runs on your system? Check the compatibility guide">📖 不确定能不能装？查看系统兼容性指南</a>
+    </div>
+  </div>
+</section>
+
+<!-- ===== INSTALL NOTES ===== -->
+<section class="dl-notes-section">
+  <div class="container">
+    <h2 class="section-title" data-zh="安装说明" data-en="Installation Notes">安装说明</h2>
+    <div class="dl-notes-grid">
+      <div class="dl-note-card fade-in">
+        <h4 data-zh="Windows" data-en="Windows">Windows</h4>
+        <p data-zh="下载 .exe 安装包，双击运行安装向导。便携版解压后即可运行，无需安装。" data-en="Download the .exe installer and run the setup wizard. The portable version can be run directly after extraction, no installation required.">下载 .exe 安装包，双击运行安装向导。便携版解压后即可运行，无需安装。</p>
+      </div>
+      <div class="dl-note-card fade-in">
+        <h4>macOS</h4>
+        <p data-zh="打开 .dmg 文件，将 LeePanel 拖入应用程序文件夹。首次运行需在系统设置中允许来自未知开发者的应用。" data-en="Open the .dmg file and drag LeePanel to Applications. On first launch, allow the app in System Settings under Privacy & Security.">打开 .dmg 文件，将 LeePanel 拖入应用程序文件夹。首次运行需在系统设置中允许来自未知开发者的应用。</p>
+      </div>
+      <div class="dl-note-card fade-in">
+        <h4>Linux</h4>
+        <p data-zh="Debian/Ubuntu 用户：sudo dpkg -i leepanel_xxx.deb。AppImage 用户：chmod +x 后直接运行。" data-en="Debian/Ubuntu: sudo dpkg -i leepanel_xxx.deb. AppImage: chmod +x then run directly.">Debian/Ubuntu 用户：sudo dpkg -i leepanel_xxx.deb。AppImage 用户：chmod +x 后直接运行。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== FOOTER ===== -->
+<footer class="footer">
+  <div class="container footer-inner">
+    <div class="footer-brand">
+      <img src="logo.png" alt="LeePanel" class="footer-logo" />
+      <span>LeePanel</span>
+    </div>
+    <div class="footer-links">
+      <a href="https://github.com/gna1280072/LeePanel" target="_blank" rel="noopener">GitHub</a>
+      <a href="index.html#features" data-zh="特性" data-en="Features">特性</a>
+      <a href="download.html" data-zh="下载" data-en="Download">下载</a>
+      <a href="blog.html" data-zh="博客" data-en="Blog">博客</a>
+    </div>
+    <p class="footer-copy" data-zh="© 2026 LeePanel. All rights reserved." data-en="© 2026 LeePanel. All rights reserved.">© 2026 LeePanel. All rights reserved.</p>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

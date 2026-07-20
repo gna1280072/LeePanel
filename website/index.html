@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="LeePanel - Free and open-source, the next-generation Linux server management panel. SSH-based, zero server-side code." />
+  <title data-zh="LeePanel — 下一代 Linux 服务器管理面板" data-en="LeePanel — Next-Gen Linux Server Management Panel">LeePanel — Next-Gen Linux Server Management Panel</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700;800&family=Noto+Sans+SC:wght@500;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ===== NAV ===== -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo">
+      <img src="logo.png" alt="LeePanel" class="nav-logo-img" />
+      <span>LeePanel</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#features" data-zh="特性" data-en="Features">特性</a></li>
+      <li><a href="#stack" data-zh="技术栈" data-en="Tech Stack">技术栈</a></li>
+      <li><a href="download.html" data-zh="下载" data-en="Download">下载</a></li>
+      <li><a href="blog.html" data-zh="博客" data-en="Blog">博客</a></li>
+      <li><a href="https://github.com/gna1280072/LeePanel" target="_blank" rel="noopener">GitHub</a></li>
+    </ul>
+    <button class="lang-btn" id="langToggle" data-zh="EN" data-en="中文">EN</button>
+    <button class="nav-hamburger" id="hamburger" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<!-- ===== HERO ===== -->
+<section class="hero" id="hero">
+  <div class="container">
+    <div class="hero-brand fade-in">
+      <img src="logo.png" alt="LeePanel" class="hero-brand-logo" />
+      <span data-en="LeePanel" data-zh="LeePanel">LeePanel</span>
+    </div>
+    <div class="hero-actions fade-in">
+      <a href="download.html" class="btn btn-primary" data-zh="立即下载" data-en="Download Now">立即下载</a>
+      <a href="https://github.com/gna1280072/LeePanel" target="_blank" rel="noopener" class="btn btn-outline" data-zh="查看源码" data-en="View Source">查看源码</a>
+    </div>
+    <div class="hero-prose">
+      <p class="hero-lead" data-en="Free and open-source, the next-generation Linux server management panel." data-zh="免费开源，下一代 Linux 服务器管理面板。">免费开源，下一代 Linux 服务器管理面板。</p>
+      <p data-en="Most popular server panels today are installed directly on the server, and these panels themselves frequently suffer from security vulnerabilities, causing endless headaches for server administrators worldwide." data-zh="目前流行的各种面板需要安装在服务器上，而这些面板自身经常发现安全问题，令广大的服务器管理员苦不堪言。">目前流行的各种面板需要安装在服务器上，而这些面板自身经常发现安全问题，令广大的服务器管理员苦不堪言。</p>
+      <p data-en="We built LeePanel to solve this problem once and for all." data-zh="我们开发 LeePanel，希望彻底解决这个问题。">我们开发 LeePanel，希望彻底解决这个问题。</p>
+      <p class="hero-highlight" data-en="All operations are performed by sending SSH commands from your local machine. Not a single line of panel code needs to be installed on the server — making it fundamentally more secure." data-zh="所有操作通过本地电脑发送 SSH 命令执行，服务器上不安装任何面板代码——从根本上更安全。">所有操作通过本地电脑发送 SSH 命令执行，服务器上不安装任何面板代码——从根本上更安全。</p>
+      <p data-en="A lightweight cross-platform desktop app built with Tauri 2 + React, replacing traditional browser-based panels. Manage SSH, files, Nginx, MySQL, PHP, Redis, Docker, firewalls, SSL and more — all from a single native client." data-zh="基于 Tauri 2 + React 构建的轻量级跨平台桌面应用。通过单一原生客户端统一管理 SSH、文件、Nginx、MySQL、PHP、Redis、Docker、防火墙、SSL 等功能。">基于 Tauri 2 + React 构建的轻量级跨平台桌面应用。通过单一原生客户端统一管理 SSH、文件、Nginx、MySQL、PHP、Redis、Docker、防火墙、SSL 等功能。</p>
+      <p data-en="Released on July 18, 2026 — still in its early stages. Currently tested on mainstream Ubuntu/Debian, with more Linux distributions coming soon." data-zh="项目发布于 2026 年 7 月 18 日，仍处于早期阶段。当前已在 Ubuntu/Debian 主流版本测试通过，更多 Linux 发行版适配中。">项目发布于 2026 年 7 月 18 日，仍处于早期阶段。当前已在 Ubuntu/Debian 主流版本测试通过，更多 Linux 发行版适配中。</p>
+      <p data-en="Have suggestions or feedback? Share them in GitHub Discussions." data-zh="有任何建议或反馈？欢迎到 GitHub Discussions 提出。">有任何建议或反馈？欢迎到 GitHub Discussions 提出。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== ADVANTAGES ===== -->
+<section class="advantages" id="advantages">
+  <div class="container">
+    <div class="adv-grid">
+      <div class="adv-card fade-in">
+        <div class="adv-icon"></div>
+        <h3 data-zh="零服务器代码" data-en="Zero Server Code">零服务器代码</h3>
+        <p data-zh="不在服务器部署任何面板程序，所有指令通过 SSH 远程执行，从根源上消除面板漏洞风险。" data-en="No panel software deployed on your server. All commands run remotely via SSH, eliminating panel vulnerability risks at the root.">不在服务器部署任何面板程序，所有指令通过 SSH 远程执行，从根源上消除面板漏洞风险。</p>
+      </div>
+      <div class="adv-card fade-in">
+        <div class="adv-icon">🖥️</div>
+        <h3 data-zh="跨平台桌面应用" data-en="Cross-platform Desktop App">跨平台桌面应用</h3>
+        <p data-zh="基于 Tauri 2 构建，原生支持 Windows、macOS 和 Linux。告别浏览器标签页，享受原生桌面体验。" data-en="Built with Tauri 2, natively supporting Windows, macOS, and Linux. Say goodbye to browser tabs and enjoy a native desktop experience.">基于 Tauri 2 构建，原生支持 Windows、macOS 和 Linux。告别浏览器标签页，享受原生桌面体验。</p>
+      </div>
+      <div class="adv-card fade-in">
+        <div class="adv-icon">🆓</div>
+        <h3 data-zh="免费开源" data-en="Free & Open Source">免费开源</h3>
+        <p data-zh="完全免费，源代码公开透明。社区驱动，持续迭代，没有隐藏收费，没有功能限制。" data-en="Completely free with transparent source code. Community-driven and continuously improved, with no hidden fees or feature limitations.">完全免费，源代码公开透明。社区驱动，持续迭代，没有隐藏收费，没有功能限制。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== FEATURES ===== -->
+<section class="features" id="features">
+  <div class="container">
+    <h2 class="section-title" data-zh="功能特性" data-en="Features">功能特性</h2>
+    <p class="section-sub" data-zh="一个客户端，搞定所有服务器管理需求" data-en="One client, all your server management needs">一个客户端，搞定所有服务器管理需求</p>
+    <div class="feature-grid">
+      <div class="feature-card fade-in">
+        <div class="feature-icon">⌨️</div>
+        <h4 data-zh="SSH 终端" data-en="SSH Terminal">SSH 终端</h4>
+        <p data-zh="密码/密钥认证，xterm.js 全功能终端，支持剪贴板、链接识别、自动重连。" data-en="Password/key auth, full-featured xterm.js terminal with clipboard, link detection, and auto-reconnect.">密码/密钥认证，xterm.js 全功能终端，支持剪贴板、链接识别、自动重连。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="feature-icon">📁</div>
+        <h4 data-zh="文件管理" data-en="File Management">文件管理</h4>
+        <p data-zh="远程文件浏览器，拖拽上传下载，分片上传大文件，压缩解压，权限管理。" data-en="Remote file browser with drag-and-drop, chunked large file upload, compress/extract, and permission management.">远程文件浏览器，拖拽上传下载，分片上传大文件，压缩解压，权限管理。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="feature-icon">🔧</div>
+        <h4 data-zh="LNMP 一键安装" data-en="LNMP One-Click Install">LNMP 一键安装</h4>
+        <p data-zh="Nginx、MySQL/MariaDB、PHP-FPM 一键安装，版本可选，服务启停控制。" data-en="One-click install for Nginx, MySQL/MariaDB, PHP-FPM with version selection and service controls.">Nginx、MySQL/MariaDB、PHP-FPM 一键安装，版本可选，服务启停控制。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="feature-icon">🌐</div>
+        <h4 data-zh="站点管理" data-en="Site Management">站点管理</h4>
+        <p data-zh="Nginx 虚拟主机、Let's Encrypt SSL、反向代理、伪静态、PHP 版本切换。" data-en="Nginx vhosts, Let's Encrypt SSL, reverse proxy, rewrite rules, and per-site PHP version switching.">Nginx 虚拟主机、Let's Encrypt SSL、反向代理、伪静态、PHP 版本切换。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="feature-icon">🗄️</div>
+        <h4 data-zh="数据库管理" data-en="Database Management">数据库管理</h4>
+        <p data-zh="MySQL/MariaDB 数据库 CRUD、用户权限、备份恢复、SQL 导入、Root 密码管理。" data-en="MySQL/MariaDB CRUD, user permissions, backup/restore, SQL import, and root password management.">MySQL/MariaDB 数据库 CRUD、用户权限、备份恢复、SQL 导入、Root 密码管理。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="feature-icon">⚡</div>
+        <h4 data-zh="Redis 管理" data-en="Redis Management">Redis 管理</h4>
+        <p data-zh="Key 浏览与 CRUD、TTL 支持、多数据库切换、备份恢复。" data-en="Key browsing and CRUD with TTL support, multi-database switching, and backup/restore.">Key 浏览与 CRUD、TTL 支持、多数据库切换、备份恢复。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="feature-icon">🐳</div>
+        <h4 data-zh="Docker 管理" data-en="Docker Management">Docker 管理</h4>
+        <p data-zh="容器生命周期管理、镜像拉取运行、日志查看、镜像源配置。" data-en="Container lifecycle, image pull/run, log viewer, and mirror source configuration.">容器生命周期管理、镜像拉取运行、日志查看、镜像源配置。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="feature-icon">📊</div>
+        <h4 data-zh="系统监控" data-en="System Monitoring">系统监控</h4>
+        <p data-zh="实时 CPU、内存、磁盘、网络监控，进程列表，运行时间追踪。" data-en="Real-time CPU, memory, disk, and network monitoring with process list and uptime tracking.">实时 CPU、内存、磁盘、网络监控，进程列表，运行时间追踪。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="feature-icon">🛡️</div>
+        <h4 data-zh="防火墙 & BBR" data-en="Firewall & BBR">防火墙 & BBR</h4>
+        <p data-zh="ufw/firewalld/iptables 规则管理，BBR TCP 拥塞控制一键开启。" data-en="ufw/firewalld/iptables rule management and one-click BBR TCP congestion control.">ufw/firewalld/iptables 规则管理，BBR TCP 拥塞控制一键开启。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="feature-icon">🔑</div>
+        <h4 data-zh="SSL 证书" data-en="SSL Certificates">SSL 证书</h4>
+        <p data-zh="Let's Encrypt 证书自动申请、续期、部署，支持多域名和泛域名。" data-en="Let's Encrypt auto-issue, renew, and deploy with multi-domain and wildcard support.">Let's Encrypt 证书自动申请、续期、部署，支持多域名和泛域名。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== TECH STACK ===== -->
+<section class="stack" id="stack">
+  <div class="container">
+    <h2 class="section-title" data-zh="技术栈" data-en="Tech Stack">技术栈</h2>
+    <p class="section-sub" data-zh="现代、轻量、高性能" data-en="Modern, lightweight, high-performance">现代、轻量、高性能</p>
+    <div class="stack-grid">
+      <div class="stack-item fade-in">
+        <span class="stack-name">Tauri 2</span>
+        <span class="stack-desc" data-zh="桌面框架" data-en="Desktop Framework">桌面框架</span>
+      </div>
+      <div class="stack-item fade-in">
+        <span class="stack-name">React 19</span>
+        <span class="stack-desc" data-zh="前端框架" data-en="Frontend Framework">前端框架</span>
+      </div>
+      <div class="stack-item fade-in">
+        <span class="stack-name">TypeScript</span>
+        <span class="stack-desc" data-zh="类型安全" data-en="Type Safety">类型安全</span>
+      </div>
+      <div class="stack-item fade-in">
+        <span class="stack-name">Rust</span>
+        <span class="stack-desc" data-zh="后端核心" data-en="Backend Core">后端核心</span>
+      </div>
+      <div class="stack-item fade-in">
+        <span class="stack-name">russh</span>
+        <span class="stack-desc" data-zh="SSH 客户端" data-en="SSH Client">SSH 客户端</span>
+      </div>
+      <div class="stack-item fade-in">
+        <span class="stack-name">xterm.js</span>
+        <span class="stack-desc" data-zh="终端模拟" data-en="Terminal Emulator">终端模拟</span>
+      </div>
+      <div class="stack-item fade-in">
+        <span class="stack-name">SQLite</span>
+        <span class="stack-desc" data-zh="本地存储" data-en="Local Storage">本地存储</span>
+      </div>
+      <div class="stack-item fade-in">
+        <span class="stack-name">Vite 8</span>
+        <span class="stack-desc" data-zh="构建工具" data-en="Build Tool">构建工具</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== DOWNLOAD CTA ===== -->
+<section class="download-cta" id="download">
+  <div class="container">
+    <h2 class="section-title" data-zh="准备好开始了吗？" data-en="Ready to Get Started?">准备好开始了吗？</h2>
+    <p class="section-sub" data-zh="免费下载 LeePanel，管理你的 Linux 服务器" data-en="Download LeePanel for free and take control of your Linux servers">免费下载 LeePanel，管理你的 Linux 服务器</p>
+    <div class="cta-actions">
+      <a href="download.html" class="btn btn-primary" data-zh="前往下载页" data-en="Go to Download Page">前往下载页</a>
+      <a href="https://github.com/gna1280072/LeePanel" target="_blank" rel="noopener" class="btn btn-outline" data-zh="GitHub 仓库" data-en="GitHub Repo">GitHub 仓库</a>
+    </div>
+  </div>
+</section>
+
+<!-- ===== FOOTER ===== -->
+<footer class="footer">
+  <div class="container footer-inner">
+    <div class="footer-brand">
+      <img src="logo.png" alt="LeePanel" class="footer-logo" />
+      <span>LeePanel</span>
+    </div>
+    <div class="footer-links">
+      <a href="https://github.com/gna1280072/LeePanel" target="_blank" rel="noopener">GitHub</a>
+      <a href="#features" data-zh="特性" data-en="Features">特性</a>
+      <a href="download.html" data-zh="下载" data-en="Download">下载</a>
+      <a href="blog.html" data-zh="博客" data-en="Blog">博客</a>
+    </div>
+    <p class="footer-copy" data-zh="© 2026 LeePanel. All rights reserved." data-en="© 2026 LeePanel. All rights reserved.">© 2026 LeePanel. All rights reserved.</p>
+  </div>
+</footer>
+
+<!-- Cookie Consent -->
+<div class="cookie-banner" id="cookieBanner" hidden>
+  <p data-zh="我们使用 Cookie 来提升您的浏览体验、分析网站流量并个性化内容。点击“接受”即表示您同意我们使用 Cookie。您可以选择“不同意”来拒绝非必要 Cookie。如需了解更多信息，请阅读我们的隐私政策。" data-en="We use cookies to enhance your browsing experience, analyze site traffic, and personalize content. By clicking &quot;Accept&quot;, you consent to our use of cookies. You can choose &quot;Decline&quot; to reject non-essential cookies. For more information, please read our Privacy Policy.">We use cookies to enhance your browsing experience, analyze site traffic, and personalize content. By clicking "Accept", you consent to our use of cookies. You can choose "Decline" to reject non-essential cookies. For more information, please read our Privacy Policy.</p>
+  <div class="cookie-actions">
+    <button class="cookie-decline" id="cookieDecline" data-zh="不同意" data-en="Decline">Decline</button>
+    <button class="cookie-accept" id="cookieAccept" data-zh="接受" data-en="Accept">Accept</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

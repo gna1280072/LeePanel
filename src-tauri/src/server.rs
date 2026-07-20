@@ -6218,14 +6218,14 @@ pub async fn get_ssh_auth_mode(
             return Ok(mode);
         }
     }
+    // ponytail: use sshd -T to read effective config (handles Include / sshd_config.d/ overrides on Debian 13+)
     let cmd = r#"
-grep -E '^\s*PasswordAuthentication' /etc/ssh/sshd_config 2>/dev/null | tail -1
-grep -E '^\s*PubkeyAuthentication' /etc/ssh/sshd_config 2>/dev/null | tail -1
+sshd -T 2>/dev/null | grep -iE '^(passwordauthentication|pubkeyauthentication)\s' | head -2
 echo "DONE"
 "#;
     let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, cmd, 10).await?;
     if code != 0 && !stderr.is_empty() && !stdout.contains("DONE") {
-        return Err(format!("Failed to read sshd_config: {}", stderr.trim()));
+        return Err(format!("Failed to read sshd config: {}", stderr.trim()));
     }
 
     let mut password = true; // default: enabled
@@ -6233,10 +6233,11 @@ echo "DONE"
 
     for line in stdout.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("PasswordAuthentication") {
-            password = trimmed.to_lowercase().contains("yes");
-        } else if trimmed.starts_with("PubkeyAuthentication") {
-            pubkey = trimmed.to_lowercase().contains("yes");
+        let lower = trimmed.to_lowercase();
+        if lower.starts_with("passwordauthentication") {
+            password = lower.contains("yes");
+        } else if lower.starts_with("pubkeyauthentication") {
+            pubkey = lower.contains("yes");
         }
     }
 
@@ -6259,9 +6260,15 @@ pub async fn set_ssh_auth_mode(
     let pw_val = if password_enabled { "yes" } else { "no" };
     let pk_val = if pubkey_enabled { "yes" } else { "no" };
 
-    // Use sed to update sshd_config, handling both commented and uncommented lines
+    // ponytail: also remove overriding directives in sshd_config.d/ drop-in files
+    // so the main sshd_config value actually takes effect (Debian 13+ uses Include)
     let cmd = format!(r#"
-# Update or add PasswordAuthentication
+# Remove PasswordAuthentication overrides from drop-in configs
+if [ -d /etc/ssh/sshd_config.d ]; then
+  find /etc/ssh/sshd_config.d -name '*.conf' -exec sed -i '/^\s*PasswordAuthentication/d' {{}} +
+fi
+
+# Update or add PasswordAuthentication in main config
 if grep -qE '^\s*PasswordAuthentication' /etc/ssh/sshd_config; then
   sed -i 's/^\s*PasswordAuthentication.*/PasswordAuthentication {}/' /etc/ssh/sshd_config
 elif grep -qE '^\s*#\s*PasswordAuthentication' /etc/ssh/sshd_config; then
@@ -6270,7 +6277,12 @@ else
   echo 'PasswordAuthentication {}' >> /etc/ssh/sshd_config
 fi
 
-# Update or add PubkeyAuthentication
+# Remove PubkeyAuthentication overrides from drop-in configs
+if [ -d /etc/ssh/sshd_config.d ]; then
+  find /etc/ssh/sshd_config.d -name '*.conf' -exec sed -i '/^\s*PubkeyAuthentication/d' {{}} +
+fi
+
+# Update or add PubkeyAuthentication in main config
 if grep -qE '^\s*PubkeyAuthentication' /etc/ssh/sshd_config; then
   sed -i 's/^\s*PubkeyAuthentication.*/PubkeyAuthentication {}/' /etc/ssh/sshd_config
 elif grep -qE '^\s*#\s*PubkeyAuthentication' /etc/ssh/sshd_config; then

@@ -2,7 +2,7 @@
 
 <p align="center"><img src="public/app-icon.png" alt="LeePanel Logo" width="128" height="128"></p>
 
-[中文文档](README.zh-CN.md) | [download](https://github.com/gna1280072/LeePanel/releases)
+[中文文档](README.zh-CN.md) | [download软件下载](https://github.com/gna1280072/LeePanel/releases)
 
 LeePanel — Free and open-source, the NEXT-generation Linux server management panel.
 

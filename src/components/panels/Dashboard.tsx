@@ -160,11 +160,11 @@ export default function Dashboard({ sessionId, onNavigate }: DashboardProps) {
       {/* Header */}
       <div className="sp-dash-header">
         <div className="sp-dash-title">
-          <h2>Dashboard {appVersion && <span style={{ fontSize: 13, fontWeight: 400, color: '#8b949e', marginLeft: 8 }}>v{appVersion}</span>}</h2>
+          <h2>Dashboard</h2>
           {sysInfo && (
             <span className="sp-dash-host">{sysInfo.os.hostname}</span>
           )}
-          <p className="sp-dash-welcome">{t('dashboard.welcome')}</p>
+          <p className="sp-dash-welcome">{t('dashboard.welcome')} {appVersion && <span style={{ fontSize: 13, color: '#8b949e' }}>v{appVersion}</span>}</p>
         </div>
         <button className="sp-refresh-btn" onClick={fetchData} disabled={loading}>
           {loading ? t('common.refreshing') : t('common.refresh')}

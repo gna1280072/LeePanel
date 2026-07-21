@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LeePanel — 新一代 Linux 服务器管理面板</title>
+  <meta name="description" content="LeePanel 是免费开源的新一代 Linux 服务器管理面板：通过 SSH 从你的桌面管理 LNMP、文件、数据库、Docker、SSL 与防火墙，服务器上不装一行面板代码。" />
+  <link rel="icon" type="image/svg+xml" href="../public/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Noto+Sans+SC:wght@400;500;700&family=ZCOOL+QingKe+HuangYou&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- 环境背景 -->
+  <div class="bg" aria-hidden="true">
+    <div class="bg-grid"></div>
+    <div class="bg-glow bg-glow--a"></div>
+    <div class="bg-glow bg-glow--b"></div>
+  </div>
+
+  <!-- ============ 导航 ============ -->
+  <header class="nav" id="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="#top">
+        <img src="../public/app-icon.png" alt="LeePanel" width="30" height="30" />
+        <span class="nav-brand-name">Lee<em>Panel</em></span>
+      </a>
+      <nav class="nav-links">
+        <a href="#features">功能</a>
+        <a href="#screens">截图</a>
+        <a href="#how">原理</a>
+        <a href="#stack">技术栈</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="nav-lang" href="index.html">EN</a>
+        <a class="btn btn-ghost" href="https://github.com/gna1280072/LeePanel" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.42 7.42 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+          GitHub
+        </a>
+        <a class="btn btn-primary" href="download.zh.html">下载</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+
+    <!-- ============ 首屏 ============ -->
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="hero-kicker reveal">
+          <span class="status-dot"></span> 免费开源 · MIT 协议 · v<span id="heroVersion">1.0</span>
+        </p>
+        <h1 class="hero-title reveal">
+          你的服务器，<br />在<span class="accent">你的桌面</span>上管好。<br />
+          <span class="strike">而不是一个面板端口。</span>
+        </h1>
+        <p class="hero-sub reveal">
+          如今的面板大多直接装在服务器上——这本身就多出一个攻击面，让运维的人防不胜防。
+          LeePanel 反其道而行：它运行在<strong>你的电脑</strong>里，用你本来就在用的方式和服务器对话：
+          <strong>SSH</strong>。服务器上不装哪怕一行面板代码。
+        </p>
+        <div class="hero-cta reveal">
+          <a class="btn btn-primary btn-lg" href="download.zh.html">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            免费下载
+          </a>
+          <a class="btn btn-ghost btn-lg" href="https://github.com/gna1280072/LeePanel" target="_blank" rel="noopener">去 GitHub 点个 Star →</a>
+        </div>
+        <ul class="hero-meta reveal">
+          <li><span class="status-dot"></span> Windows 10+</li>
+          <li><span class="status-dot"></span> macOS 11+（Intel 与 Apple Silicon）</li>
+          <li><span class="status-dot"></span> 适配 Ubuntu / Debian</li>
+        </ul>
+      </div>
+
+      <!-- 活终端 -->
+      <div class="hero-term reveal">
+        <div class="term">
+          <div class="term-bar">
+            <span class="term-dot term-dot--r"></span>
+            <span class="term-dot term-dot--y"></span>
+            <span class="term-dot term-dot--g"></span>
+            <span class="term-title">leepanel — ssh session</span>
+            <span class="term-clock" id="termClock">--:--:--</span>
+          </div>
+          <div class="term-body" id="termBody" aria-live="off"></div>
+        </div>
+        <div class="term-shadow" aria-hidden="true"></div>
+      </div>
+    </section>
+
+    <!-- ============ 数据条 ============ -->
+    <section class="strip reveal">
+      <div class="strip-item"><strong>14</strong><span>个管理模块</span></div>
+      <div class="strip-item"><strong>0</strong><span>行代码装进服务器</span></div>
+      <div class="strip-item"><strong>10+</strong><span>种界面语言</span></div>
+      <div class="strip-item"><strong>100%</strong><span>开源 · MIT 协议</span></div>
+    </section>
+
+    <!-- ============ 产品截图 ============ -->
+    <section class="screens" id="screens">
+      <div class="section-head reveal">
+        <p class="section-kicker">// 产品一览</p>
+        <h2>一个窗口，<span class="accent">整个技术栈。</span></h2>
+        <p class="section-sub">文件、服务、数据库、容器、证书——那些你原本要 SSH 登录、手敲命令才能管的东西，如今全部以原生界面呈现。</p>
+      </div>
+
+      <div class="showcase reveal">
+        <div class="showcase-tabs" role="tablist">
+          <button class="showcase-tab is-active" role="tab" data-screen="0" aria-selected="true">
+            <span class="tab-idx">01</span>
+            <span class="tab-txt"><strong>文件管理器</strong><small>像浏览本地磁盘一样浏览 /etc——拖拽上传、分片传输、收藏夹。</small></span>
+          </button>
+          <button class="showcase-tab" role="tab" data-screen="1" aria-selected="false">
+            <span class="tab-idx">02</span>
+            <span class="tab-txt"><strong>软件仓库</strong><small>Nginx、PHP-FPM、MySQL、Redis——安装、启动、停止、配置、卸载。</small></span>
+          </button>
+          <button class="showcase-tab" role="tab" data-screen="2" aria-selected="false">
+            <span class="tab-idx">03</span>
+            <span class="tab-txt"><strong>系统监控</strong><small>CPU、内存、网络、磁盘 I/O 与进程排行，自动实时刷新。</small></span>
+          </button>
+        </div>
+
+        <div class="showcase-frame">
+          <div class="frame-bar">
+            <span class="term-dot term-dot--r"></span>
+            <span class="term-dot term-dot--y"></span>
+            <span class="term-dot term-dot--g"></span>
+            <span class="frame-url" id="frameUrl">LeePanel — 文件 · /etc</span>
+            <span class="frame-status"><span class="status-dot"></span> 已连接</span>
+          </div>
+          <div class="frame-imgs">
+            <img class="frame-img is-active" src="01.png" alt="LeePanel 文件管理器正在浏览 /etc" />
+            <img class="frame-img" src="02.png" alt="LeePanel 软件仓库：Nginx、PHP 与 MySQL 卡片" />
+            <img class="frame-img" src="03.png" alt="LeePanel 系统监控：CPU、内存与进程列表" />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 功能特性 ============ -->
+    <section class="features" id="features">
+      <div class="section-head reveal">
+        <p class="section-kicker">// 功能特性</p>
+        <h2>面板该做的都有。<span class="accent">面板的风险全无。</span></h2>
+      </div>
+
+      <div class="bento">
+        <article class="card card--wide reveal">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          </div>
+          <h3>SSH 优先架构</h3>
+          <p>每个操作都是从你电脑发出的一条 SSH 命令。会话彼此独立——一台服务器慢，绝不拖累其他服务器。支持密码与密钥认证、自动重连，内置完整的 xterm.js 终端。</p>
+          <div class="card-term">
+            <code><span class="c-g">$</span> ssh root@203.0.113.7 <span class="c-dim">→ 会话 #2 已建立</span></code>
+          </div>
+        </article>
+
+        <article class="card reveal">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <h3>真正的文件管理器</h3>
+          <p>基于 SFTP 的远程文件浏览：拖拽上传、大文件分片传输、压缩解压、chmod 权限、批量操作与收藏夹。</p>
+        </article>
+
+        <article class="card reveal">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="1.5"/><rect x="2" y="14" width="20" height="7" rx="1.5"/><circle cx="6.5" cy="6.5" r=".8" fill="currentColor"/><circle cx="6.5" cy="17.5" r=".8" fill="currentColor"/></svg>
+          </div>
+          <h3>一键装好 LNMP</h3>
+          <p>Nginx、MySQL/MariaDB、多版本 PHP-FPM。安装、启动、停止、重启、重载——带实时状态指示灯。</p>
+        </article>
+
+        <article class="card reveal">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          </div>
+          <h3>站点与 SSL</h3>
+          <p>Nginx 虚拟主机、Let's Encrypt 证书、支持 WebSocket 的反向代理、防盗链、伪静态规则、按站点切换 PHP 版本。</p>
+        </article>
+
+        <article class="card reveal">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+          </div>
+          <h3>数据库与 Redis</h3>
+          <p>MySQL/MariaDB 增删改查、用户权限、备份恢复；Redis 键值跨 DB0–15 浏览、TTL 编辑与备份。</p>
+        </article>
+
+        <article class="card reveal">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          </div>
+          <h3>Docker 原生支持</h3>
+          <p>容器生命周期管理、镜像拉取、日志查看、镜像源配置——不再需要 Portainer。</p>
+        </article>
+
+        <article class="card card--chart reveal">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+          <h3>实时监控</h3>
+          <p>CPU、内存、Swap、网络、磁盘 I/O、进程列表——按你设定的间隔持续推送。</p>
+          <div class="mini-chart" aria-hidden="true">
+            <span style="--h:34%"></span><span style="--h:52%"></span><span style="--h:41%"></span>
+            <span style="--h:66%"></span><span style="--h:48%"></span><span style="--h:72%"></span>
+            <span style="--h:38%"></span><span style="--h:58%"></span><span style="--h:45%"></span>
+            <span style="--h:80%"></span><span style="--h:55%"></span><span style="--h:62%"></span>
+          </div>
+        </article>
+
+        <article class="card reveal">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <h3>防火墙与 BBR</h3>
+          <p>可视化管理 ufw / firewalld / iptables 规则，一键开关 BBR 拥塞控制，安全重启服务器。</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ 工作原理 ============ -->
+    <section class="how" id="how">
+      <div class="section-head reveal">
+        <p class="section-kicker">// 为什么不一样</p>
+        <h2>一个<span class="accent">从不碰你服务器</span>的面板。</h2>
+      </div>
+
+      <div class="how-grid">
+        <div class="how-steps">
+          <div class="how-step reveal">
+            <span class="step-num">01</span>
+            <div><h3>添加服务器</h3><p>填好主机、端口、密码或密钥。凭据只保存在<em>你电脑本地</em>的 SQLite 里——绝不写到服务器上。</p></div>
+          </div>
+          <div class="how-step reveal">
+            <span class="step-num">02</span>
+            <div><h3>通过 SSH 连接</h3><p>LeePanel 为每台服务器建立独立会话。没有 agent、没有守护进程、不新开端口，也没有面板 CVE 等你打补丁。</p></div>
+          </div>
+          <div class="how-step reveal">
+            <span class="step-num">03</span>
+            <div><h3>管理一切</h3><p>文件、服务、站点、数据库、容器——以真正的原生界面呈现，而不是手敲命令。</p></div>
+          </div>
+        </div>
+
+        <div class="how-compare reveal">
+          <div class="compare-col compare-col--bad">
+            <h4><span class="x-mark">✕</span> 传统 Web 面板</h4>
+            <ul>
+              <li>在服务器上装一套 Web 服务 + 面板代码</li>
+              <li>对公网开放 8888 / 8080 端口</li>
+              <li>面板本身成为头号攻击面</li>
+              <li>面板被攻破 = 整台服务器沦陷</li>
+            </ul>
+          </div>
+          <div class="compare-col compare-col--good">
+            <h4><span class="status-dot"></span> LeePanel</h4>
+            <ul>
+              <li>完全运行在你的桌面</li>
+              <li>只用你现有的 SSH 端口</li>
+              <li>服务器保持你配置好的原样</li>
+              <li>卸载 = 关掉应用即可</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 技术栈 ============ -->
+    <section class="stack" id="stack">
+      <div class="section-head reveal">
+        <p class="section-kicker">// 技术底座</p>
+        <h2>原生的速度，<span class="accent">Web 的体验。</span></h2>
+      </div>
+      <div class="stack-row reveal">
+        <div class="chip"><strong>Tauri 2</strong><span>桌面外壳 · 约 10 MB</span></div>
+        <div class="chip"><strong>Rust + russh</strong><span>SSH 与 SFTP 引擎</span></div>
+        <div class="chip"><strong>React 19 + TS</strong><span>界面层</span></div>
+        <div class="chip"><strong>xterm.js 6</strong><span>内置终端</span></div>
+        <div class="chip"><strong>SQLite</strong><span>本地凭据库</span></div>
+        <div class="chip"><strong>Vite 8</strong><span>构建管线</span></div>
+      </div>
+    </section>
+
+    <!-- ============ 下载 ============ -->
+    <section class="download" id="download">
+      <div class="download-box reveal">
+        <p class="section-kicker">// 现在开始</p>
+        <h2>下一次部署，<br />用一个<span class="accent">真正的面板</span>。</h2>
+        <p class="download-sub">永久免费。完全开源。你的服务器甚至不会知道它的存在。</p>
+        <div class="download-btns">
+          <a class="btn btn-primary btn-lg" id="dlWin" href="https://github.com/gna1280072/LeePanel/releases/latest" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M3 5.1 10.6 4v7.4H3V5.1zM11.5 3.9 21 2.5v8.9h-9.5V3.9zM21 12.6v8.9l-9.5-1.3v-7.6H21zM10.6 20 3 18.9v-5.3h7.6V20z"/></svg>
+            Windows <span class="dl-ver" id="dlVerWin">latest</span>
+          </a>
+          <a class="btn btn-ghost btn-lg" id="dlMac" href="https://github.com/gna1280072/LeePanel/releases/latest" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M16.4 12.7c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3.1 2.4 1.2-.1 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.6-1-2.7-3.9zM14 4.6c.7-.8 1.1-1.9 1-3.1-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.8-1.4z"/></svg>
+            macOS <span class="dl-ver" id="dlVerMac">latest</span>
+          </a>
+        </div>
+        <p class="download-note">全部平台、签名与历史版本见<a href="download.zh.html">下载页</a> · 另见 <a href="https://github.com/gna1280072/LeePanel/releases" target="_blank" rel="noopener">GitHub Releases</a></p>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ 页脚 ============ -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <img src="../public/app-icon.png" alt="" width="26" height="26" />
+        <span>Lee<em>Panel</em></span>
+        <small>© 2026 · MIT 许可证</small>
+      </div>
+      <nav class="footer-links">
+        <a href="https://github.com/gna1280072/LeePanel" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/gna1280072/LeePanel/releases" target="_blank" rel="noopener">版本发布</a>
+        <a href="https://github.com/gna1280072/LeePanel/discussions" target="_blank" rel="noopener">讨论区</a>
+        <a href="https://github.com/gna1280072/LeePanel/issues" target="_blank" rel="noopener">问题反馈</a>
+      </nav>
+      <p class="footer-tag">基于 Tauri · React · Rust 构建——用 SSH 管理服务器，本该如此。</p>
+    </div>
+  </footer>
+
+  <script src="site.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

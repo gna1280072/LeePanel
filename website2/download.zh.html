@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>下载 — LeePanel</title>
+  <meta name="description" content="下载 LeePanel——免费开源的 Linux 服务器管理面板。Windows、macOS（Intel 与 Apple Silicon）、Linux 最新签名安装包，全部来自实时发布清单。" />
+  <link rel="icon" type="image/svg+xml" href="../public/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Noto+Sans+SC:wght@400;500;700&family=ZCOOL+QingKe+HuangYou&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- 环境背景 -->
+  <div class="bg" aria-hidden="true">
+    <div class="bg-grid"></div>
+    <div class="bg-glow bg-glow--a"></div>
+    <div class="bg-glow bg-glow--b"></div>
+  </div>
+
+  <!-- ============ 导航 ============ -->
+  <header class="nav is-scrolled" id="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="index.zh.html">
+        <img src="../public/app-icon.png" alt="LeePanel" width="30" height="30" />
+        <span class="nav-brand-name">Lee<em>Panel</em></span>
+      </a>
+      <nav class="nav-links">
+        <a href="index.zh.html#features">功能</a>
+        <a href="index.zh.html#screens">截图</a>
+        <a href="index.zh.html#how">原理</a>
+        <a href="index.zh.html#stack">技术栈</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="nav-lang" href="download.html">EN</a>
+        <a class="btn btn-ghost" href="https://github.com/gna1280072/LeePanel" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.42 7.42 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+          GitHub
+        </a>
+        <a class="btn btn-primary" href="download.zh.html">下载</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ============ 发布首屏 ============ -->
+    <section class="dl-hero">
+      <div class="dl-hero-grid">
+        <div>
+          <p class="section-kicker reveal">// 发布通道 · 实时</p>
+          <div class="dl-versionline reveal">
+            <span class="status-dot"></span>
+            <h1 class="dl-version" id="dlVersion">v· · ·</h1>
+          </div>
+          <p class="dl-meta reveal">
+            <span id="dlDate">正在读取清单…</span>
+            <span class="dl-sep">·</span>
+            <span id="dlNotes"></span>
+          </p>
+          <p class="dl-sub reveal">
+            以下所有安装包直接取自实时更新清单——也就是 LeePanel 内置更新器监听的同一个数据源。
+            只需下载一次，之后应用会从这里自动保持最新，装不装由你决定。
+          </p>
+          <div class="dl-feed reveal">
+            <code id="feedUrl">https://raw.githubusercontent.com/gna1280072/LeePanel/gh-pages/update.json</code>
+            <button class="copy-btn" id="copyFeed" type="button">复制</button>
+          </div>
+        </div>
+
+        <!-- 实时清单卡片 -->
+        <aside class="dl-json reveal" aria-hidden="true">
+          <div class="term-bar">
+            <span class="term-dot term-dot--r"></span>
+            <span class="term-dot term-dot--y"></span>
+            <span class="term-dot term-dot--g"></span>
+            <span class="term-title">update.json — 实时清单</span>
+          </div>
+          <pre>{
+  <span class="j-k">"version"</span>:  <span class="j-s" id="jsonVersion">"…"</span>,
+  <span class="j-k">"pub_date"</span>: <span class="j-s" id="jsonDate">"…"</span>,
+  <span class="j-k">"platforms"</span>: {
+    <span class="j-s">"windows-x86_64"</span>: <span class="j-ok">✓ 已签名 .exe</span>
+    <span class="j-s">"darwin-aarch64"</span>: <span class="j-ok">✓ .dmg</span>
+    <span class="j-s">"darwin-x86_64"</span>:  <span class="j-ok">✓ .dmg</span>
+    <span class="j-s">"linux-x86_64"</span>:   <span class="j-ok">✓ 已签名 .deb</span>
+  }
+}</pre>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ============ 平台清单 ============ -->
+    <section class="dl-section">
+      <div class="dl-wrap">
+        <div class="manifest-head reveal">
+          <h2>每个桌面，<span class="accent">都有对应版本</span></h2>
+          <p class="manifest-hint" id="osHint">正在检测你的平台…</p>
+        </div>
+
+        <div class="manifest" id="manifest" aria-live="polite">
+          <!-- 由 update.json 注入 -->
+        </div>
+
+        <p class="manifest-foot reveal">
+          想找历史版本？
+          <a href="https://github.com/gna1280072/LeePanel/releases" target="_blank" rel="noopener">去 GitHub 浏览全部发布 →</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ 要求与更新 ============ -->
+    <section class="dl-section dl-info">
+      <div class="dl-wrap dl-info-grid">
+        <div class="info-card reveal">
+          <h3>系统要求</h3>
+          <ul>
+            <li><strong>Windows</strong> — 10 及以上，64 位</li>
+            <li><strong>macOS</strong> — 11 及以上，Intel 与 Apple Silicon</li>
+            <li><strong>Linux</strong> — 任意 glibc 发行版（.deb 已在 Ubuntu / Debian 验证）</li>
+            <li><strong>服务器</strong> — 任何能通过 SSH 连上的 Linux 机器，不装任何东西</li>
+            <li><strong>网络</strong> — 只需出站 SSH（默认 22 端口），别无其他</li>
+          </ul>
+        </div>
+        <div class="dl-info-stack">
+          <div class="info-card reveal">
+            <h3>内置更新</h3>
+            <p>LeePanel 启动时检查的正是这个数据源，下载任何东西之前都会先问你——没有静默安装，也没有常驻后台的守护进程。</p>
+          </div>
+          <div class="info-card reveal">
+            <h3>校验你的安装包</h3>
+            <p>Windows 与 Linux 安装包携带清单中固定的签名。如果签名与内置公钥不匹配，更新器会拒绝安装。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ 页脚 ============ -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <img src="../public/app-icon.png" alt="" width="26" height="26" />
+        <span>Lee<em>Panel</em></span>
+        <small>© 2026 · MIT 许可证</small>
+      </div>
+      <nav class="footer-links">
+        <a href="index.zh.html">首页</a>
+        <a href="https://github.com/gna1280072/LeePanel" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/gna1280072/LeePanel/releases" target="_blank" rel="noopener">版本发布</a>
+        <a href="https://github.com/gna1280072/LeePanel/discussions" target="_blank" rel="noopener">讨论区</a>
+      </nav>
+      <p class="footer-tag">基于 Tauri · React · Rust 构建——用 SSH 管理服务器，本该如此。</p>
+    </div>
+  </footer>
+
+  <script src="site.js"></script>
+  <script src="download.js"></script>
+</body>
+</html>

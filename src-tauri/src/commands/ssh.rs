@@ -300,8 +300,10 @@ pub async fn ssh_reconnect(ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>
 }
 
 #[tauri::command]
-pub fn ssh_generate_keypair(algorithm: &str) -> Result<server::SshKeyPair, String> {
-    server::generate_ssh_keypair(algorithm)
+pub async fn ssh_generate_keypair(algorithm: String) -> Result<server::SshKeyPair, String> {
+    tokio::task::spawn_blocking(move || server::generate_ssh_keypair(&algorithm))
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[tauri::command]

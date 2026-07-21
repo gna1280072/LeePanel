@@ -91,6 +91,7 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi
             src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
             src-tauri/target/${{ matrix.target }}/release/bundle/archive/*.zip
+            src-tauri/target/${{ matrix.target }}/release/bundle/archive/*.app.tar.gz
             src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
             src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
             src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
@@ -124,14 +125,14 @@ jobs:
           EXE_SIG_NAME=$(echo "$ASSETS" | grep -E '\.exe\.sig$' | head -1)
 
           # macOS Intel
-          DMG_INTEL_NAME=$(echo "$ASSETS" | grep -E 'x64.*\.dmg$' | grep -v '\.sig' | head -1)
+          DMG_INTEL_NAME=$(echo "$ASSETS" | grep -E 'x64.*\.app\.tar\.gz$' | grep -v '\.sig' | head -1)
           DMG_INTEL_URL="https://github.com/$REPO/releases/download/$TAG/$DMG_INTEL_NAME"
-          DMG_INTEL_SIG_NAME=$(echo "$ASSETS" | grep -E 'x64.*\.dmg\.sig$' | head -1)
+          DMG_INTEL_SIG_NAME=$(echo "$ASSETS" | grep -E 'x64.*\.app\.tar\.gz\.sig$' | head -1)
 
           # macOS ARM
-          DMG_ARM_NAME=$(echo "$ASSETS" | grep -E 'aarch64.*\.dmg$' | grep -v '\.sig' | head -1)
+          DMG_ARM_NAME=$(echo "$ASSETS" | grep -E 'aarch64.*\.app\.tar\.gz$' | grep -v '\.sig' | head -1)
           DMG_ARM_URL="https://github.com/$REPO/releases/download/$TAG/$DMG_ARM_NAME"
-          DMG_ARM_SIG_NAME=$(echo "$ASSETS" | grep -E 'aarch64.*\.dmg\.sig$' | head -1)
+          DMG_ARM_SIG_NAME=$(echo "$ASSETS" | grep -E 'aarch64.*\.app\.tar\.gz\.sig$' | head -1)
 
           # Linux
           DEB_NAME=$(echo "$ASSETS" | grep -E '\.deb$' | grep -v '\.sig' | head -1)

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { getVersion } from '@tauri-apps/api/app'
 import { open } from '@tauri-apps/plugin-shell'
 import { useTranslation } from 'react-i18next'
 
@@ -67,6 +68,9 @@ export default function Dashboard({ sessionId, onNavigate }: DashboardProps) {
   const [services, setServices] = useState<ServiceStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [appVersion, setAppVersion] = useState('')
+
+  useEffect(() => { getVersion().then(setAppVersion).catch(() => {}) }, [])
 
   const fetchData = async () => {
     if (!sessionId) return
@@ -156,7 +160,7 @@ export default function Dashboard({ sessionId, onNavigate }: DashboardProps) {
       {/* Header */}
       <div className="sp-dash-header">
         <div className="sp-dash-title">
-          <h2>Dashboard</h2>
+          <h2>Dashboard {appVersion && <span style={{ fontSize: 13, fontWeight: 400, color: '#8b949e', marginLeft: 8 }}>v{appVersion}</span>}</h2>
           {sysInfo && (
             <span className="sp-dash-host">{sysInfo.os.hostname}</span>
           )}

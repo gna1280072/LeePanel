@@ -91,7 +91,7 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
           dlUrl = json.platforms?.[key]?.url || ''
         } catch { /* non-critical */ }
         const urlLine = dlUrl ? '\n' + dlUrl : ''
-        setUpdateMessage(`New version ${update.version} found, downloading...${urlLine}`)
+        setUpdateMessage(t('settings.newVersionFound', { version: update.version }) + urlLine)
         let downloaded = 0
         let total = 0
         const fmt = (b: number) => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : (b / 1024).toFixed(0) + ' KB'
@@ -101,23 +101,23 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
           } else if (event.event === 'Progress') {
             downloaded += event.data.chunkLength
             const pct = total > 0 ? Math.round(downloaded / total * 100) : 0
-            setUpdateMessage(`Downloading v${update.version}: ${pct}% (${fmt(downloaded)}${total ? ' / ' + fmt(total) : ''})${urlLine}`)
+            setUpdateMessage(t('settings.downloadProgress', { version: update.version, pct, downloaded: fmt(downloaded), total: total ? ' / ' + fmt(total) : '' }) + urlLine)
           }
         })
         const { ask } = await import('@tauri-apps/plugin-dialog')
-        const restart = await ask(`v${update.version} has been downloaded and installed. Restart now to apply the update?`, { title: 'Update Ready', kind: 'info' })
+        const restart = await ask(t('settings.updateReady', { version: update.version }), { title: t('settings.updateReadyTitle'), kind: 'info' })
         if (restart) {
           const { relaunch } = await import('@tauri-apps/plugin-process')
           await relaunch()
         } else {
-          setUpdateMessage(`v${update.version} installed. Restart the app later to apply the update.`)
+          setUpdateMessage(t('settings.updateInstalled', { version: update.version }))
         }
       } else {
-        setUpdateMessage('You are on the latest version')
+        setUpdateMessage(t('settings.latestVersion'))
       }
     } catch (e) {
       const msg = String(e)
-      setUpdateMessage(msg.includes('Timeout') ? 'Update check timed out, please try again later.' : `Update check failed: ${msg.slice(0, 100)}`)
+      setUpdateMessage(msg.includes('Timeout') ? t('settings.updateTimedOut') : t('settings.updateCheckFailed', { error: msg.slice(0, 100) }))
     } finally {
       setUpdateChecking(false)
     }

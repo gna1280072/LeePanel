@@ -1,7 +1,7 @@
 {
   "name": "leepanel",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.10",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -35,6 +35,7 @@
     "i18next": "^26.3.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-i18next": "^17.0.8"
+    "react-i18next": "^17.0.8",
+    "tweetnacl": "^1.0.3"
   }
 }

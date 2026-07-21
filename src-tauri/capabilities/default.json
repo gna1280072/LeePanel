@@ -19,6 +19,7 @@
       "allow": [{ "path": "**" }]
     },
     "updater:default",
+    "process:default",
     "log:default",
     "shell:allow-open"
   ]

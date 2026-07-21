@@ -15,6 +15,12 @@ type DbPool = std::sync::Mutex<SqliteConn>;
 // ===== App Entry =====
 
 pub fn run() {
+    // ponytail: strip proxy env vars so the updater's reqwest client connects directly;
+    // ceiling: other in-process HTTP clients also lose proxy awareness (acceptable here).
+    for var in ["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"] {
+        std::env::remove_var(var);
+    }
+
     tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
@@ -30,6 +36,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let ssh_mgr = Arc::new(AsyncMutex::new(SshManager::new()));
             app.manage(ssh_mgr);

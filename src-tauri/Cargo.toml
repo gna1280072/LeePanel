@@ -1,6 +1,6 @@
 [package]
 name = "leepanel"
-version = "1.0.1"
+version = "1.0.2"
 description = "LeePanel - SSH Server Management Tool"
 authors = ["you"]
 license = ""
@@ -35,3 +35,4 @@ tauri-plugin-fs = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
 tauri-plugin-updater = "2"
 tauri-plugin-shell = "2"
+tauri-plugin-process = "2"

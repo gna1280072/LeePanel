@@ -81,7 +81,17 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000)),
       ])
       if (update?.available) {
-        setUpdateMessage(`New version ${update.version} found, downloading...`)
+        // ponytail: fetch update.json to extract the platform download URL for display
+        let dlUrl = ''
+        try {
+          const res = await fetch('https://www.sitian.top/update.json')
+          const json = await res.json()
+          const key = navigator.userAgent.includes('Windows') ? 'windows-x86_64'
+            : navigator.userAgent.includes('Mac') ? (navigator.userAgent.includes('ARM') ? 'darwin-aarch64' : 'darwin-x86_64')
+            : 'linux-x86_64'
+          dlUrl = json.platforms?.[key]?.url || ''
+        } catch { /* non-critical */ }
+        setUpdateMessage(`New version ${update.version} found, downloading...${dlUrl ? '\n' + dlUrl : ''}`)
         await update.download()
         const { ask } = await import('@tauri-apps/plugin-dialog')
         const restart = await ask(`v${update.version} has been downloaded. Restart now to apply the update?`, { title: 'Update Ready', kind: 'info' })

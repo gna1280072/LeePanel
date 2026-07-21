@@ -4,6 +4,34 @@ import { getVersion } from '@tauri-apps/api/app'
 import { check } from '@tauri-apps/plugin-updater'
 import { useTranslation } from 'react-i18next'
 
+// ponytail: probe endpoint with individual timeout, returns null on failure
+async function probeEndpoint(url: string, timeoutMs: number): Promise<Record<string, unknown> | null> {
+  try {
+    const res = await Promise.race([
+      fetch(url),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs)),
+    ])
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+// ponytail: check which endpoint responds faster (first gets 10s, fallback gets remaining time up to 30s total)
+async function probeUpdateEndpoints(): Promise<'github' | 'domestic' | null> {
+  const start = Date.now()
+  const github = await probeEndpoint(
+    'https://raw.githubusercontent.com/gna1280072/LeePanel/gh-pages/update.json',
+    10000
+  )
+  if (github) return 'github'
+
+  const remaining = Math.max(5000, 30000 - (Date.now() - start))
+  const domestic = await probeEndpoint('https://down.leepanel.com/update.json', remaining)
+  return domestic ? 'domestic' : null
+}
+
 interface SshKeyPair {
   private_key_pem: string
   public_key_openssh: string
@@ -75,20 +103,31 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
     setUpdateChecking(true)
     setUpdateMessage('')
     try {
+      // ponytail: probe endpoints individually (10s primary, 30s total budget)
+      const working = await probeUpdateEndpoints()
+      if (!working) {
+        setUpdateMessage(t('settings.updateTimedOut'))
+        return
+      }
+      // Now call check() to get the Update object for downloadAndInstall.
+      // The working endpoint will respond quickly, so short timeout suffices.
       const update = await Promise.race([
         check(),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000)),
       ])
       if (update?.available) {
-        // ponytail: fetch update.json to extract the platform download URL for display
+        // Extract platform download URL from the probed update.json
+        const platformKey = navigator.userAgent.includes('Windows') ? 'windows-x86_64'
+          : navigator.userAgent.includes('Mac') ? (navigator.userAgent.includes('ARM') ? 'darwin-aarch64' : 'darwin-x86_64')
+          : 'linux-x86_64'
         let dlUrl = ''
         try {
-          const res = await fetch('https://www.sitian.top/update.json')
+          const jsonUrl = working === 'domestic'
+            ? 'https://down.leepanel.com/update.json'
+            : 'https://raw.githubusercontent.com/gna1280072/LeePanel/gh-pages/update.json'
+          const res = await fetch(jsonUrl)
           const json = await res.json()
-          const key = navigator.userAgent.includes('Windows') ? 'windows-x86_64'
-            : navigator.userAgent.includes('Mac') ? (navigator.userAgent.includes('ARM') ? 'darwin-aarch64' : 'darwin-x86_64')
-            : 'linux-x86_64'
-          dlUrl = json.platforms?.[key]?.url || ''
+          dlUrl = json.platforms?.[platformKey]?.url || ''
         } catch { /* non-critical */ }
         const urlLine = dlUrl ? '\n' + dlUrl : ''
         setUpdateMessage(t('settings.newVersionFound', { version: update.version }) + urlLine)

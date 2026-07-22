@@ -6127,10 +6127,19 @@ pub async fn reboot_server(
     force: bool,
 ) -> Result<String, String> {
     let cmd = if force { "reboot -f" } else { "reboot" };
-    let (_, stderr, code) = crate::ssh::session_exec_with_output(session, cmd, 10).await?;
-    // reboot may kill SSH before returning exit code, so treat timeout/connection loss as success
-    if code != 0 && !stderr.is_empty() && !stderr.contains("Connection") && !stderr.contains("closed") {
-        return Err(format!("Reboot failed: {}", stderr.trim()));
+    // ponytail: reboot kills SSH, so timeout/connection-loss = expected success
+    match crate::ssh::session_exec_with_output(session, cmd, 10).await {
+        Ok((_, stderr, code)) => {
+            if code != 0 && !stderr.is_empty() && !stderr.contains("Connection") && !stderr.contains("closed") {
+                return Err(format!("Reboot failed: {}", stderr.trim()));
+            }
+        }
+        Err(e) => {
+            let el = e.to_lowercase();
+            if !(el.contains("timed out") || el.contains("timeout") || el.contains("connection") || el.contains("closed") || el.contains("broken pipe") || el.contains("eof")) {
+                return Err(format!("Reboot failed: {}", e));
+            }
+        }
     }
     Ok(format!("[{}] Server is rebooting. SSH connection will be disconnected.", cmd))
 }

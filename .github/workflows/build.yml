@@ -197,29 +197,3 @@ jobs:
           force_copy: false
         if: startsWith(github.ref, 'refs/tags/v')
 
-  reorder-release-assets:
-    needs: [build, generate-updater-json]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Reorder assets (.sig last)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ github.ref_name }}"
-          REPO="${{ github.repository }}"
-
-          # Fetch non-.sig assets sorted by name
-          NON_SIG=$(gh api "repos/$REPO/releases/tags/$TAG" --jq '[.assets[] | select(.name | endswith(".sig") | not)] | sort_by(.name) | .[] | "\(.id)\t\(.name)"')
-          # Fetch .sig assets sorted by name
-          SIG=$(gh api "repos/$REPO/releases/tags/$TAG" --jq '[.assets[] | select(.name | endswith(".sig"))] | sort_by(.name) | .[] | "\(.id)\t\(.name)"')
-
-          ASSETS=$(printf '%s\n' "$NON_SIG" "$SIG" | sed '/^$/d')
-
-          while IFS=$'\t' read -r ID NAME; do
-            [ -z "$ID" ] && continue
-            echo "Re-uploading: $NAME"
-            gh api "repos/$REPO/releases/assets/$ID" -H "Accept: application/octet-stream" > "/tmp/$NAME"
-            gh api -X DELETE "repos/$REPO/releases/assets/$ID"
-            gh release upload "$TAG" "/tmp/$NAME" --repo "$REPO"
-          done <<< "$ASSETS"

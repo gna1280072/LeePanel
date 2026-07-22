@@ -795,15 +795,14 @@
   "about": {
     "title": "Über LeePanel",
     "line1": "LeePanel — Kostenlos und Open-Source, die nächste Generation des Linux-Server-Management-Panels.",
-    "line2": "Die meisten beliebten Server-Panels werden direkt auf dem Server installiert, und diese Panels selbst leiden häufig an Sicherheitslücken, was Server-Administratoren weltweit endlose Kopfschmerzen bereitet.",
-    "line3": "Wir haben LeePanel entwickelt, um dieses Problem ein für alle Mal zu lösen.",
-    "line4": "Was uns unterscheidet: Alle Operationen werden durch das Senden von SSH-Befehlen von Ihrem lokalen Rechner zum Server ausgeführt. Keine einzige Zeile Panel-Code muss auf dem Server installiert werden — was es grundlegend sicherer macht!",
-    "line5": "Eine leichte plattformübergreifende Desktop-App, gebaut mit Tauri 2 + React, die traditionelle browserbasierte Panels ersetzt.",
-    "line6": "Verwalten Sie SSH-Verbindungen, Dateien (SFTP), Nginx, MySQL/MariaDB, PHP, Redis, Docker, Firewalls, SSL-Zertifikate und mehr — alles von einem einzigen nativen Desktop-Client aus.",
-    "line7": "Veröffentlicht am 18. Juli 2026, befindet sich LeePanel noch in seinen Anfängen. Wir haben derzeit die Kompatibilität mit den gängigen Ubuntu/Debian-Versionen getestet und verifiziert, die Unterstützung für weitere Linux-Distributionen ist in Arbeit.",
-    "line8": "Wenn Sie während der Nutzung Vorschläge oder Feedback haben, teilen Sie diese gerne in",
-    "line9": "Website",
-    "github": "GitHub Discussions"
+    "line2": "Traditionelle Linux/VPS-Management-Panels leiden häufig an Sicherheitslücken, was Server-Administratoren endlose Kopfschmerzen bereitet.",
+    "line3": "LeePanel wurde entwickelt, um dieses Problem ein für alle Mal zu lösen.",
+    "line4": "🛡️ Null Server-seitiger Code — Alle Operationen werden über SSH-Befehle von Ihrem lokalen Rechner ausgeführt. Kein Panel-Code auf dem Server installiert, keine zusätzlichen Ports geöffnet, wodurch das Sicherheitsrisiko des Panels an der Wurzel beseitigt wird.",
+    "line5": "Eine leichte plattformübergreifende Desktop-App, gebaut mit Tauri 2 + React, die einen einzigen nativen Client bietet zur Verwaltung von: SSH-Terminal & SFTP-Dateiverwaltung, Nginx / MySQL/MariaDB / PHP / Redis / Docker, Firewall / Kostenlose SSL-Zertifikate.",
+    "line6": "Installer nur 6 MB klein — leicht und flexibel! Ersetzt traditionelle browserbasierte Panels vollständig.",
+    "line7": "Wenn Sie Vorschläge oder Feedback haben, teilen Sie diese gerne in",
+    "github": "GitHub Discussions mit",
+    "line8": "Website: https://www.LeePanel.com"
   },
   "logs": {
     "title": "Site-Protokolle",

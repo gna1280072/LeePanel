@@ -75,7 +75,7 @@ export default function UpdatePanel() {
       }
     } catch (e) {
       const msg = String(e)
-      setMessage(msg.includes('Timeout') ? t('settings.updateTimedOut') : t('settings.updateCheckFailed', { error: msg.slice(0, 100) }))
+      setMessage(msg.includes('Timeout') ? t('settings.updateTimedOut') : t('settings.updateCheckFailed', { error: msg }))
       if (msg.includes('Timeout')) setTimedOut(true)
     } finally {
       setChecking(false)

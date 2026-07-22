@@ -219,7 +219,7 @@ jobs:
           while IFS=$'\t' read -r ID NAME; do
             [ -z "$ID" ] && continue
             echo "Re-uploading: $NAME"
-            gh api "repos/$REPO/releases/assets/$ID" -H "Accept: application/octet-stream" -o "/tmp/$NAME"
+            gh api "repos/$REPO/releases/assets/$ID" -H "Accept: application/octet-stream" > "/tmp/$NAME"
             gh api -X DELETE "repos/$REPO/releases/assets/$ID"
             gh release upload "$TAG" "/tmp/$NAME" --repo "$REPO"
           done <<< "$ASSETS"

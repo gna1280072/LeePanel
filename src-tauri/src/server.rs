@@ -1201,7 +1201,7 @@ for dir in /etc/nginx/sites-enabled /etc/nginx/conf.d /www/server/panel/vhost/ng
       echo "===TIME:$(stat -c %Y "$f" 2>/dev/null || echo 0)==="
       echo "===FILE:$f==="
       cat "$f" 2>/dev/null
-      # ponytail: detect PHP version from includes and running sockets
+      # ponytail: detect PHP version from config content, socket paths, and php -v fallback
       _pv=$(grep -ohP 'php\K[0-9]+\.[0-9]+' "$f" 2>/dev/null | head -1)
       if [ -z "$_pv" ]; then
         _inc=$(grep -oP 'include\s+\K[^;]+' "$f" 2>/dev/null | tr -d " '" | while read _ip; do
@@ -1209,9 +1209,14 @@ for dir in /etc/nginx/sites-enabled /etc/nginx/conf.d /www/server/panel/vhost/ng
         done | head -1)
         [ -n "$_inc" ] && _pv="$_inc"
       fi
+      # ponytail: extract version from fastcgi_pass socket path (www-X.Y.sock, phpX.Y-fpm.sock)
       if [ -z "$_pv" ] && grep -q 'fastcgi_pass' "$f" 2>/dev/null; then
-        _sk=$(ls /run/php/php*-fpm.sock /var/run/php/php*-fpm.sock 2>/dev/null | head -1)
-        [ -n "$_sk" ] && _pv=$(echo "$_sk" | grep -oP 'php\K[0-9]+\.[0-9]+')
+        _fp=$(grep -oP 'fastcgi_pass\s+unix:\K[^;]+' "$f" 2>/dev/null | head -1)
+        if [ -n "$_fp" ]; then
+          _pv=$(echo "$_fp" | grep -oP 'www-\K[0-9]+\.[0-9]+' | head -1)
+          [ -z "$_pv" ] && _pv=$(echo "$_fp" | grep -oP 'php\K[0-9]+\.[0-9]+' | head -1)
+        fi
+        [ -z "$_pv" ] && _pv=$(php -v 2>/dev/null | grep -oP 'PHP\s+\K[0-9]+\.[0-9]+' | head -1)
       fi
       [ -n "$_pv" ] && echo "# __PHP_FPM:$_pv"
       # ponytail: explicit SSL marker for reliable detection
@@ -1245,9 +1250,14 @@ if [ -d /etc/nginx/sites-available ]; then
       done | head -1)
       [ -n "$_inc" ] && _pv="$_inc"
     fi
+    # ponytail: extract version from fastcgi_pass socket path (www-X.Y.sock, phpX.Y-fpm.sock)
     if [ -z "$_pv" ] && grep -q 'fastcgi_pass' "$f" 2>/dev/null; then
-      _sk=$(ls /run/php/php*-fpm.sock /var/run/php/php*-fpm.sock 2>/dev/null | head -1)
-      [ -n "$_sk" ] && _pv=$(echo "$_sk" | grep -oP 'php\K[0-9]+\.[0-9]+')
+      _fp=$(grep -oP 'fastcgi_pass\s+unix:\K[^;]+' "$f" 2>/dev/null | head -1)
+      if [ -n "$_fp" ]; then
+        _pv=$(echo "$_fp" | grep -oP 'www-\K[0-9]+\.[0-9]+' | head -1)
+        [ -z "$_pv" ] && _pv=$(echo "$_fp" | grep -oP 'php\K[0-9]+\.[0-9]+' | head -1)
+      fi
+      [ -z "$_pv" ] && _pv=$(php -v 2>/dev/null | grep -oP 'PHP\s+\K[0-9]+\.[0-9]+' | head -1)
     fi
     [ -n "$_pv" ] && echo "# __PHP_FPM:$_pv"
     grep -q 'ssl_certificate' "$f" 2>/dev/null && echo '# __SSL:1' || echo '# __SSL:0'
@@ -1268,9 +1278,14 @@ if [ -d /etc/nginx/conf.d ]; then
       done | head -1)
       [ -n "$_inc" ] && _pv="$_inc"
     fi
+    # ponytail: extract version from fastcgi_pass socket path (www-X.Y.sock, phpX.Y-fpm.sock)
     if [ -z "$_pv" ] && grep -q 'fastcgi_pass' "$f" 2>/dev/null; then
-      _sk=$(ls /run/php/php*-fpm.sock /var/run/php/php*-fpm.sock 2>/dev/null | head -1)
-      [ -n "$_sk" ] && _pv=$(echo "$_sk" | grep -oP 'php\K[0-9]+\.[0-9]+')
+      _fp=$(grep -oP 'fastcgi_pass\s+unix:\K[^;]+' "$f" 2>/dev/null | head -1)
+      if [ -n "$_fp" ]; then
+        _pv=$(echo "$_fp" | grep -oP 'www-\K[0-9]+\.[0-9]+' | head -1)
+        [ -z "$_pv" ] && _pv=$(echo "$_fp" | grep -oP 'php\K[0-9]+\.[0-9]+' | head -1)
+      fi
+      [ -z "$_pv" ] && _pv=$(php -v 2>/dev/null | grep -oP 'PHP\s+\K[0-9]+\.[0-9]+' | head -1)
     fi
     [ -n "$_pv" ] && echo "# __PHP_FPM:$_pv"
     grep -q 'ssl_certificate' "$f" 2>/dev/null && echo '# __SSL:1' || echo '# __SSL:0'
@@ -1381,8 +1396,23 @@ fn parse_site_config(path: &str, content: &str) -> Option<SiteInfo> {
         .find(|l| l.starts_with("# __PHP_FPM:"))
         .map(|l| l.trim_start_matches("# __PHP_FPM:").trim().to_string())
         .or_else(|| {
-            // Fallback: scan content for php{ver}-fpm patterns
+            // Fallback: scan content for php version patterns in socket paths and service names
             let lower = content.to_lowercase();
+            // ponytail: try www-X.Y.sock (CentOS) or phpX.Y-fpm.sock (Debian) from fastcgi_pass
+            for line in lower.lines() {
+                if let Some(pos) = line.find("fastcgi_pass") {
+                    let rest = &line[pos..];
+                    if let Some(p) = rest.find("www-") {
+                        let v: String = rest[p+4..].chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+                        if v.contains('.') { return Some(v); }
+                    }
+                    if let Some(p) = rest.find("php") {
+                        let v: String = rest[p+3..].chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+                        if v.contains('.') { return Some(v); }
+                    }
+                }
+            }
+            // Try php-fpm/php_fpm followed directly by version digits
             for pat in &["php-fpm", "php_fpm"] {
                 let mut start = 0;
                 while let Some(idx) = lower[start..].find(pat) {

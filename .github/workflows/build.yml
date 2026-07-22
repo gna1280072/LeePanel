@@ -209,17 +209,17 @@ jobs:
           TAG="${{ github.ref_name }}"
           REPO="${{ github.repository }}"
 
-          # Fetch all assets sorted by name (non-.sig first, .sig last)
-          ASSETS=$(gh api "repos/$REPO/releases/tags/$TAG" --jq '.assets | sort_by(.name | endswith(".sig"), .name) | .[] | "\(.id) \(.name)"')
+          # Fetch non-.sig assets sorted by name
+          NON_SIG=$(gh api "repos/$REPO/releases/tags/$TAG" --jq '[.assets[] | select(.name | endswith(".sig") | not)] | sort_by(.name) | .[] | "\(.id)\t\(.name)"')
+          # Fetch .sig assets sorted by name
+          SIG=$(gh api "repos/$REPO/releases/tags/$TAG" --jq '[.assets[] | select(.name | endswith(".sig"))] | sort_by(.name) | .[] | "\(.id)\t\(.name)"')
 
-          # Re-upload in order by deleting then re-downloading+uploading each
-          while IFS=' ' read -r ID NAME; do
+          ASSETS=$(printf '%s\n' "$NON_SIG" "$SIG" | sed '/^$/d')
+
+          while IFS=$'\t' read -r ID NAME; do
             [ -z "$ID" ] && continue
             echo "Re-uploading: $NAME"
-            # Download the asset
             gh api "repos/$REPO/releases/assets/$ID" -H "Accept: application/octet-stream" -o "/tmp/$NAME"
-            # Delete old asset
             gh api -X DELETE "repos/$REPO/releases/assets/$ID"
-            # Re-upload (appends to end of list)
-            gh release upload "$TAG" "/tmp/$NAME" --repo "$REPO" --clobber
+            gh release upload "$TAG" "/tmp/$NAME" --repo "$REPO"
           done <<< "$ASSETS"

@@ -140,6 +140,12 @@ export default function UpdatePanel() {
           )}
         </div>
       </div>
+
+      <div style={{ marginTop: 16, fontSize: 13, color: '#8b949e', lineHeight: 1.8 }}>
+        <div style={{ fontWeight: 600, color: '#e6edf3', marginBottom: 4 }}>{t('settings.updateFailedHint')}</div>
+        <div>1、{t('settings.updateFailedProxyHint')}</div>
+        <div>2、{t('settings.updateFailedManualHint')} <a href="#" onClick={(e) => { e.preventDefault(); open('https://www.LeePanel.com') }} style={{ color: '#58a6ff' }}>https://www.LeePanel.com</a></div>
+      </div>
     </div>
   )
 }

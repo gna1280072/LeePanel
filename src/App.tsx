@@ -630,11 +630,14 @@ function App() {
       setError('')
       const hostKey = `${conn.host}_${conn.port}`
       const panelKey = `lastPanel_${username}@${hostKey}`
+      // ponytail: estimate PTY size from window so shell prompt renders correctly on first draw
+      const estCols = Math.max(80, Math.floor((window.innerWidth - (sidebarVisible ? sidebarWidth + 10 : 40) - 20) / 8.4))
+      const estRows = Math.max(24, Math.floor((window.innerHeight - 100) / 17))
       // ponytail: parallel SSH + DB read → no flash, correct page rendered immediately
       Promise.all([
         Promise.race([
           invoke<string>('ssh_connect', {
-            config: { host: conn.host, port: conn.port, username, password, keyPath },
+            config: { host: conn.host, port: conn.port, username, password, keyPath, cols: estCols, rows: estRows },
           }),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 20000)),
         ]),

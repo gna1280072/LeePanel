@@ -86,6 +86,8 @@ pub struct ConnectInfo {
     pub username: String,
     pub password: Option<String>,
     pub key_path: Option<String>,
+    pub cols: u32,
+    pub rows: u32,
 }
 
 struct ChannelOpen {
@@ -126,8 +128,10 @@ impl SshManager {
         password: Option<String>,
         key_path: Option<String>,
         app_handle: AppHandle,
+        cols: u32,
+        rows: u32,
     ) -> Result<(), String> {
-        let session = Self::do_connect(session_id.clone(), host, port, username, password, key_path, app_handle.clone()).await?;
+        let session = Self::do_connect(session_id.clone(), host, port, username, password, key_path, app_handle.clone(), cols, rows).await?;
         self.sessions.write().unwrap().insert(session_id, session);
         Ok(())
     }
@@ -163,6 +167,8 @@ impl SshManager {
         password: Option<String>,
         key_path: Option<String>,
         app_handle: AppHandle,
+        cols: u32,
+        rows: u32,
     ) -> Result<SshSession, String> {
         let handler = SshHandler;
         let mut ssh_config = client::Config::default();
@@ -204,7 +210,7 @@ impl SshManager {
             .await
             .map_err(|e| format!("Failed to open session: {}", e))?;
         channel
-            .request_pty(true, "xterm-256color", 80, 24, 0, 0, &[])
+            .request_pty(true, "xterm-256color", cols, rows, 0, 0, &[])
             .await
             .map_err(|e| format!("PTY request failed: {}", e))?;
         channel
@@ -277,6 +283,8 @@ impl SshManager {
             username: username.clone(),
             password: password.clone(),
             key_path: key_path.clone(),
+            cols,
+            rows,
         };
 
         let session = SshSession {
@@ -1215,6 +1223,8 @@ impl SshManager {
             info.password,
             info.key_path,
             app_handle,
+            info.cols,
+            info.rows,
         )).await;
         match result {
             Ok(r) => r,

@@ -562,12 +562,6 @@ function App() {
     return () => { unlisten.then((fn) => fn()) }
   }, [sessionId])
 
-  const handleStopReconnect = () => {
-    reconnectingRef.current = false
-    setReconnecting(false)
-    clearSession()
-  }
-
   const showToast = (msg: string) => {
     setToast(msg)
     setTimeout(() => setToast(''), 4000)

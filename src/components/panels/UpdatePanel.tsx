@@ -1,25 +1,10 @@
 import { useState, useEffect } from 'react'
 import { getVersion } from '@tauri-apps/api/app'
 import { check } from '@tauri-apps/plugin-updater'
+import { open } from '@tauri-apps/plugin-shell'
 import { useTranslation } from 'react-i18next'
 
-const GITHUB_URL = 'https://raw.githubusercontent.com/gna1280072/LeePanel/gh-pages/update.json'
-
 interface Step { text: string; status: 'pending' | 'ok' | 'fail' }
-
-// ponytail: probe endpoint with individual timeout, returns null on failure
-async function probeEndpoint(url: string, timeoutMs: number): Promise<Record<string, unknown> | null> {
-  try {
-    const res = await Promise.race([
-      fetch(url),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs)),
-    ])
-    if (!res.ok) return null
-    return await res.json()
-  } catch {
-    return null
-  }
-}
 
 export default function UpdatePanel() {
   const { t } = useTranslation()
@@ -28,6 +13,7 @@ export default function UpdatePanel() {
   const [message, setMessage] = useState('')
   const [progress, setProgress] = useState<{ pct: number; downloaded: string; total: string } | null>(null)
   const [steps, setSteps] = useState<Step[]>([])
+  const [timedOut, setTimedOut] = useState(false)
 
   useEffect(() => {
     getVersion().then(setAppVersion).catch(() => {})
@@ -38,21 +24,10 @@ export default function UpdatePanel() {
     setMessage('')
     setProgress(null)
     setSteps([])
+    setTimedOut(false)
     const addStep = (text: string, status: Step['status'] = 'pending') => setSteps(prev => [...prev, { text, status }])
     const updateLastStep = (status: Step['status']) => setSteps(prev => { const c = [...prev]; c[c.length - 1] = { ...c[c.length - 1], status }; return c })
     try {
-      // Step 1: probe GitHub endpoint
-      addStep(GITHUB_URL)
-      const probeData = await probeEndpoint(GITHUB_URL, 15000)
-      if (probeData) updateLastStep('ok')
-      else updateLastStep('fail')
-
-      if (!probeData) {
-        setMessage(t('settings.updateTimedOut'))
-        return
-      }
-
-      // Step 2: check version via Tauri updater
       addStep(t('settings.fetchingVersion'))
       const update = await Promise.race([
         check(),
@@ -60,13 +35,7 @@ export default function UpdatePanel() {
       ])
       updateLastStep('ok')
       if (update?.available) {
-        // Extract platform download URL from probe data (already fetched)
-        const platformKey = navigator.userAgent.includes('Windows') ? 'windows-x86_64'
-          : navigator.userAgent.includes('Mac') ? (navigator.userAgent.includes('ARM') ? 'darwin-aarch64' : 'darwin-x86_64')
-          : 'linux-x86_64'
-        const dlUrl = ((probeData.platforms as Record<string, { url: string }>)?.[platformKey]?.url) || ''
-        const urlLine = dlUrl ? '\n' + dlUrl : ''
-        setMessage(t('settings.newVersionFound', { version: update.version }) + urlLine)
+        setMessage(t('settings.newVersionFound', { version: update.version }))
         let downloaded = 0
         let total = 0
         const fmt = (b: number) => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : (b / 1024).toFixed(0) + ' KB'
@@ -77,7 +46,7 @@ export default function UpdatePanel() {
             downloaded += event.data.chunkLength
             const pct = total > 0 ? Math.round(downloaded / total * 100) : 0
             setProgress({ pct, downloaded: fmt(downloaded), total: total ? fmt(total) : '' })
-            setMessage(t('settings.downloadProgress', { version: update.version, pct, downloaded: fmt(downloaded), total: total ? ' / ' + fmt(total) : '' }) + urlLine)
+            setMessage(t('settings.downloadProgress', { version: update.version, pct, downloaded: fmt(downloaded), total: total ? ' / ' + fmt(total) : '' }))
           }
         })
         setProgress(null)
@@ -95,6 +64,7 @@ export default function UpdatePanel() {
     } catch (e) {
       const msg = String(e)
       setMessage(msg.includes('Timeout') ? t('settings.updateTimedOut') : t('settings.updateCheckFailed', { error: msg.slice(0, 100) }))
+      if (msg.includes('Timeout')) setTimedOut(true)
     } finally {
       setChecking(false)
     }
@@ -144,6 +114,16 @@ export default function UpdatePanel() {
           {message && (
             <div style={{ padding: '8px 12px', background: message.includes('latest') || message.includes('最新') ? '#1f6feb22' : '#2ea04322', borderRadius: 6, fontSize: 13, color: message.includes('latest') || message.includes('最新') ? '#58a6ff' : '#3fb950', whiteSpace: 'pre-line', wordBreak: 'break-all' }}>
               {message}
+              {timedOut && (() => {
+                const text = t('settings.updateManualDownload')
+                const url = 'https://www.LeePanel.com'
+                const idx = text.indexOf(url)
+                return (
+                  <div style={{ marginTop: 4 }}>
+                    {idx >= 0 ? <>{text.slice(0, idx)}<a href="#" onClick={(e) => { e.preventDefault(); open(url) }} style={{ color: '#58a6ff' }}>{url}</a>{text.slice(idx + url.length)}</> : text}
+                  </div>
+                )
+              })()}
             </div>
           )}
         </div>

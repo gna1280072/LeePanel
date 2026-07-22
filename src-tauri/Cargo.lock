@@ -2330,7 +2330,7 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
 name = "leepanel"
-version = "1.0.11"
+version = "1.0.12"
 dependencies = [
  "async-trait",
  "base64 0.22.1",

@@ -136,6 +136,7 @@
     "firewall": "Firewall",
     "bbr": "BBR-Beschleunigung",
     "docker": "Docker",
+    "update": "Update",
     "settings": "Einstellungen"
   },
   "dockerPanel": {
@@ -560,6 +561,7 @@
         "updateReadyTitle": "Update bereit",
         "updateInstalled": "v{{version}} installiert. Starten Sie die App später neu, um das Update anzuwenden.",
         "updateTimedOut": "Update-Prüfung hat zu lange gedauert. Bitte versuchen Sie es später erneut.",
+        "fetchingVersion": "Versionsinformationen werden abgerufen...",
     "systemInfo": "Systeminfo",
     "lastBoot": "Letzter Start",
     "uptime": "Laufzeit",

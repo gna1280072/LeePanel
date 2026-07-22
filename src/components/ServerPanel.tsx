@@ -13,6 +13,7 @@ import MonitorPanel from './panels/MonitorPanel'
 import FirewallPanel from './panels/FirewallPanel'
 import SoftwareRepo from './panels/SoftwareRepo'
 import ServerSettingsPanel from './panels/ServerSettingsPanel'
+import UpdatePanel from './panels/UpdatePanel'
 import SiteLogsPanel from './panels/SiteLogsPanel'
 import BbrPanel from './panels/BbrPanel'
 import DatabasePanel from './panels/DatabasePanel'
@@ -22,7 +23,7 @@ import Terminal from './Terminal'
 import type { TerminalHandle } from './Terminal'
 import FileBrowser, { type FileBrowserHandle } from './FileBrowser'
 
-type PanelSection = 'dashboard' | 'terminal' | 'files' | 'software' | 'nginx' | 'php' | 'sites' | 'logs' | 'ssl' | 'monitor' | 'firewall' | 'bbr' | 'docker' | 'database' | 'redis' | 'settings'
+type PanelSection = 'dashboard' | 'terminal' | 'files' | 'software' | 'nginx' | 'php' | 'sites' | 'logs' | 'ssl' | 'monitor' | 'firewall' | 'bbr' | 'docker' | 'database' | 'redis' | 'update' | 'settings'
 
 interface AppSettings {
   auto_reconnect: boolean
@@ -67,6 +68,7 @@ const NAV_ITEMS: { key: PanelSection; labelKey: string; icon: string }[] = [
   { key: 'monitor', labelKey: 'nav.monitor', icon: '📈' },
   { key: 'firewall', labelKey: 'nav.firewall', icon: '🧱' },
   { key: 'bbr', labelKey: 'nav.bbr', icon: '🚀' },
+  { key: 'update', labelKey: 'nav.update', icon: '🔄' },
   { key: 'settings', labelKey: 'nav.settings', icon: '⚙' },
 ]
 
@@ -169,6 +171,8 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
         return <RedisPanel sessionId={sessionId} onNavigateToSoftware={() => setActiveSection('software')} />
       case 'docker':
         return <DockerPanel sessionId={sessionId} onNavigateToSoftware={() => setActiveSection('software')} />
+      case 'update':
+        return <UpdatePanel />
       case 'settings':
         return <ServerSettingsPanel sessionId={sessionId} appSettings={appSettings} onToggleAutoReconnect={onToggleAutoReconnect} onUpdateSettings={onUpdateSettings} />
       default:

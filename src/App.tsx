@@ -66,7 +66,7 @@ function App() {
   const [settings, setSettings] = useState<Settings>({
     auto_reconnect: true, reconnect_interval: 5, max_reconnect_attempts: 10, cache_ttl_hours: 24, cache_max_files: 500, cache_enabled: true, command_timeout_minutes: 30, upload_workers: 3
   })
-  const [, setReconnecting] = useState(false)
+  const [reconnecting, setReconnecting] = useState(false)
   const reconnectAttemptRef = useRef(0)
   const autoReconnectRef = useRef(true)
   const reconnectingRef = useRef(false)
@@ -561,6 +561,12 @@ function App() {
     return () => { unlisten.then((fn) => fn()) }
   }, [sessionId])
 
+  const handleStopReconnect = () => {
+    reconnectingRef.current = false
+    setReconnecting(false)
+    clearSession()
+  }
+
   const showToast = (msg: string) => {
     setToast(msg)
     setTimeout(() => setToast(''), 4000)
@@ -723,7 +729,14 @@ function App() {
       <div className="main-area">
         <div className="top-bar">
           {error && <div className="error-bar">{error}</div>}
-          {toast && <div className="toast-bar">{toast}</div>}
+          {toast && (
+            <div className="toast-bar">
+              <span>{toast}</span>
+              {reconnecting && (
+                <button className="toast-stop-btn" onClick={() => { reconnectingRef.current = false; setReconnecting(false); clearSession() }}>Stop</button>
+              )}
+            </div>
+          )}
           {pendingUpdate && (
             <div className="update-ready-bar">
               <span>🔄 Update v{pendingUpdate.version} ready</span>

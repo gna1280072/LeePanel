@@ -136,6 +136,7 @@
     "firewall": "Firewall",
     "bbr": "BBR Acceleration",
     "docker": "Docker",
+    "update": "Update",
     "settings": "Settings"
   },
   "dockerPanel": {
@@ -560,6 +561,7 @@
         "updateReadyTitle": "Update Ready",
         "updateInstalled": "v{{version}} installed. Restart the app later to apply the update.",
         "updateTimedOut": "Update check timed out, please try again later.",
+        "fetchingVersion": "Fetching version info...",
     "systemInfo": "System Info",
     "lastBoot": "Last Boot Time",
     "uptime": "Uptime",

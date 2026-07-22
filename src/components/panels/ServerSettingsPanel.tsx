@@ -1,36 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { getVersion } from '@tauri-apps/api/app'
-import { check } from '@tauri-apps/plugin-updater'
 import { useTranslation } from 'react-i18next'
-
-// ponytail: probe endpoint with individual timeout, returns null on failure
-async function probeEndpoint(url: string, timeoutMs: number): Promise<Record<string, unknown> | null> {
-  try {
-    const res = await Promise.race([
-      fetch(url),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs)),
-    ])
-    if (!res.ok) return null
-    return await res.json()
-  } catch {
-    return null
-  }
-}
-
-// ponytail: check which endpoint responds faster (first gets 10s, fallback gets remaining time up to 30s total)
-async function probeUpdateEndpoints(): Promise<'github' | 'domestic' | null> {
-  const start = Date.now()
-  const github = await probeEndpoint(
-    'https://raw.githubusercontent.com/gna1280072/LeePanel/gh-pages/update.json',
-    10000
-  )
-  if (github) return 'github'
-
-  const remaining = Math.max(5000, 30000 - (Date.now() - start))
-  const domestic = await probeEndpoint('https://down.leepanel.com/update.json', remaining)
-  return domestic ? 'domestic' : null
-}
 
 interface SshKeyPair {
   private_key_pem: string
@@ -88,79 +58,6 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
   const [commandTimeoutInput, setCommandTimeoutInput] = useState<string>('')
   const [uploadWorkersInput, setUploadWorkersInput] = useState<string>('')
   const [settingsSaving, setSettingsSaving] = useState(false)
-
-  // Update check state
-  const [updateChecking, setUpdateChecking] = useState(false)
-  const [updateMessage, setUpdateMessage] = useState('')
-  const [appVersion, setAppVersion] = useState('')
-
-  // Fetch app version
-  useEffect(() => {
-    getVersion().then(setAppVersion).catch(() => {})
-  }, [])
-
-  const handleCheckUpdate = async () => {
-    setUpdateChecking(true)
-    setUpdateMessage('')
-    try {
-      // ponytail: probe endpoints individually (10s primary, 30s total budget)
-      const working = await probeUpdateEndpoints()
-      if (!working) {
-        setUpdateMessage(t('settings.updateTimedOut'))
-        return
-      }
-      // Now call check() to get the Update object for downloadAndInstall.
-      // The working endpoint will respond quickly, so short timeout suffices.
-      const update = await Promise.race([
-        check(),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000)),
-      ])
-      if (update?.available) {
-        // Extract platform download URL from the probed update.json
-        const platformKey = navigator.userAgent.includes('Windows') ? 'windows-x86_64'
-          : navigator.userAgent.includes('Mac') ? (navigator.userAgent.includes('ARM') ? 'darwin-aarch64' : 'darwin-x86_64')
-          : 'linux-x86_64'
-        let dlUrl = ''
-        try {
-          const jsonUrl = working === 'domestic'
-            ? 'https://down.leepanel.com/update.json'
-            : 'https://raw.githubusercontent.com/gna1280072/LeePanel/gh-pages/update.json'
-          const res = await fetch(jsonUrl)
-          const json = await res.json()
-          dlUrl = json.platforms?.[platformKey]?.url || ''
-        } catch { /* non-critical */ }
-        const urlLine = dlUrl ? '\n' + dlUrl : ''
-        setUpdateMessage(t('settings.newVersionFound', { version: update.version }) + urlLine)
-        let downloaded = 0
-        let total = 0
-        const fmt = (b: number) => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : (b / 1024).toFixed(0) + ' KB'
-        await update.downloadAndInstall((event) => {
-          if (event.event === 'Started' && event.data.contentLength) {
-            total = event.data.contentLength
-          } else if (event.event === 'Progress') {
-            downloaded += event.data.chunkLength
-            const pct = total > 0 ? Math.round(downloaded / total * 100) : 0
-            setUpdateMessage(t('settings.downloadProgress', { version: update.version, pct, downloaded: fmt(downloaded), total: total ? ' / ' + fmt(total) : '' }) + urlLine)
-          }
-        })
-        const { ask } = await import('@tauri-apps/plugin-dialog')
-        const restart = await ask(t('settings.updateReady', { version: update.version }), { title: t('settings.updateReadyTitle'), kind: 'info' })
-        if (restart) {
-          const { relaunch } = await import('@tauri-apps/plugin-process')
-          await relaunch()
-        } else {
-          setUpdateMessage(t('settings.updateInstalled', { version: update.version }))
-        }
-      } else {
-        setUpdateMessage(t('settings.latestVersion'))
-      }
-    } catch (e) {
-      const msg = String(e)
-      setUpdateMessage(msg.includes('Timeout') ? t('settings.updateTimedOut') : t('settings.updateCheckFailed', { error: msg.slice(0, 100) }))
-    } finally {
-      setUpdateChecking(false)
-    }
-  }
 
   // Cache management state
   const [cacheCount, setCacheCount] = useState<number>(0)
@@ -515,30 +412,6 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
             </div>
           </div>
         )}
-
-        {/* Software Update */}
-        <div className="settings-card">
-          <div className="settings-card-header">{t('settings.softwareUpdate')}</div>
-          <div className="settings-card-body">
-            <div className="settings-row">
-              <span className="settings-label">{t('settings.currentVersion')}</span>
-              <span className="settings-value" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: '#8b949e' }}>{appVersion || '—'}</span>
-            </div>
-            <button
-              className="svc-cfg-btn primary"
-              style={{ width: '100%' }}
-              onClick={handleCheckUpdate}
-              disabled={updateChecking}
-            >
-              {updateChecking ? t('settings.checking') : t('settings.checkUpdates')}
-            </button>
-            {updateMessage && (
-              <div style={{ padding: '8px 12px', background: updateMessage.includes('latest') ? '#1f6feb22' : '#2ea04322', borderRadius: 6, fontSize: 13, color: updateMessage.includes('latest') ? '#58a6ff' : '#3fb950', whiteSpace: 'pre-line' }}>
-                {updateMessage}
-              </div>
-            )}
-          </div>
-        </div>
 
         {/* System Info */}
         <div className="settings-card">

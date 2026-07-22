@@ -196,3 +196,30 @@ jobs:
           destination_dir: .
           force_copy: false
         if: startsWith(github.ref, 'refs/tags/v')
+
+  reorder-release-assets:
+    needs: [build, generate-updater-json]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reorder assets (.sig last)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          REPO="${{ github.repository }}"
+
+          # Fetch all assets sorted by name (non-.sig first, .sig last)
+          ASSETS=$(gh api "repos/$REPO/releases/tags/$TAG" --jq '.assets | sort_by(.name | endswith(".sig"), .name) | .[] | "\(.id) \(.name)"')
+
+          # Re-upload in order by deleting then re-downloading+uploading each
+          while IFS=' ' read -r ID NAME; do
+            [ -z "$ID" ] && continue
+            echo "Re-uploading: $NAME"
+            # Download the asset
+            gh api "repos/$REPO/releases/assets/$ID" -H "Accept: application/octet-stream" -o "/tmp/$NAME"
+            # Delete old asset
+            gh api -X DELETE "repos/$REPO/releases/assets/$ID"
+            # Re-upload (appends to end of list)
+            gh release upload "$TAG" "/tmp/$NAME" --repo "$REPO" --clobber
+          done <<< "$ASSETS"

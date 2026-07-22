@@ -15,12 +15,6 @@ type DbPool = std::sync::Mutex<SqliteConn>;
 // ===== App Entry =====
 
 pub fn run() {
-    // ponytail: strip proxy env vars so the updater's reqwest client connects directly;
-    // ceiling: other in-process HTTP clients also lose proxy awareness (acceptable here).
-    for var in ["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"] {
-        std::env::remove_var(var);
-    }
-
     tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
@@ -59,6 +53,7 @@ pub fn run() {
             commands::ssh::ssh_generate_keypair, commands::ssh::save_key_to_local,
             // Config
             commands::config::config_list, commands::config::config_save, commands::config::config_delete, commands::config::config_save_credentials,
+            commands::config::clear_proxy_env,
             // Settings
             commands::config::settings_load, commands::config::settings_save,
             // Favorites

@@ -1,5 +1,13 @@
 use crate::{DbPool, config::{ConfigManager, Connection, Settings, SettingsManager, Favorite, FavoritesManager}};
 
+// ponytail: clear proxy env vars on demand so updater can retry without proxy
+#[tauri::command]
+pub fn clear_proxy_env() {
+    for var in ["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"] {
+        std::env::remove_var(var);
+    }
+}
+
 // ===== Config Commands =====
 
 #[tauri::command]

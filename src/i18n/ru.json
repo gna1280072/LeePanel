@@ -137,7 +137,8 @@
     "bbr": "Ускорение BBR",
     "docker": "Docker",
     "update": "Обновление",
-    "settings": "Настройки"
+    "settings": "Настройки",
+    "discussions": "Обсуждения"
   },
   "dockerPanel": {
     "runContainer": "Запустить контейнер",

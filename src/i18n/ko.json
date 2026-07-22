@@ -137,7 +137,8 @@
     "bbr": "BBR 가속",
     "docker": "Docker",
     "update": "업데이트",
-    "settings": "설정"
+    "settings": "설정",
+    "discussions": "토론"
   },
   "dockerPanel": {
     "runContainer": "컨테이너 실행",

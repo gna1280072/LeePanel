@@ -137,7 +137,8 @@
     "bbr": "تسريع BBR",
     "docker": "Docker",
     "update": "تحديث",
-    "settings": "الإعدادات"
+    "settings": "الإعدادات",
+    "discussions": "المناقشات"
   },
   "dockerPanel": {
     "runContainer": "تشغيل الحاوية",

@@ -137,7 +137,8 @@
     "bbr": "BBR 加速",
     "docker": "Docker",
     "update": "更新",
-    "settings": "设置"
+    "settings": "设置",
+    "discussions": "讨论"
   },
   "dockerPanel": {
     "runContainer": "运行容器",

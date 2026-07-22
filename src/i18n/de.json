@@ -137,7 +137,8 @@
     "bbr": "BBR-Beschleunigung",
     "docker": "Docker",
     "update": "Update",
-    "settings": "Einstellungen"
+    "settings": "Einstellungen",
+    "discussions": "Diskussionen"
   },
   "dockerPanel": {
     "runContainer": "Container ausführen",

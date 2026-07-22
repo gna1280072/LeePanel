@@ -137,7 +137,8 @@
     "bbr": "BBR 加速",
     "docker": "Docker",
     "update": "更新",
-    "settings": "设置"
+    "settings": "设置",
+    "discussions": "讨论"
   },
   "dockerPanel": {
     "runContainer": "运行容器",
@@ -790,7 +791,8 @@
     "uninstallCustomWarning": "这将从服务器上卸载 {{name}}。",
     "remove": "移除",
     "removeFromList": "从列表移除",
-    "installMultiplePHP": "在此安装多版本php"
+    "installMultiplePHP": "在此安装多版本php",
+        "installMore": "安装更多"
   },
   "about": {
     "title": "关于 LeePanel",

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { useTranslation } from 'react-i18next'
+import { open } from '@tauri-apps/plugin-shell'
 import Dashboard from './panels/Dashboard'
 // ponytail: InstallLnmp removed
 // import InstallLnmp from './panels/InstallLnmp'
@@ -23,7 +24,7 @@ import Terminal from './Terminal'
 import type { TerminalHandle } from './Terminal'
 import FileBrowser, { type FileBrowserHandle } from './FileBrowser'
 
-type PanelSection = 'dashboard' | 'terminal' | 'files' | 'software' | 'nginx' | 'php' | 'sites' | 'logs' | 'ssl' | 'monitor' | 'firewall' | 'bbr' | 'docker' | 'database' | 'redis' | 'update' | 'settings'
+type PanelSection = 'dashboard' | 'terminal' | 'files' | 'software' | 'nginx' | 'php' | 'sites' | 'logs' | 'ssl' | 'monitor' | 'firewall' | 'bbr' | 'docker' | 'database' | 'redis' | 'update' | 'settings' | 'discussions'
 
 interface AppSettings {
   auto_reconnect: boolean
@@ -70,6 +71,7 @@ const NAV_ITEMS: { key: PanelSection; labelKey: string; icon: string }[] = [
   { key: 'bbr', labelKey: 'nav.bbr', icon: '🚀' },
   { key: 'update', labelKey: 'nav.update', icon: '🔄' },
   { key: 'settings', labelKey: 'nav.settings', icon: '⚙' },
+  { key: 'discussions', labelKey: 'nav.discussions', icon: '💬' },
 ]
 
 export default function ServerPanel({ sessionId, connHost, connUsername, initialSection = 'dashboard', jumpToPath, setJumpToPath, termRef, onStartUpload, onUploadComplete, appSettings, onToggleAutoReconnect, onUpdateSettings }: ServerPanelProps) {
@@ -185,8 +187,8 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
           <button
             key={item.key}
             className={`sp-nav-item ${activeSection === item.key ? 'active' : ''}`}
-            onClick={() => setActiveSection(item.key)}
-            disabled={!sessionId && item.key !== 'dashboard'}
+            onClick={() => item.key === 'discussions' ? open('https://github.com/gna1280072/LeePanel/discussions') : setActiveSection(item.key)}
+            disabled={!sessionId && item.key !== 'dashboard' && item.key !== 'discussions'}
           >
             <span className="sp-nav-icon">{item.icon}</span>
             <span className="sp-nav-label">{t(item.labelKey)}</span>

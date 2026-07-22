@@ -192,7 +192,6 @@ export default forwardRef<TerminalHandle, TerminalProps>(function Terminal({ ses
         if (sid) {
           invoke('ssh_resize', { sessionId: sid, cols: termRef.current!.cols, rows: termRef.current!.rows })
         }
-        termRef.current?.focus()
       }, 50)
     }
   }, [isActive])

@@ -1104,8 +1104,11 @@ pub async fn list_php_versions(
     let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
 # ponytail: dynamic scan — no hardcoded version list
-# From systemd unit files
-systemctl list-unit-files --type=service 2>/dev/null | grep -oE 'php[0-9]+\.[0-9]+-fpm' | sed -E 's/^php([0-9]+\.[0-9]+)-fpm$/\1/' | sort -V | uniq
+# Supports: php8.1-fpm (Debian), php81-php-fpm (CentOS Remi SCL), php-fpm (CentOS default)
+# From systemd unit files: Debian/Ubuntu style (php8.1-fpm)
+systemctl list-unit-files --type=service 2>/dev/null | grep -oE 'php[0-9]+\.[0-9]+-fpm' | sed -E 's/^php([0-9]+\.[0-9]+)-fpm$/\1/'
+# CentOS Remi SCL style (php81-php-fpm)
+systemctl list-unit-files --type=service 2>/dev/null | grep -oE 'php[0-9]+-php-fpm' | sed -E 's/^php([0-9]+)-php-fpm$/\1/' | sed 's/\([0-9]\)\([0-9]\)/\1.\2/'
 # BT Panel: versions not in systemd
 if [ -d /www/server/php ]; then
   for d in /www/server/php/*/; do
@@ -1114,7 +1117,11 @@ if [ -d /www/server/php ]; then
     echo "$v" | grep -qE '^[0-9]+\.[0-9]+$' || continue
     [ -x "/www/server/php/$v/sbin/php-fpm" ] || continue
     echo "$v"
-  done | sort -V | uniq
+  done
+fi
+# Fallback: generic php-fpm (CentOS default, no version in service name)
+if systemctl list-unit-files --type=service 2>/dev/null | grep -qE '^php-fpm\.service'; then
+  php -v 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1
 fi
 "#,
             10,
@@ -1125,7 +1132,21 @@ fi
         .lines()
         .map(|l| l.trim().to_string())
         .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .into_iter()
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
         .collect();
+    let mut versions = versions;
+    versions.sort_by(|a, b| {
+        let parse = |s: &str| -> Vec<u32> { s.split('.').filter_map(|p| p.parse().ok()).collect() };
+        let va = parse(a); let vb = parse(b);
+        va.iter().chain(std::iter::repeat(&0))
+            .zip(vb.iter().chain(std::iter::repeat(&0)))
+            .take(3)
+            .find_map(|(x, y)| x.partial_cmp(y).and_then(|o| if o == std::cmp::Ordering::Equal { None } else { Some(o) }))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     // ponytail: cache PHP versions
     if let Ok(json) = serde_json::to_string(&versions) {
@@ -1180,7 +1201,7 @@ for dir in /etc/nginx/sites-enabled /etc/nginx/conf.d /www/server/panel/vhost/ng
       echo "===TIME:$(stat -c %Y "$f" 2>/dev/null || echo 0)==="
       echo "===FILE:$f==="
       cat "$f" 2>/dev/null
-      # ponytail: detect PHP version from includes and running sockets
+      # ponytail: detect PHP version from config content, socket paths, and php -v fallback
       _pv=$(grep -ohP 'php\K[0-9]+\.[0-9]+' "$f" 2>/dev/null | head -1)
       if [ -z "$_pv" ]; then
         _inc=$(grep -oP 'include\s+\K[^;]+' "$f" 2>/dev/null | tr -d " '" | while read _ip; do
@@ -1188,9 +1209,14 @@ for dir in /etc/nginx/sites-enabled /etc/nginx/conf.d /www/server/panel/vhost/ng
         done | head -1)
         [ -n "$_inc" ] && _pv="$_inc"
       fi
+      # ponytail: extract version from fastcgi_pass socket path (www-X.Y.sock, phpX.Y-fpm.sock)
       if [ -z "$_pv" ] && grep -q 'fastcgi_pass' "$f" 2>/dev/null; then
-        _sk=$(ls /run/php/php*-fpm.sock /var/run/php/php*-fpm.sock 2>/dev/null | head -1)
-        [ -n "$_sk" ] && _pv=$(echo "$_sk" | grep -oP 'php\K[0-9]+\.[0-9]+')
+        _fp=$(grep -oP 'fastcgi_pass\s+unix:\K[^;]+' "$f" 2>/dev/null | head -1)
+        if [ -n "$_fp" ]; then
+          _pv=$(echo "$_fp" | grep -oP 'www-\K[0-9]+\.[0-9]+' | head -1)
+          [ -z "$_pv" ] && _pv=$(echo "$_fp" | grep -oP 'php\K[0-9]+\.[0-9]+' | head -1)
+        fi
+        [ -z "$_pv" ] && _pv=$(php -v 2>/dev/null | grep -oP 'PHP\s+\K[0-9]+\.[0-9]+' | head -1)
       fi
       [ -n "$_pv" ] && echo "# __PHP_FPM:$_pv"
       # ponytail: explicit SSL marker for reliable detection
@@ -1224,9 +1250,14 @@ if [ -d /etc/nginx/sites-available ]; then
       done | head -1)
       [ -n "$_inc" ] && _pv="$_inc"
     fi
+    # ponytail: extract version from fastcgi_pass socket path (www-X.Y.sock, phpX.Y-fpm.sock)
     if [ -z "$_pv" ] && grep -q 'fastcgi_pass' "$f" 2>/dev/null; then
-      _sk=$(ls /run/php/php*-fpm.sock /var/run/php/php*-fpm.sock 2>/dev/null | head -1)
-      [ -n "$_sk" ] && _pv=$(echo "$_sk" | grep -oP 'php\K[0-9]+\.[0-9]+')
+      _fp=$(grep -oP 'fastcgi_pass\s+unix:\K[^;]+' "$f" 2>/dev/null | head -1)
+      if [ -n "$_fp" ]; then
+        _pv=$(echo "$_fp" | grep -oP 'www-\K[0-9]+\.[0-9]+' | head -1)
+        [ -z "$_pv" ] && _pv=$(echo "$_fp" | grep -oP 'php\K[0-9]+\.[0-9]+' | head -1)
+      fi
+      [ -z "$_pv" ] && _pv=$(php -v 2>/dev/null | grep -oP 'PHP\s+\K[0-9]+\.[0-9]+' | head -1)
     fi
     [ -n "$_pv" ] && echo "# __PHP_FPM:$_pv"
     grep -q 'ssl_certificate' "$f" 2>/dev/null && echo '# __SSL:1' || echo '# __SSL:0'
@@ -1247,9 +1278,14 @@ if [ -d /etc/nginx/conf.d ]; then
       done | head -1)
       [ -n "$_inc" ] && _pv="$_inc"
     fi
+    # ponytail: extract version from fastcgi_pass socket path (www-X.Y.sock, phpX.Y-fpm.sock)
     if [ -z "$_pv" ] && grep -q 'fastcgi_pass' "$f" 2>/dev/null; then
-      _sk=$(ls /run/php/php*-fpm.sock /var/run/php/php*-fpm.sock 2>/dev/null | head -1)
-      [ -n "$_sk" ] && _pv=$(echo "$_sk" | grep -oP 'php\K[0-9]+\.[0-9]+')
+      _fp=$(grep -oP 'fastcgi_pass\s+unix:\K[^;]+' "$f" 2>/dev/null | head -1)
+      if [ -n "$_fp" ]; then
+        _pv=$(echo "$_fp" | grep -oP 'www-\K[0-9]+\.[0-9]+' | head -1)
+        [ -z "$_pv" ] && _pv=$(echo "$_fp" | grep -oP 'php\K[0-9]+\.[0-9]+' | head -1)
+      fi
+      [ -z "$_pv" ] && _pv=$(php -v 2>/dev/null | grep -oP 'PHP\s+\K[0-9]+\.[0-9]+' | head -1)
     fi
     [ -n "$_pv" ] && echo "# __PHP_FPM:$_pv"
     grep -q 'ssl_certificate' "$f" 2>/dev/null && echo '# __SSL:1' || echo '# __SSL:0'
@@ -1360,8 +1396,23 @@ fn parse_site_config(path: &str, content: &str) -> Option<SiteInfo> {
         .find(|l| l.starts_with("# __PHP_FPM:"))
         .map(|l| l.trim_start_matches("# __PHP_FPM:").trim().to_string())
         .or_else(|| {
-            // Fallback: scan content for php{ver}-fpm patterns
+            // Fallback: scan content for php version patterns in socket paths and service names
             let lower = content.to_lowercase();
+            // ponytail: try www-X.Y.sock (CentOS) or phpX.Y-fpm.sock (Debian) from fastcgi_pass
+            for line in lower.lines() {
+                if let Some(pos) = line.find("fastcgi_pass") {
+                    let rest = &line[pos..];
+                    if let Some(p) = rest.find("www-") {
+                        let v: String = rest[p+4..].chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+                        if v.contains('.') { return Some(v); }
+                    }
+                    if let Some(p) = rest.find("php") {
+                        let v: String = rest[p+3..].chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+                        if v.contains('.') { return Some(v); }
+                    }
+                }
+            }
+            // Try php-fpm/php_fpm followed directly by version digits
             for pat in &["php-fpm", "php_fpm"] {
                 let mut start = 0;
                 while let Some(idx) = lower[start..].find(pat) {
@@ -2376,19 +2427,46 @@ pub async fn update_site_full(
     let server_name = safe_domains.join(" ");
     let safe_root = new_root.replace('\'', "'\\''");
     
-    let php_sock = if new_php_version.is_empty() {
-        String::new()
-    } else {
-        format!("/run/php/php{}-fpm.sock", new_php_version)
+    let has_php = !new_php_version.is_empty();
+
+    // ponytail: single SSH call for OS detection + snippet check + socket detection
+    let detect_out = if has_php {
+        crate::ssh::session_exec_with_output(session, r#"
+. /etc/os-release 2>/dev/null
+echo "FAMILY=$ID_LIKE"
+echo "ID=$ID"
+echo "HAS_FCGI_SNIPPET=$([ -f /etc/nginx/snippets/fastcgi-php.conf ] && echo 1 || echo 0)"
+SOCK=$(ls /run/php/php*-fpm.sock /var/run/php/php*-fpm.sock /run/php-fpm/www.sock /var/run/php-fpm/www.sock /run/php-fpm/www-*.sock 2>/dev/null | head -1)
+echo "PHP_SOCK=$SOCK"
+"#, 5).await.map(|(o,_,_)| o).unwrap_or_default()
+    } else { String::new() };
+    let detect_get = |key: &str| -> String {
+        detect_out.lines().find(|l| l.starts_with(key))
+            .map(|l| l.split('=').nth(1).unwrap_or("").trim().to_string())
+            .unwrap_or_default()
     };
-    let has_php = !php_sock.is_empty();
-    
+    let is_debian = detect_get("FAMILY").contains("debian") || detect_get("ID") == "ubuntu" || detect_get("ID") == "debian";
+    let has_fcgi_snippet = detect_get("HAS_FCGI_SNIPPET") == "1";
+    let detected_sock = detect_get("PHP_SOCK");
+
+    let php_sock = if !has_php {
+        String::new()
+    } else if is_debian {
+        format!("/run/php/php{}-fpm.sock", new_php_version)
+    } else if !detected_sock.is_empty() && detected_sock.contains(new_php_version) {
+        detected_sock
+    } else if !detected_sock.is_empty() {
+        detected_sock
+    } else {
+        format!("/run/php-fpm/www-{}.sock", new_php_version)
+    };
+
     let index_directive = if index_files.trim().is_empty() {
         "index.php index.html index.htm".to_string()
     } else {
         index_files.trim().to_string()
     };
-    
+
     // Compute effective nginx root: web_root + running_dir
     let running_dir_clean = running_dir.trim().trim_start_matches('/');
     let effective_root = if running_dir_clean.is_empty() {
@@ -2396,16 +2474,17 @@ pub async fn update_site_full(
     } else {
         format!("{}/{}", safe_root, running_dir_clean)
     };
-    
+
     let open_basedir_line = if open_basedir && has_php {
         format!("\n        fastcgi_param PHP_ADMIN_VALUE \"open_basedir={}:/tmp/\";", safe_root)
     } else {
         String::new()
     };
-    
+
     // Build PHP location block
     let php_location = if has_php {
-        format!(r#"
+        if has_fcgi_snippet {
+            format!(r#"
     location ~ \.php$ {{
         include snippets/fastcgi-php.conf;
         fastcgi_pass unix:{php_sock};
@@ -2413,6 +2492,18 @@ pub async fn update_site_full(
         include fastcgi_params;{oba}
     }}
 "#, php_sock = php_sock, oba = open_basedir_line)
+        } else {
+            format!(r#"
+    location ~ \.php$ {{
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass unix:{php_sock};
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;{oba}
+    }}
+"#, php_sock = php_sock, oba = open_basedir_line)
+        }
     } else {
         String::new()
     };
@@ -2658,12 +2749,39 @@ pub async fn update_site(
     let server_name = safe_domains.join(" ");
     let safe_root = new_root.replace('\'', "'\\''");
 
-    let php_sock = if new_php_version.is_empty() {
-        String::new()
-    } else {
-        format!("/run/php/php{}-fpm.sock", new_php_version)
+    let has_php = !new_php_version.is_empty();
+
+    // ponytail: single SSH call for OS detection + snippet check + socket detection
+    let detect_out = if has_php {
+        crate::ssh::session_exec_with_output(session, r#"
+. /etc/os-release 2>/dev/null
+echo "FAMILY=$ID_LIKE"
+echo "ID=$ID"
+echo "HAS_FCGI_SNIPPET=$([ -f /etc/nginx/snippets/fastcgi-php.conf ] && echo 1 || echo 0)"
+SOCK=$(ls /run/php/php*-fpm.sock /var/run/php/php*-fpm.sock /run/php-fpm/www.sock /var/run/php-fpm/www.sock /run/php-fpm/www-*.sock 2>/dev/null | head -1)
+echo "PHP_SOCK=$SOCK"
+"#, 5).await.map(|(o,_,_)| o).unwrap_or_default()
+    } else { String::new() };
+    let detect_get = |key: &str| -> String {
+        detect_out.lines().find(|l| l.starts_with(key))
+            .map(|l| l.split('=').nth(1).unwrap_or("").trim().to_string())
+            .unwrap_or_default()
     };
-    let has_php = !php_sock.is_empty();
+    let is_debian = detect_get("FAMILY").contains("debian") || detect_get("ID") == "ubuntu" || detect_get("ID") == "debian";
+    let has_fcgi_snippet = detect_get("HAS_FCGI_SNIPPET") == "1";
+    let detected_sock = detect_get("PHP_SOCK");
+
+    let php_sock = if !has_php {
+        String::new()
+    } else if is_debian {
+        format!("/run/php/php{}-fpm.sock", new_php_version)
+    } else if !detected_sock.is_empty() && detected_sock.contains(new_php_version) {
+        detected_sock
+    } else if !detected_sock.is_empty() {
+        detected_sock
+    } else {
+        format!("/run/php-fpm/www-{}.sock", new_php_version)
+    };
 
     // Read old config to check for SSL
     let (old_conf, _, _) = crate::ssh::session_exec_with_output(session, &format!("cat '{}' 2>/dev/null", config_path.replace('\'', "'\\''")), 5)
@@ -2692,7 +2810,8 @@ pub async fn update_site(
 
     // Build PHP location block (only if PHP version selected)
     let php_location = if has_php {
-        format!(r#"
+        if has_fcgi_snippet {
+            format!(r#"
     location ~ \.php$ {{
         include snippets/fastcgi-php.conf;
         fastcgi_pass unix:{php_sock};
@@ -2700,6 +2819,18 @@ pub async fn update_site(
         include fastcgi_params;{oba}
     }}
 "#, php_sock = php_sock, oba = open_basedir_line)
+        } else {
+            format!(r#"
+    location ~ \.php$ {{
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass unix:{php_sock};
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;{oba}
+    }}
+"#, php_sock = php_sock, oba = open_basedir_line)
+        }
     } else {
         String::new()
     };
@@ -4081,14 +4212,20 @@ fi
 
 # Check PHP versions — dynamic scan for any installed PHP-FPM
 # ponytail: no hardcoded version list — detect whatever is on the system
-for _svc in $(systemctl list-unit-files --type=service 2>/dev/null | grep -oE 'php[0-9]+\.[0-9]+-fpm' | sed 's/.service$//' | sort -uV); do
-  phpver=$(echo "$_svc" | sed -E 's/^php([0-9]+\.[0-9]+)-fpm$/\1/')
+# Supports: php8.1-fpm (Debian/Ubuntu), php81-php-fpm (CentOS Remi SCL)
+for _svc in $(systemctl list-unit-files --type=service 2>/dev/null | grep -oE 'php[0-9]+(\.[0-9]+)?-?php-fpm' | sed 's/.service$//' | sort -uV); do
+  # Extract version: php8.1-fpm → 8.1, php81-php-fpm → 81
+  phpver=$(echo "$_svc" | sed -E 's/^php([0-9]+(\.[0-9]+)?)-?(php-)?fpm$/\1/')
   _bin="/usr/sbin/php-fpm-${phpver}"
+  # Remi SCL binary: php81 → /usr/sbin/php81-php-fpm
+  _remibin="/usr/sbin/php${phpver}-php-fpm"
   _btbin="/www/server/php/${phpver}/sbin/php-fpm"
-  if systemctl is-enabled "$_svc" &>/dev/null || [ -x "$_bin" ] || [ -x "$_btbin" ]; then
+  if systemctl is-enabled "$_svc" &>/dev/null || [ -x "$_bin" ] || [ -x "$_remibin" ] || [ -x "$_btbin" ]; then
     echo "PHP_DETECT_VERSION=${phpver}"
     if [ -x "$_bin" ]; then
       _fullver=$("$_bin" -v 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "${phpver}.x")
+    elif [ -x "$_remibin" ]; then
+      _fullver=$("$_remibin" -v 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "${phpver}.x")
     elif [ -x "$_btbin" ]; then
       _fullver=$("$_btbin" -v 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "${phpver}.x")
     else
@@ -4124,10 +4261,11 @@ if [ -d /www/server/php ]; then
 fi
 
 # Generic PHP detection (for always-visible install card)
-if command -v php &>/dev/null; then
+# ponytail: matches php-fpm (CentOS), php8.1-fpm (Debian), php81-php-fpm (Remi SCL)
+if command -v php &>/dev/null || ls /usr/sbin/php*-php-fpm /usr/sbin/php-fpm* /www/server/php/*/sbin/php-fpm &>/dev/null; then
   echo "PHP_GENERIC_INSTALLED=1"
-  echo "PHP_GENERIC_VERSION=$(php -v 2>/dev/null | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' || echo '')"
-  PHP_GENERIC_SVC=$(systemctl list-units --type=service 2>/dev/null | grep -E 'php[0-9.]*-fpm' | awk '{print $1}' | head -1 | sed 's/.service//')
+  echo "PHP_GENERIC_VERSION=$(php -v 2>/dev/null || ls /usr/sbin/php*-php-fpm 2>/dev/null | head -1 | xargs -I{} {} -v 2>/dev/null || echo '' | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' || echo '')"
+  PHP_GENERIC_SVC=$(systemctl list-units --type=service 2>/dev/null | grep -E 'php([0-9]+(\.[0-9]+)?-?)?php-fpm|php-fpm' | awk '{print $1}' | head -1 | sed 's/.service//')
   echo "PHP_GENERIC_SERVICE=$PHP_GENERIC_SVC"
   if [ -n "$PHP_GENERIC_SVC" ] && systemctl is-active "$PHP_GENERIC_SVC" &>/dev/null; then
     echo "PHP_GENERIC_RUNNING=active"

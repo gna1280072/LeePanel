@@ -137,7 +137,8 @@
     "bbr": "BBR-Beschleunigung",
     "docker": "Docker",
     "update": "Update",
-    "settings": "Einstellungen"
+    "settings": "Einstellungen",
+    "discussions": "Diskussionen"
   },
   "dockerPanel": {
     "runContainer": "Container ausführen",
@@ -781,6 +782,7 @@
     "remove": "Entfernen",
     "removeFromList": "Aus Liste entfernen",
     "installMultiplePHP": "Hier mehrere PHP-Versionen installieren",
+        "installMore": "Mehr installieren",
     "selectMysqlVersion": "Select MySQL Variant",
     "noMysqlVersionsAvailable": "No MySQL or MariaDB packages available in system repositories.",
     "installMysqlVersion": "Install {{version}}",

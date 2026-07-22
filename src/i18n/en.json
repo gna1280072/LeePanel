@@ -137,7 +137,8 @@
     "bbr": "BBR Acceleration",
     "docker": "Docker",
     "update": "Update",
-    "settings": "Settings"
+    "settings": "Settings",
+    "discussions": "Discussions"
   },
   "dockerPanel": {
     "runContainer": "Run Container",
@@ -790,7 +791,8 @@
     "uninstallCustomWarning": "This will uninstall {{name}} from the server.",
     "remove": "Remove",
     "removeFromList": "Remove from list",
-    "installMultiplePHP": "Install multiple PHP versions here"
+    "installMultiplePHP": "Install multiple PHP versions here",
+        "installMore": "Install More"
   },
   "about": {
     "title": "About LeePanel",

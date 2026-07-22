@@ -137,7 +137,8 @@
     "bbr": "BBR 가속",
     "docker": "Docker",
     "update": "업데이트",
-    "settings": "설정"
+    "settings": "설정",
+    "discussions": "토론"
   },
   "dockerPanel": {
     "runContainer": "컨테이너 실행",
@@ -781,6 +782,7 @@
     "remove": "제거",
     "removeFromList": "목록에서 제거",
     "installMultiplePHP": "여기에서 여러 PHP 버전 설치",
+        "installMore": "추가 설치",
     "selectMysqlVersion": "Select MySQL Variant",
     "noMysqlVersionsAvailable": "No MySQL or MariaDB packages available in system repositories.",
     "installMysqlVersion": "Install {{version}}",

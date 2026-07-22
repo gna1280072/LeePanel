@@ -15,36 +15,33 @@
   <img src="https://img.shields.io/badge/TypeScript-6.0-3178C6?style=flat-square&logo=typescript" alt="TypeScript">
   <img src="https://img.shields.io/badge/Rust-stable-DEA584?style=flat-square&logo=rust" alt="Rust">
   <img src="https://img.shields.io/badge/Vite-8-646CFF?style=flat-square&logo=vite" alt="Vite">
+  <img src="https://img.shields.io/badge/Server-Ubuntu%20%7C%20Debian-E95420?style=flat-square&logo=ubuntu" alt="Server">
 </p>
 
-[中文文档](README.zh-CN.md) | [download软件下载](https://github.com/gna1280072/LeePanel/releases)
+[中文文档](README.zh-CN.md) | [Download](https://github.com/gna1280072/LeePanel/releases)
 
-LeePanel — Free and open-source, the NEXT-generation Linux server management panel.
+LeePanel — Free and open-source, the next-generation Linux server management panel.
 
-Most popular server panels today are installed directly on the server, and these panels themselves frequently suffer from security vulnerabilities, causing endless headaches for server administrators worldwide.
+Traditional Linux/VPS management panels frequently suffer from security vulnerabilities, causing endless headaches for server administrators.
 
-We built LeePanel to solve this problem once and for all.
+LeePanel was built to solve this once and for all.
 
-What makes us different: all operations are performed by sending SSH commands from your local machine to the server. Not a single line of panel code needs to be installed on the server — making it fundamentally more secure!
+Zero server-side code — all operations are performed via SSH commands from your local machine. No panel code is installed on the server, no extra ports are exposed, eliminating the panel's own security risks at the root.
 
-A lightweight cross-platform desktop app built with Tauri 2 + React, replacing traditional browser-based panels.
+A lightweight cross-platform desktop app built with Tauri 2 + React, providing a single native client to manage SSH terminal, SFTP file management, Nginx, MySQL/MariaDB, PHP, Redis, Docker, firewall, free SSL certificates and more — completely replacing traditional browser-based panels.
 
-Manage SSH connections, files (SFTP), Nginx, MySQL/MariaDB, PHP, Redis, Docker, firewalls, SSL certificates and more — all from a single native desktop client...
-
-Released on July 18, 2026, LeePanel is still in its early stages. We've currently tested and verified compatibility with mainstream Ubuntu/Debian versions, with support for more Linux distributions in progress.
-
-If you have any suggestions or feedback during use, feel free to share them in GitHub Discussions.
+If you have any suggestions or feedback, feel free to share them in GitHub Discussions.
 
 Website: https://www.LeePanel.com
 
  
 ## Why LeePanel?
 
-| Dimension | Traditional web panel ❌ | LeePanel ✅ |
+| Dimension | Traditional Web Panel ❌ | LeePanel ✅ |
 |-----------|--------------------------|-------------|
-| Deployment | Installs a web server + panel code on the box | Runs entirely on your desktop |
-| Port exposure | Opens ports 8888/8080 to the internet | Only your existing SSH port is used |
-| Attack surface | Panel itself becomes the #1 attack surface | Server stays exactly as you configured it |
+| Deployment | Installs web server + panel code on the server | Runs entirely on your desktop, nothing installed on the server |
+| Port Exposure | Opens ports 8888/8080 to the internet | Only your existing SSH port is used |
+| Attack Surface | Panel itself becomes the #1 attack target | Server stays exactly as you configured it |
 | Uninstall | Root exploit = total compromise | Uninstall = just close the app |
 
 ## System Requirements
@@ -54,6 +51,9 @@ Website: https://www.LeePanel.com
 | Windows | 10/11 (64-bit) |
 | macOS | 12+ (Intel / Apple Silicon) |
 | Linux | x64 / arm64 (AppImage) |
+
+## 🖥️ Supported Servers
+> 🖥️ All features are currently tested on **Ubuntu** / **Debian**. More distributions coming soon, stay tuned...
 
 ## Preview
 
@@ -160,60 +160,6 @@ Website: https://www.LeePanel.com
 | SFTP | russh-sftp (Rust) |
 | Storage | SQLite (rusqlite) |
 | i18n | react-i18next |
-
-## Architecture
-
-### Backend (Rust)
-
-```
-src-tauri/src/
-├── lib.rs       # Tauri command handlers (bridge between frontend and backend)
-├── ssh.rs       # SSH session management, SshCache, connection lifecycle
-├── server.rs    # Server operations (LNMP, sites, databases, Docker, etc.)
-├── config.rs    # Configuration management
-├── db.rs        # SQLite database operations (favorites, cache, metadata)
-└── main.rs      # Entry point
-```
-
-**SSH Session Architecture:**
-- Each SSH session is independently managed via `SshSession` (Clone + Arc-wrapped)
-- Session storage uses `std::sync::RwLock` for lock-free concurrent reads
-- `SshCache` (in-memory, sync `std::sync::Mutex`) stores SSH response data with TTL
-- All server commands release the global manager lock before network operations, ensuring one slow server never blocks operations on other servers
-
-### Frontend (React + TypeScript)
-
-```
-src/
-├── App.tsx              # Root component with tab routing
-├── main.tsx             # Entry point
-├── i18n/                # Internationalization
-│   ├── index.ts         # i18next initialization
-│   ├── en.json          # English translations
-│   └── zh-CN.json       # Chinese translations
-├── components/
-│   ├── Sidebar.tsx      # Server list + connection manager
-│   ├── ServerPanel.tsx  # Tab navigation bar
-│   ├── FileBrowser.tsx  # Remote file manager with SFTP
-│   ├── Terminal.tsx     # xterm.js terminal wrapper
-│   └── panels/
-│       ├── Dashboard.tsx         # System overview
-│       ├── DatabasePanel.tsx     # MySQL/MariaDB management
-│       ├── RedisPanel.tsx        # Redis management
-│       ├── DockerPanel.tsx       # Docker container & image management
-│       ├── SitesPanel.tsx        # Site list
-│       ├── EditSite.tsx          # Site editor (Nginx config, SSL, proxy)
-│       ├── NginxPanel.tsx        # Nginx configuration
-│       ├── PhpPanel.tsx          # PHP version management
-│       ├── InstallLnmp.tsx       # LNMP stack installer
-│       ├── MonitorPanel.tsx      # System monitoring
-│       ├── FirewallPanel.tsx     # Firewall rules
-│       ├── SslPanel.tsx          # SSL certificate management
-│       ├── BbrPanel.tsx          # BBR congestion control
-│       ├── SoftwareRepo.tsx      # Software package management
-│       ├── SiteLogsPanel.tsx     # Site log viewer
-│       └── ServerSettingsPanel.tsx # Server settings
-```
 
 ## Development
 

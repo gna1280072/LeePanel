@@ -15,34 +15,31 @@
   <img src="https://img.shields.io/badge/TypeScript-6.0-3178C6?style=flat-square&logo=typescript" alt="TypeScript">
   <img src="https://img.shields.io/badge/Rust-stable-DEA584?style=flat-square&logo=rust" alt="Rust">
   <img src="https://img.shields.io/badge/Vite-8-646CFF?style=flat-square&logo=vite" alt="Vite">
+  <img src="https://img.shields.io/badge/Server-Ubuntu%20%7C%20Debian-E95420?style=flat-square&logo=ubuntu" alt="Server">
 </p>
 
 [English](README.md) | [download软件下载](https://github.com/gna1280072/LeePanel/releases)
 
 LeePanel — 免费开源，下一代 Linux 服务器管理面板。
 
-因目前流行的各种安装在服务器上的面板软件，这些面板自身经常发现安全问题，令广大的服务器管理员苦不堪言。
+传统 Linux/VPS 管理面板频繁曝出安全漏洞，令服务器管理员苦不堪言。
 
-我们开发LeePanel，希望彻底解决这个问题。
+LeePanel 为此而生。
 
-我们的创新之处在于：所有操作通过本地电脑向服务器发送SSH命令进行，不需要在服务器上安装任何一行的面板代码，让服务器更安全！
+零服务端代码——所有操作均通过本地 SSH 命令完成，服务器上不安装任何面板代码，不暴露多余端口，从根源消除面板自身的安全风险。
 
-基于 Tauri 2 + React 构建的轻量级跨平台桌面应用，取代传统浏览器面板。
+基于 Tauri 2 + React 构建的轻量跨平台桌面应用，以单一原生客户端统一管理 SSH 终端、SFTP 文件管理、Nginx、MySQL/MariaDB、PHP、Redis、Docker、防火墙、免费SSL 证书等功能，彻底取代传统浏览器面板。
 
-通过单一原生客户端统一管理 SSH 连接、文件（SFTP）、Nginx、MySQL/MariaDB、PHP、Redis、Docker、防火墙、SSL 证书等功能.....
-
-当前项目发布于2026年7月18日，还是个宝宝，我们当前在ubuntu/debian上主流版本测试通过，更多的LINUX版本正在适配中。
-
-如果您在使用过程有任何建议和意见，欢迎到github Discussions 里提出。
+使用过程中如有任何建议或意见，欢迎前往 GitHub Discussions 交流反馈。
 
 官网: https://www.LeePanel.com
- 
+
 
 ## 为什么选择 LeePanel？
 
 | 维度 | 传统 Web 面板 ❌ | LeePanel ✅ |
 |------|------------------|-------------|
-| 部署方式 | 在服务器上安装 Web 服务 + 面板代码 | 完全在您的桌面端运行 |
+| 部署方式 | 在服务器上安装 Web 服务 + 面板代码 | 完全在您的桌面端运行，不在服务器上安装 |
 | 端口暴露 | 向互联网开放 8888/8080 端口 | 仅使用您已有的 SSH 端口 |
 | 攻击面 | 面板本身成为首要攻击目标 | 服务器保持您原始的配置不变 |
 | 卸载方式 | Root 漏洞 = 服务器完全沦陷 | 卸载 = 关闭程序即可 |
@@ -54,6 +51,10 @@ LeePanel — 免费开源，下一代 Linux 服务器管理面板。
 | Windows | 10/11 (64-bit) |
 | macOS | 12+ (Intel / Apple Silicon) |
 | Linux | x64 / arm64 (AppImage) |
+
+ 
+## 🖥️ 支持的服务器
+> 🖥️  当前各项功能在 **Ubuntu** / **Debian**测试通过，更多系统适配中，敬请期待...
 
 ## 界面预览
 
@@ -160,60 +161,6 @@ LeePanel — 免费开源，下一代 Linux 服务器管理面板。
 | SFTP | russh-sftp (Rust) |
 | 存储 | SQLite (rusqlite) |
 | 国际化 | react-i18next |
-
-## 架构
-
-### 后端 (Rust)
-
-```
-src-tauri/src/
-├── lib.rs       # Tauri 命令处理层（前端与后端的桥梁）
-├── ssh.rs       # SSH 会话管理、SshCache、连接生命周期
-├── server.rs    # 服务器操作（LNMP、站点、数据库、Docker 等）
-├── config.rs    # 配置管理
-├── db.rs        # SQLite 数据库操作（收藏、缓存、元数据）
-└── main.rs      # 入口文件
-```
-
-**SSH 会话架构：**
-- 每个 SSH 会话通过 `SshSession`（Clone + Arc 包装）独立管理
-- 会话存储使用 `std::sync::RwLock` 实现无锁并发读取
-- `SshCache`（内存缓存，同步 `std::sync::Mutex`）存储带 TTL 的 SSH 响应数据
-- 所有服务器命令在网络操作前释放全局管理器锁，确保一台慢服务器不会阻塞其他服务器的操作
-
-### 前端 (React + TypeScript)
-
-```
-src/
-├── App.tsx              # 根组件（标签页路由）
-├── main.tsx             # 入口文件
-├── i18n/                # 国际化
-│   ├── index.ts         # i18next 初始化
-│   ├── en.json          # 英文翻译
-│   └── zh-CN.json       # 中文翻译
-├── components/
-│   ├── Sidebar.tsx      # 服务器列表 + 连接管理器
-│   ├── ServerPanel.tsx  # 标签导航栏
-│   ├── FileBrowser.tsx  # SFTP 远程文件管理器
-│   ├── Terminal.tsx     # xterm.js 终端封装
-│   └── panels/
-│       ├── Dashboard.tsx         # 系统概览
-│       ├── DatabasePanel.tsx     # MySQL/MariaDB 管理
-│       ├── RedisPanel.tsx        # Redis 管理
-│       ├── DockerPanel.tsx       # Docker 容器与镜像管理
-│       ├── SitesPanel.tsx        # 站点列表
-│       ├── EditSite.tsx          # 站点编辑器（Nginx 配置、SSL、代理）
-│       ├── NginxPanel.tsx        # Nginx 配置
-│       ├── PhpPanel.tsx          # PHP 版本管理
-│       ├── InstallLnmp.tsx       # LNMP 环境安装器
-│       ├── MonitorPanel.tsx      # 系统监控
-│       ├── FirewallPanel.tsx     # 防火墙规则
-│       ├── SslPanel.tsx          # SSL 证书管理
-│       ├── BbrPanel.tsx          # BBR 拥塞控制
-│       ├── SoftwareRepo.tsx      # 软件包管理
-│       ├── SiteLogsPanel.tsx     # 站点日志查看器
-│       └── ServerSettingsPanel.tsx # 服务器设置
-```
 
 ## 开发
 

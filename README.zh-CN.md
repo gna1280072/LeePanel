@@ -32,9 +32,9 @@ LeePanel — 免费开源，下一代 Linux 服务器管理面板。
 
 - 🔌 SSH 终端 & 📁 SFTP 文件管理
 - 🌐 Nginx / ️ MySQL/MariaDB / ️ PHP / ⚡ Redis / 🐳 Docker
-- 🛡️ 防火墙 / 🔒 免费 SSL 证书
+- ️ 防火墙 / 🔒 免费 SSL 证书
 
-彻底取代传统浏览器面板。
+安装包最小仅 **6 MB** 起，灵活小巧！彻底取代传统浏览器面板。
 
 使用过程中如有任何建议或意见，欢迎前往 [GitHub Discussions](https://github.com/gna1280072/LeePanel/discussions) 交流反馈。
 

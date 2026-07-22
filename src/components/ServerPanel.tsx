@@ -171,8 +171,6 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
         return <RedisPanel sessionId={sessionId} onNavigateToSoftware={() => setActiveSection('software')} />
       case 'docker':
         return <DockerPanel sessionId={sessionId} onNavigateToSoftware={() => setActiveSection('software')} />
-      case 'update':
-        return <UpdatePanel />
       case 'settings':
         return <ServerSettingsPanel sessionId={sessionId} appSettings={appSettings} onToggleAutoReconnect={onToggleAutoReconnect} onUpdateSettings={onUpdateSettings} />
       default:
@@ -212,7 +210,11 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
         <div style={{ display: activeSection === 'software' ? 'block' : 'none', height: '100%' }}>
           <SoftwareRepo sessionId={sessionId} />
         </div>
-        {activeSection !== 'terminal' && activeSection !== 'files' && activeSection !== 'sites' && activeSection !== 'software' && renderContent()}
+        {/* Update always mounted to preserve update state */}
+        <div style={{ display: activeSection === 'update' ? 'block' : 'none', height: '100%' }}>
+          <UpdatePanel />
+        </div>
+        {activeSection !== 'terminal' && activeSection !== 'files' && activeSection !== 'sites' && activeSection !== 'software' && activeSection !== 'update' && renderContent()}
       </div>
     </div>
   )

@@ -34,7 +34,7 @@ A lightweight cross-platform desktop app built with Tauri 2 + React, providing a
 - 🌐 Nginx / ️ MySQL/MariaDB / ️ PHP /  Redis / 🐳 Docker
 - ️ Firewall / 🔒 Free SSL Certificates
 
-Completely replacing traditional browser-based panels.
+Installer as small as **6 MB** — lightweight and flexible! Completely replacing traditional browser-based panels.
 
 If you have any suggestions or feedback, feel free to share them in [GitHub Discussions](https://github.com/gna1280072/LeePanel/discussions).
 

@@ -38,6 +38,15 @@ If you have any suggestions or feedback during use, feel free to share them in G
 Website: https://www.LeePanel.com
 
  
+## Why LeePanel?
+
+| Dimension | Traditional web panel ❌ | LeePanel ✅ |
+|-----------|--------------------------|-------------|
+| Deployment | Installs a web server + panel code on the box | Runs entirely on your desktop |
+| Port exposure | Opens ports 8888/8080 to the internet | Only your existing SSH port is used |
+| Attack surface | Panel itself becomes the #1 attack surface | Server stays exactly as you configured it |
+| Uninstall | Root exploit = total compromise | Uninstall = just close the app |
+
 ## System Requirements
 
 | Platform | Version |

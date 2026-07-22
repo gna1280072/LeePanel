@@ -562,6 +562,7 @@
         "updateInstalled": "v{{version}} instalado. Reinicie o aplicativo depois para aplicar a atualização.",
         "updateTimedOut": "A verificação de atualização expirou. Tente novamente mais tarde.",
         "fetchingVersion": "Obtendo informações da versão...",
+        "fallbackToProbe": "Informações da versão obtidas pelo canal alternativo",
     "systemInfo": "Informações do sistema",
     "lastBoot": "Última inicialização",
     "uptime": "Tempo de atividade",

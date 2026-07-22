@@ -562,6 +562,7 @@
         "updateInstalled": "v{{version}} 已安裝。請稍後重啟應用以套用更新。",
         "updateTimedOut": "檢查更新超時，請稍後重試。",
         "fetchingVersion": "正在取得版本資訊...",
+        "fallbackToProbe": "已透過備用通道取得版本資訊",
     "systemInfo": "系統資訊",
     "lastBoot": "上次啟動時間",
     "uptime": "執行時間",

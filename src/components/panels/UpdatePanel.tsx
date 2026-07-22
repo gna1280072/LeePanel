@@ -42,52 +42,60 @@ export default function UpdatePanel() {
     const addStep = (text: string, status: Step['status'] = 'pending') => setSteps(prev => [...prev, { text, status }])
     const updateLastStep = (status: Step['status']) => setSteps(prev => { const c = [...prev]; c[c.length - 1] = { ...c[c.length - 1], status }; return c })
     try {
+      const start = Date.now()
+
       // Step 1: probe GitHub endpoint
       addStep(GITHUB_URL)
-      const start = Date.now()
-      const github = await probeEndpoint(GITHUB_URL, 10000)
-      let working: 'github' | 'domestic' | null = null
-      if (github) {
-        updateLastStep('ok')
-        working = 'github'
-      } else {
-        updateLastStep('fail')
-        // Step 2: probe domestic endpoint
-        addStep(DOMESTIC_URL)
-        const remaining = Math.max(5000, 30000 - (Date.now() - start))
-        const domestic = await probeEndpoint(DOMESTIC_URL, remaining)
-        if (domestic) {
-          updateLastStep('ok')
-          working = 'domestic'
-        } else {
-          updateLastStep('fail')
-        }
-      }
-      if (!working) {
+      const githubData = await probeEndpoint(GITHUB_URL, 10000)
+      if (githubData) updateLastStep('ok')
+      else updateLastStep('fail')
+
+      // Step 2: probe domestic endpoint (always, for redundancy)
+      addStep(DOMESTIC_URL)
+      const remaining = Math.max(5000, 30000 - (Date.now() - start))
+      const domesticData = await probeEndpoint(DOMESTIC_URL, remaining)
+      if (domesticData) updateLastStep('ok')
+      else updateLastStep('fail')
+
+      const probeData = githubData || domesticData
+      if (!probeData) {
         setMessage(t('settings.updateTimedOut'))
         return
       }
-      // Step 3: check version
+
+      // Step 3: check version via Tauri updater
       addStep(t('settings.fetchingVersion'))
-      const update = await Promise.race([
-        check(),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000)),
-      ])
-      updateLastStep('ok')
+      let update
+      try {
+        update = await Promise.race([
+          check(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 30000)),
+        ])
+        updateLastStep('ok')
+      } catch (checkErr) {
+        // ponytail: check() timed out — fallback to probe data for manual version comparison
+        updateLastStep('fail')
+        const latestVer = (probeData.version as string) || ''
+        if (latestVer && latestVer !== appVersion) {
+          addStep(t('settings.fallbackToProbe'))
+          updateLastStep('ok')
+          // Show download URL for manual download (can't use Tauri updater in fallback)
+          const platformKey = navigator.userAgent.includes('Windows') ? 'windows-x86_64'
+            : navigator.userAgent.includes('Mac') ? (navigator.userAgent.includes('ARM') ? 'darwin-aarch64' : 'darwin-x86_64')
+            : 'linux-x86_64'
+          const dlUrl = ((probeData.platforms as Record<string, { url: string }>)?.[platformKey]?.url) || ''
+          setMessage(t('settings.newVersionFound', { version: latestVer }) + (dlUrl ? '\n' + dlUrl : ''))
+        } else {
+          setMessage(t('settings.latestVersion'))
+        }
+        return
+      }
       if (update?.available) {
-        // Extract platform download URL from the probed update.json
+        // Extract platform download URL from probe data (already fetched)
         const platformKey = navigator.userAgent.includes('Windows') ? 'windows-x86_64'
           : navigator.userAgent.includes('Mac') ? (navigator.userAgent.includes('ARM') ? 'darwin-aarch64' : 'darwin-x86_64')
           : 'linux-x86_64'
-        let dlUrl = ''
-        try {
-          const jsonUrl = working === 'domestic'
-            ? 'https://down.leepanel.com/update.json'
-            : 'https://raw.githubusercontent.com/gna1280072/LeePanel/gh-pages/update.json'
-          const res = await fetch(jsonUrl)
-          const json = await res.json()
-          dlUrl = json.platforms?.[platformKey]?.url || ''
-        } catch { /* non-critical */ }
+        const dlUrl = ((probeData.platforms as Record<string, { url: string }>)?.[platformKey]?.url) || ''
         const urlLine = dlUrl ? '\n' + dlUrl : ''
         setMessage(t('settings.newVersionFound', { version: update.version }) + urlLine)
         let downloaded = 0

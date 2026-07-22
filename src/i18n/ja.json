@@ -562,6 +562,7 @@
         "updateInstalled": "v{{version}} がインストールされました。後でアプリを再起動して更新を適用してください。",
         "updateTimedOut": "更新確認がタイムアウトしました。後でもう一度お試しください。",
         "fetchingVersion": "バージョン情報を取得中...",
+        "fallbackToProbe": "代替チャネルでバージョン情報を取得しました",
     "systemInfo": "システム情報",
     "lastBoot": "最終起動日時",
     "uptime": "稼働時間",

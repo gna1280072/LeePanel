@@ -795,15 +795,14 @@
   "about": {
     "title": "À propos de LeePanel",
     "line1": "LeePanel — Gratuit et open-source, le panneau de gestion de serveurs Linux nouvelle génération.",
-    "line2": "La plupart des panneaux de serveurs populaires sont installés directement sur le serveur, et ces panneaux eux-mêmes souffrent fréquemment de vulnérabilités de sécurité, causant d'innombrables maux de tête aux administrateurs de serveurs dans le monde entier.",
-    "line3": "Nous avons créé LeePanel pour résoudre ce problème une fois pour toutes.",
-    "line4": "Ce qui nous différencie : toutes les opérations sont effectuées en envoyant des commandes SSH depuis votre machine locale vers le serveur. Pas une seule ligne de code de panneau n'a besoin d'être installée sur le serveur — le rendant fondamentalement plus sûr !",
-    "line5": "Une application de bureau multiplateforme légère construite avec Tauri 2 + React, remplaçant les panneaux traditionnels basés sur navigateur.",
-    "line6": "Gérez les connexions SSH, les fichiers (SFTP), Nginx, MySQL/MariaDB, PHP, Redis, Docker, les pare-feu, les certificats SSL et plus encore — le tout depuis un seul client de bureau natif.",
-    "line7": "Publié le 18 juillet 2026, LeePanel en est encore à ses débuts. Nous avons actuellement testé et vérifié la compatibilité avec les versions principales d'Ubuntu/Debian, avec le support de plus de distributions Linux en cours.",
-    "line8": "Si vous avez des suggestions ou des retours lors de l'utilisation, n'hésitez pas à les partager sur",
-    "line9": "Site web",
-    "github": "GitHub Discussions"
+    "line2": "Les panneaux traditionnels de gestion Linux/VPS souffrent fréquemment de vulnérabilités de sécurité, causant des maux de tête aux administrateurs de serveurs.",
+    "line3": "LeePanel a été créé pour résoudre ce problème une fois pour toutes.",
+    "line4": "️ Zéro code côté serveur — Toutes les opérations sont effectuées via des commandes SSH depuis votre machine locale. Aucun code de panneau installé sur le serveur, aucun port supplémentaire exposé, éliminant les risques de sécurité du panneau à la racine.",
+    "line5": "Une application de bureau multiplateforme légère construite avec Tauri 2 + React, fournissant un seul client natif pour gérer : Terminal SSH & Gestion de fichiers SFTP, Nginx / MySQL/MariaDB / PHP / Redis / Docker, Pare-feu / Certificats SSL gratuits.",
+    "line6": "Installateur de seulement 6 Mo — léger et flexible ! Remplace complètement les panneaux traditionnels basés sur navigateur.",
+    "line7": "Si vous avez des suggestions ou des retours, n'hésitez pas à les partager sur",
+    "github": "GitHub Discussions",
+    "line8": "Site web : https://www.LeePanel.com"
   },
   "logs": {
     "title": "Journaux du site",

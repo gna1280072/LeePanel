@@ -795,15 +795,14 @@
   "about": {
     "title": "關於 LeePanel",
     "line1": "LeePanel — 免費開源，下一代 Linux 伺服器管理面板。",
-    "line2": "因目前流行的各種安裝在伺服器上的面板軟件，這些面板自身經常發現安全問題，令廣大的伺服器管理員苦不堪言。",
-    "line3": "我們開發LeePanel，希望徹底解決這個問題。",
-    "line4": "我們的創新之處在於：所有操作透過本地電腦向伺服器發送SSH命令進行，不需要在伺服器上安裝任何一行的面板程式碼，讓伺服器更安全！",
-    "line5": "基於 Tauri 2 + React 構建的輕量級跨平台桌面應用，取代傳統瀏覽器面板。",
-    "line6": "透過單一原生客戶端統一管理 SSH 連線、檔案（SFTP）、Nginx、MySQL/MariaDB、PHP、Redis、Docker、防火牆、SSL 憑證等功能。",
-    "line7": "當前項目發佈於2026年7月18日，還是個寶寶，我們當前在ubuntu/debian上主流版本測試通過，更多的LINUX版本正在適配中。",
-    "line8": "如果您在使用過程有任何建議和意見，歡迎到",
-    "line9": "官網",
-    "github": "GitHub Discussions"
+    "line2": "傳統 Linux/VPS 管理面板頻繁曝出安全漏洞，令伺服器管理員苦不堪言。",
+    "line3": "LeePanel 為此而生。",
+    "line4": "🛡️ 零服務端程式碼 — 所有操作均透過本地 SSH 命令完成，伺服器上**不安裝**任何面板程式碼，**不暴露**多餘端口，從根源消除面板自身的安全風險。",
+    "line5": "基於 Tauri 2 + React 構建的輕量跨平台桌面應用，以單一原生客戶端統一管理：SSH 終端 & SFTP 檔案管理、Nginx / MySQL/MariaDB / PHP / Redis / Docker、防火牆 / 免費 SSL 憑證。",
+    "line6": "安裝包最小僅 6 MB 起，靈活小巧！徹底取代傳統瀏覽器面板。",
+    "line7": "使用過程中如有任何建議或意見，歡迎前往",
+    "github": "GitHub Discussions 交流反饋",
+    "line8": " 官網: https://www.LeePanel.com"
   },
   "logs": {
     "title": "站點日誌",

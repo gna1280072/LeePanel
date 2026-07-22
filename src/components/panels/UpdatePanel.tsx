@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getVersion } from '@tauri-apps/api/app'
+import { invoke } from '@tauri-apps/api/core'
 import { check } from '@tauri-apps/plugin-updater'
 import { open } from '@tauri-apps/plugin-shell'
 import { useTranslation } from 'react-i18next'
@@ -28,11 +29,22 @@ export default function UpdatePanel() {
     const addStep = (text: string, status: Step['status'] = 'pending') => setSteps(prev => [...prev, { text, status }])
     const updateLastStep = (status: Step['status']) => setSteps(prev => { const c = [...prev]; c[c.length - 1] = { ...c[c.length - 1], status }; return c })
     try {
+      // Attempt 1: check with proxy (10s timeout)
       addStep(t('settings.fetchingVersion'))
-      const update = await Promise.race([
+      let update = await Promise.race([
         check(),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 30000)),
-      ])
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000)),
+      ]).catch(async () => {
+        // Attempt 2: clear proxy and retry (10s timeout)
+        updateLastStep('fail')
+        addStep(t('settings.clearingProxy'))
+        await invoke('clear_proxy_env')
+        updateLastStep('ok')
+        return await Promise.race([
+          check(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000)),
+        ])
+      })
       updateLastStep('ok')
       if (update?.available) {
         setMessage(t('settings.newVersionFound', { version: update.version }))

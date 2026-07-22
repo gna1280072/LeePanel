@@ -55,7 +55,7 @@ pub struct ServiceStatus {
 // ===== OS Detection =====
 
 /// Detect the operating system of the remote server
-pub async fn detect_os(session: &SshSession, cache: &SshCache, session_id: &str) -> Result<OsInfo, String> {
+pub async fn detect_os(session: &SshSession, _cache: &SshCache, _session_id: &str) -> Result<OsInfo, String> {
     let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
 # Detect distro
@@ -674,8 +674,8 @@ pub struct ServiceInfo {
 /// Get detailed info for a specific service
 pub async fn get_service_info(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     service: &str,
 ) -> Result<ServiceInfo, String> {
     // ponytail: single SSH round-trip combining status + version + config detection (was 2-3 calls)
@@ -882,8 +882,8 @@ done
 /// Find the FPM pool config path in a single SSH call (was up to 6 sequential reads)
 pub async fn find_php_fpm_config(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<(String, String), String> {
     let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
@@ -925,8 +925,8 @@ echo "NOT_FOUND"
 /// Read a remote file's content via SSH exec
 pub async fn read_remote_file(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     path: &str,
 ) -> Result<String, String> {
     let safe = path.replace('\'', "'\\''");
@@ -942,8 +942,8 @@ pub async fn read_remote_file(
 /// Write content to a remote file via SFTP
 pub async fn write_remote_file(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     path: &str,
     content: &str,
 ) -> Result<(), String> {
@@ -953,8 +953,8 @@ pub async fn write_remote_file(
 /// Get recent log lines from a file
 pub async fn get_log_lines(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     path: &str,
     lines: u32,
 ) -> Result<String, String> {
@@ -967,8 +967,8 @@ pub async fn get_log_lines(
 /// List Nginx virtual hosts
 pub async fn list_nginx_vhosts(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<Vec<String>, String> {
     let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
@@ -996,8 +996,8 @@ done | sort -u
 /// Get Nginx configuration test result
 pub async fn test_nginx_config(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<(bool, String), String> {
     let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, "nginx -t 2>&1", 10)
         .await?;
@@ -1009,8 +1009,8 @@ pub async fn test_nginx_config(
 /// Get MySQL global variables
 pub async fn get_mysql_variables(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<Vec<(String, String)>, String> {
     let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             "mysql -e 'SHOW GLOBAL VARIABLES' 2>/dev/null | head -80",
@@ -1030,8 +1030,8 @@ pub async fn get_mysql_variables(
 /// Get MySQL process list
 pub async fn get_mysql_processes(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<String, String> {
     let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             "mysql -e 'SHOW PROCESSLIST' 2>/dev/null",
@@ -1044,8 +1044,8 @@ pub async fn get_mysql_processes(
 /// Execute a MySQL query
 pub async fn exec_mysql_query(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     query: &str,
 ) -> Result<String, String> {
     let safe_query = query.replace('\'', "'\\''");
@@ -1137,8 +1137,8 @@ fi
 /// List immediate subdirectories of a given path
 pub async fn list_subdirs(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     path: &str,
 ) -> Result<Vec<String>, String> {
     let safe_path = path.replace('\'', "'\\''");
@@ -1160,8 +1160,8 @@ pub async fn list_subdirs(
 /// List all configured sites from Nginx
 pub async fn list_sites(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<Vec<SiteInfo>, String> {
     let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r##"
@@ -1544,7 +1544,7 @@ fn parse_site_config(path: &str, content: &str) -> Option<SiteInfo> {
 /// Create a new site with Nginx vhost configuration
 pub async fn create_site(
     session: &SshSession,
-    cache: &SshCache,
+    _cache: &SshCache,
     session_id: &str,
     domain: &str,
     root: &str,
@@ -2167,8 +2167,8 @@ $domain = $_SERVER['HTTP_HOST'] ?? 'your site';
 /// Toggle site enable/disable
 pub async fn toggle_site(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     config_path: &str,
     domain: &str,
     enable: bool,
@@ -2267,8 +2267,8 @@ pub async fn toggle_site(
 #[allow(dead_code)]
 pub async fn restart_site(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     domain: &str,
 ) -> Result<String, String> {
     // Verify config first
@@ -2288,8 +2288,8 @@ pub async fn restart_site(
 /// Delete a site
 pub async fn delete_site(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     domain: &str,
     remove_files: bool,
 ) -> Result<String, String> {
@@ -3068,7 +3068,7 @@ pub async fn set_reverse_proxy(
 
 /// Remove ALL reverse proxy location blocks from all site configs in /etc/nginx/sites-enabled/
 /// This handles both marked blocks (with # Reverse Proxy Start/End) and unmarked/orphaned proxy locations
-async fn cleanup_all_proxy_blocks(session: &SshSession, cache: &SshCache, session_id: &str, skip_path: &str) {
+async fn cleanup_all_proxy_blocks(session: &SshSession, _cache: &SshCache, _session_id: &str, skip_path: &str) {
     let (files_out, _, _) = match crate::ssh::session_exec_with_output(session, "ls -1 /etc/nginx/sites-enabled/ 2>/dev/null", 5)
         .await
     {
@@ -3144,8 +3144,8 @@ async fn cleanup_all_proxy_blocks(session: &SshSession, cache: &SshCache, sessio
 /// Helper: test nginx config and reload
 async fn test_and_reload_nginx(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<(), String> {
     // Test config first
     let (test_stdout, test_stderr, test_code) = crate::ssh::session_exec_with_output(session, "nginx -t 2>&1", 10)
@@ -3420,8 +3420,8 @@ pub struct ProcessInfo {
 /// Get real-time monitoring data
 pub async fn get_monitor_data(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<MonitorData, String> {
     let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
@@ -3775,8 +3775,8 @@ fn parse_iptables_output(stdout: &str) -> Result<FirewallInfo, String> {
 
 pub async fn add_firewall_rule(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     port: &str,
     protocol: &str,
     action: &str,
@@ -3825,8 +3825,8 @@ pub async fn add_firewall_rule(
 
 pub async fn remove_firewall_rule(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     port: &str,
     protocol: &str,
     action: &str,
@@ -3873,8 +3873,8 @@ pub async fn remove_firewall_rule(
 
 pub async fn toggle_firewall(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     enable: bool,
 ) -> Result<FirewallToggleResult, String> {
     let (detect, _, _) = crate::ssh::session_exec_with_output(session, "command -v ufw && echo HAS_UFW; command -v firewall-cmd && echo HAS_FIREWALLD", 10)
@@ -4638,8 +4638,8 @@ echo "ACTION_SUCCESS"
 /// Query available PHP versions from system package manager
 pub async fn get_available_php_versions(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<Vec<String>, String> {
     let cmd = r#"
 if [ -f /etc/os-release ]; then
@@ -4740,8 +4740,8 @@ fi
 /// Get list of removable package sources (third-party repos)
 pub async fn get_removable_sources(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<Vec<String>, String> {
     let cmd = r#"
 if [ -f /etc/os-release ]; then
@@ -4772,8 +4772,8 @@ fi
 /// Remove specified package sources
 pub async fn remove_sources(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     source_names: Vec<String>,
 ) -> Result<String, String> {
     if source_names.is_empty() {
@@ -4802,7 +4802,7 @@ echo "Sources removed successfully"
 /// Clean and update package sources with streaming output
 pub async fn clean_and_update_sources(
     session: &SshSession,
-    cache: &SshCache,
+    _cache: &SshCache,
     session_id: &str,
     app_handle: &AppHandle,
 ) -> Result<String, String> {
@@ -4909,8 +4909,8 @@ fi
 /// Add a new package source
 pub async fn add_source(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     name: &str,
     url: &str,
     gpg_key: Option<&str>,
@@ -6122,8 +6122,8 @@ pub fn generate_ssh_keypair(algorithm: &str) -> Result<SshKeyPair, String> {
 /// Reboot the server
 pub async fn reboot_server(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     force: bool,
 ) -> Result<String, String> {
     let cmd = if force { "reboot -f" } else { "reboot" };
@@ -6138,8 +6138,8 @@ pub async fn reboot_server(
 /// Get server boot time and uptime duration
 pub async fn get_server_uptime(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<(String, String), String> {
     // Get boot time as ISO timestamp
     let (boot_stdout, _, boot_code) = crate::ssh::session_exec_with_output(session, "date -d \"$(uptime -s)\" +\"%Y-%m-%d %H:%M:%S\" 2>/dev/null || who -b 2>/dev/null | awk '{print $3, $4}' || echo 'unknown'", 5)
@@ -6170,8 +6170,8 @@ pub async fn get_server_uptime(
 /// Change SSH user password
 pub async fn change_ssh_password(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     username: &str,
     new_password: &str,
 ) -> Result<String, String> {
@@ -6189,8 +6189,8 @@ pub async fn change_ssh_password(
 /// Deploy SSH public key to remote server's authorized_keys
 pub async fn deploy_ssh_pubkey(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     pubkey: &str,
 ) -> Result<String, String> {
     // Escape any special characters in pubkey
@@ -6252,8 +6252,8 @@ echo "DONE"
 /// Set SSH authentication mode by modifying sshd_config and restarting sshd
 pub async fn set_ssh_auth_mode(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     password_enabled: bool,
     pubkey_enabled: bool,
 ) -> Result<String, String> {
@@ -6356,8 +6356,8 @@ echo "QD=$QD"
 /// Enable or disable BBR congestion control
 pub async fn set_bbr_status(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     enable: bool,
 ) -> Result<String, String> {
     let cmd = if enable {
@@ -6431,8 +6431,8 @@ pub struct SiteLogInfo {
 /// Get available log files for a site
 pub async fn get_site_logs(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     domain: &str,
 ) -> Result<Vec<SiteLogInfo>, String> {
     let safe_domain = domain.replace('\'', "'\\''");
@@ -6491,8 +6491,8 @@ echo "DONE"
 /// Read last N lines of a log file, optionally filtered by date range
 pub async fn read_site_log(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     log_path: &str,
     lines: usize,
     date_from: Option<&str>,
@@ -6629,7 +6629,7 @@ fi
 /// Helper: run an SSH command with streaming output via Tauri events
 async fn docker_stream_exec(
     session: &SshSession,
-    cache: &SshCache,
+    _cache: &SshCache,
     session_id: &str,
     cmd: &str,
     timeout_secs: u64,
@@ -6704,7 +6704,7 @@ async fn docker_stream_exec(
 /// Generic helper: stream SSH command output via a custom event name
 async fn stream_ssh_command(
     session: &SshSession,
-    cache: &SshCache,
+    _cache: &SshCache,
     session_id: &str,
     cmd: &str,
     timeout_secs: u64,
@@ -6871,8 +6871,8 @@ echo "Docker uninstalled successfully"
 /// List Docker containers
 pub async fn docker_container_list(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<Vec<DockerContainer>, String> {
     let cmd = r#"docker ps -a --format '{{.ID}}|||{{.Names}}|||{{.Image}}|||{{.Status}}|||{{.State}}|||{{.Ports}}|||{{.CreatedAt}}'"#;
     let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, cmd, 30).await?;
@@ -6916,8 +6916,8 @@ pub async fn docker_container_list(
 /// Perform action on a container (start/stop/restart/pause/unpause)
 pub async fn docker_container_action(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     container_id: &str,
     action: &str,
 ) -> Result<String, String> {
@@ -6949,8 +6949,8 @@ pub async fn docker_container_action(
 /// Remove a container
 pub async fn docker_container_remove(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     container_id: &str,
     force: bool,
 ) -> Result<String, String> {
@@ -6978,8 +6978,8 @@ pub async fn docker_container_remove(
 /// Get container logs
 pub async fn docker_container_logs(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     container_id: &str,
     lines: usize,
 ) -> Result<String, String> {
@@ -6998,8 +6998,8 @@ pub async fn docker_container_logs(
 /// List Docker images
 pub async fn docker_image_list(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<Vec<DockerImage>, String> {
     let cmd = r#"docker images --format '{{.ID}}|||{{.Repository}}|||{{.Tag}}|||{{.Size}}|||{{.CreatedAt}}'"#;
     let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, cmd, 30).await?;
@@ -7069,8 +7069,8 @@ pub async fn docker_image_pull(
 /// Remove a Docker image
 pub async fn docker_image_remove(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     image_id: &str,
 ) -> Result<String, String> {
     let safe_id = image_id.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_' || *c == ':' || *c == '/' || *c == '.').collect::<String>();
@@ -7134,8 +7134,8 @@ pub async fn docker_image_run(
 /// Get Docker mirror/registry configuration
 pub async fn docker_get_mirror_config(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<Vec<String>, String> {
     let cmd = r#"cat /etc/docker/daemon.json 2>/dev/null | python3 -c "import sys,json;d=json.load(sys.stdin);print('\n'.join(d.get('registry-mirrors',[])))" 2>/dev/null || echo """#;
     let (stdout, _, _) = crate::ssh::session_exec_with_output(session, cmd, 10).await?;
@@ -7150,8 +7150,8 @@ pub async fn docker_get_mirror_config(
 /// Set Docker mirror/registry configuration
 pub async fn docker_set_mirror_config(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     mirrors: &[String],
 ) -> Result<String, String> {
     // Build JSON for daemon.json
@@ -7197,7 +7197,7 @@ pub struct BackupInfo {
 
 /// Try to get a mysql command prefix with credentials.
 /// Tries multiple authentication methods in order of preference.
-async fn get_mysql_cmd(session: &SshSession, cache: &SshCache, session_id: &str) -> String {
+async fn get_mysql_cmd(session: &SshSession, _cache: &SshCache, _session_id: &str) -> String {
     // Method 1: Check /root/.my.cnf for password
     let (cnf, _, _) = crate::ssh::session_exec_with_output(session, "cat /root/.my.cnf 2>/dev/null", 5)
         .await
@@ -7769,8 +7769,8 @@ pub struct RedisDbSize {
 /// Returns: Ok(true) if running, Ok(false) if installed but stopped, Err("not_installed") if not installed
 pub async fn check_redis_status(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<bool, String> {
     // Try redis-cli ping directly
     let (out, stderr, code) = crate::ssh::session_exec_with_output(session, "redis-cli ping 2>&1", 5)
@@ -7815,8 +7815,8 @@ pub async fn check_redis_status(
 /// Get Redis version
 pub async fn get_redis_version(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<String, String> {
     let (out, _, code) = crate::ssh::session_exec_with_output(session, "redis-cli --version 2>&1", 5)
         .await?;
@@ -7838,8 +7838,8 @@ pub async fn get_redis_version(
 /// ponytail: single INFO keyspace call replaces 16 redis-cli DBSIZE processes
 pub async fn redis_dbsize_all(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<Vec<RedisDbSize>, String> {
     let (out, _, code) = crate::ssh::session_exec_with_output(session, "redis-cli INFO keyspace", 5)
         .await?;
@@ -7876,7 +7876,7 @@ pub async fn redis_dbsize_all(
 /// ponytail: redis-cli pipeline mode replaces ~4N redis-cli processes with 3 (SCAN + 2 pipelines)
 pub async fn redis_scan_keys(
     session: &SshSession,
-    cache: &SshCache,
+    _cache: &SshCache,
     session_id: &str,
     db_index: u8,
     pattern: &str,
@@ -7892,7 +7892,7 @@ pub async fn redis_scan_keys(
         let b64 = B64.encode(cmds.as_bytes());
         let cmd = format!("printf '%s' '{}' | base64 -d | redis-cli --raw -n {}", b64, db_index);
         let sess = session.clone();
-        let sid = session_id.to_string();
+        let _sid = session_id.to_string();
         async move {
             let (out, _, code) = crate::ssh::session_exec_with_output(&sess, &cmd, 30).await?;
             if code != 0 {
@@ -8062,8 +8062,8 @@ pub async fn redis_scan_keys(
 /// Set or update a key-value pair
 pub async fn redis_set_key(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     db_index: u8,
     key: &str,
     value: &str,
@@ -8090,8 +8090,8 @@ pub async fn redis_set_key(
 /// Delete one or more keys
 pub async fn redis_del_key(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     db_index: u8,
     keys: &[String],
 ) -> Result<usize, String> {
@@ -8123,8 +8123,8 @@ pub async fn redis_del_key(
 /// Flush a database (delete all keys)
 pub async fn redis_flushdb(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     db_index: u8,
 ) -> Result<String, String> {
     let cmd = format!("redis-cli -n {} FLUSHDB", db_index);
@@ -8140,8 +8140,8 @@ pub async fn redis_flushdb(
 /// Create a backup using BGSAVE
 pub async fn redis_save_backup(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<String, String> {
     // Trigger background save
     let (out, _, code) = crate::ssh::session_exec_with_output(session, "redis-cli BGSAVE 2>&1", 10)
@@ -8182,8 +8182,8 @@ pub async fn redis_save_backup(
 /// List available backup files
 pub async fn redis_list_backups(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<Vec<BackupInfo>, String> {
     let (out, _, code) = crate::ssh::session_exec_with_output(session, "ls -lh /var/lib/redis/*.rdb 2>/dev/null", 5)
         .await?;
@@ -8340,8 +8340,8 @@ pub async fn change_db_user_password(
 /// Save database remark to SQLite
 pub async fn save_db_remark(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     db_name: &str,
     remark: &str,
 ) -> Result<String, String> {
@@ -8360,8 +8360,8 @@ pub async fn save_db_remark(
 /// Get all database remarks for a server
 pub async fn get_db_remarks(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<Vec<(String, String)>, String> {
     let db_conn = crate::db::init_db()
         .map_err(|e| format!("Failed to init DB: {}", e))?;
@@ -8378,8 +8378,8 @@ pub async fn get_db_remarks(
 /// Save database credentials (password, access_type, allowed_ip)
 pub async fn save_db_credentials(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     db_name: &str,
     db_user: &str,
     password: &str,
@@ -8397,8 +8397,8 @@ pub async fn save_db_credentials(
 /// List all database credentials for a server
 pub async fn get_db_credentials(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<Vec<crate::db::DbCredential>, String> {
     let db_conn = crate::db::init_db()
         .map_err(|e| format!("Failed to init DB: {}", e))?;
@@ -8410,8 +8410,8 @@ pub async fn get_db_credentials(
 /// Get credentials for a specific database
 pub async fn get_db_credential(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     db_name: &str,
 ) -> Result<Option<crate::db::DbCredential>, String> {
     let db_conn = crate::db::init_db()
@@ -8424,8 +8424,8 @@ pub async fn get_db_credential(
 /// Update only the password for a database
 pub async fn update_db_credential_password(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     db_name: &str,
     password: &str,
 ) -> Result<String, String> {
@@ -8466,8 +8466,8 @@ async fn write_mysql_cnf_file(
 /// Create a backup of the specified database using mysqldump
 pub async fn backup_database(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     db_name: &str,
     db_user: &str,
     db_password: &str,
@@ -8557,8 +8557,8 @@ pub async fn backup_database(
 /// List all backup files for a specific database
 pub async fn list_db_backups(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     db_name: &str,
 ) -> Result<Vec<BackupInfo>, String> {
     // Validate database name
@@ -8610,8 +8610,8 @@ pub async fn list_db_backups(
 /// Delete a specific backup file
 pub async fn delete_db_backup(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     backup_filename: &str,
 ) -> Result<String, String> {
     // Validate filename (prevent path traversal)
@@ -8644,8 +8644,8 @@ pub async fn delete_db_backup(
 /// Download database backup file content as bytes
 pub async fn download_db_backup(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     backup_filename: &str,
 ) -> Result<Vec<u8>, String> {
     // Validate filename (prevent path traversal)
@@ -8681,8 +8681,8 @@ pub async fn download_db_backup(
 /// Import database from uploaded SQL content
 pub async fn import_database_from_file(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     db_name: &str,
     db_user: &str,
     db_password: &str,
@@ -8733,8 +8733,8 @@ pub async fn import_database_from_file(
 /// Import database from uploaded raw bytes (supports .sql, .tar.gz, .zip)
 pub async fn import_database_from_file_bytes(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     db_name: &str,
     db_user: &str,
     db_password: &str,
@@ -8811,8 +8811,8 @@ pub async fn import_database_from_file_bytes(
 /// Import database from existing backup file
 pub async fn import_database_from_backup(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
     db_name: &str,
     db_user: &str,
     db_password: &str,

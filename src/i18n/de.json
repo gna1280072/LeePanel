@@ -562,7 +562,6 @@
         "updateInstalled": "v{{version}} installiert. Starten Sie die App später neu, um das Update anzuwenden.",
         "updateTimedOut": "Update-Prüfung hat zu lange gedauert. Bitte versuchen Sie es später erneut.",
         "fetchingVersion": "Versionsinformationen werden abgerufen...",
-        "fallbackToProbe": "Versionsinformationen über Fallback-Kanal abgerufen",
     "systemInfo": "Systeminfo",
     "lastBoot": "Letzter Start",
     "uptime": "Laufzeit",

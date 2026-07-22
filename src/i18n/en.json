@@ -562,7 +562,6 @@
         "updateInstalled": "v{{version}} installed. Restart the app later to apply the update.",
         "updateTimedOut": "Update check timed out, please try again later.",
         "fetchingVersion": "Fetching version info...",
-        "fallbackToProbe": "Retrieved version info via fallback channel",
     "systemInfo": "System Info",
     "lastBoot": "Last Boot Time",
     "uptime": "Uptime",

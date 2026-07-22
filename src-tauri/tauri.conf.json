@@ -42,8 +42,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://raw.githubusercontent.com/gna1280072/LeePanel/gh-pages/update.json",
-        "https://down.leepanel.com/update.json"
+        "https://raw.githubusercontent.com/gna1280072/LeePanel/gh-pages/update.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI1Qjk0MDFCQUFEMDJGNkQKUldSdEw5Q3FHMEM1SmVSNlQ3eEwrNnE0b2RhQ2c4SVdBWFJkMTlaYzdtaWMwdHBNM2xNYXg5cEwK",
       "dialog": true,

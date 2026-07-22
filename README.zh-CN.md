@@ -38,6 +38,14 @@ LeePanel — 免费开源，下一代 Linux 服务器管理面板。
 官网: https://www.LeePanel.com
  
 
+## 系统要求
+
+| 平台 | 版本 |
+|------|------|
+| Windows | 10/11 (64-bit) |
+| macOS | 12+ (Intel / Apple Silicon) |
+| Linux | x64 / arm64 (AppImage) |
+
 ## 界面预览
 
 <p align="center">

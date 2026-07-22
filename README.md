@@ -38,6 +38,14 @@ If you have any suggestions or feedback during use, feel free to share them in G
 Website: https://www.LeePanel.com
 
  
+## System Requirements
+
+| Platform | Version |
+|----------|--------|
+| Windows | 10/11 (64-bit) |
+| macOS | 12+ (Intel / Apple Silicon) |
+| Linux | x64 / arm64 (AppImage) |
+
 ## Preview
 
 <p align="center">

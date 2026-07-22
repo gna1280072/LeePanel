@@ -184,8 +184,9 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
       }))
     } catch (e) {
       const errMsg = String(e)
-      // reboot may kill connection, so connection errors are expected
-      if (errMsg.includes('Connection') || errMsg.includes('closed') || errMsg.includes('disconnected')) {
+      // reboot kills SSH — timeout/connection errors are expected success
+      const el = errMsg.toLowerCase()
+      if (el.includes('connection') || el.includes('closed') || el.includes('disconnected') || el.includes('timed out') || el.includes('timeout') || el.includes('broken pipe') || el.includes('eof')) {
         setRebootExecPanel(prev => ({
           ...prev,
           logs: [...prev.logs, '[OK] Server is rebooting. SSH connection has been disconnected.'],

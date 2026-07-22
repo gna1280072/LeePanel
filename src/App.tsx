@@ -66,7 +66,7 @@ function App() {
   const [settings, setSettings] = useState<Settings>({
     auto_reconnect: true, reconnect_interval: 5, max_reconnect_attempts: 10, cache_ttl_hours: 24, cache_max_files: 500, cache_enabled: true, command_timeout_minutes: 30, upload_workers: 3
   })
-  const [, setReconnecting] = useState(false)
+  const [reconnecting, setReconnecting] = useState(false)
   const reconnectAttemptRef = useRef(0)
   const autoReconnectRef = useRef(true)
   const reconnectingRef = useRef(false)
@@ -525,6 +525,7 @@ function App() {
         showToast('⚠ Connection lost. Reconnecting...')
 
         const attemptReconnect = async () => {
+          if (!reconnectingRef.current) return
           reconnectAttemptRef.current++
           if (reconnectAttemptRef.current > settings.max_reconnect_attempts) {
             showToast(`✗ Reconnect failed after ${settings.max_reconnect_attempts} attempts`)
@@ -623,11 +624,14 @@ function App() {
       setError('')
       const hostKey = `${conn.host}_${conn.port}`
       const panelKey = `lastPanel_${username}@${hostKey}`
+      // ponytail: estimate PTY size from window so shell prompt renders correctly on first draw
+      const estCols = Math.max(80, Math.floor((window.innerWidth - (sidebarVisible ? sidebarWidth + 10 : 40) - 20) / 8.4))
+      const estRows = Math.max(24, Math.floor((window.innerHeight - 100) / 17))
       // ponytail: parallel SSH + DB read → no flash, correct page rendered immediately
       Promise.all([
         Promise.race([
           invoke<string>('ssh_connect', {
-            config: { host: conn.host, port: conn.port, username, password, keyPath },
+            config: { host: conn.host, port: conn.port, username, password, keyPath, cols: estCols, rows: estRows },
           }),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 20000)),
         ]),
@@ -723,7 +727,14 @@ function App() {
       <div className="main-area">
         <div className="top-bar">
           {error && <div className="error-bar">{error}</div>}
-          {toast && <div className="toast-bar">{toast}</div>}
+          {toast && (
+            <div className="toast-bar">
+              <span>{toast}</span>
+              {reconnecting && (
+                <button className="toast-stop-btn" onClick={() => { reconnectingRef.current = false; setReconnecting(false); clearSession() }}>Stop</button>
+              )}
+            </div>
+          )}
           {pendingUpdate && (
             <div className="update-ready-bar">
               <span>🔄 Update v{pendingUpdate.version} ready</span>

@@ -951,12 +951,31 @@ body {
 
 /* ===== Toast Notification ===== */
 .toast-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 8px 16px;
   background: #0d2818;
   color: #3fb950;
   font-size: 13px;
   border-bottom: 1px solid #238636;
   animation: toast-in 0.3s ease;
+}
+
+.toast-stop-btn {
+  padding: 3px 10px;
+  background: #da3633;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  margin-left: 12px;
+  flex-shrink: 0;
+}
+
+.toast-stop-btn:hover {
+  background: #f85149;
 }
 
 @keyframes toast-in {

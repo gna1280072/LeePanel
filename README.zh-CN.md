@@ -2,6 +2,21 @@
 
 <p align="center"><img src="public/app-icon.png" alt="LeePanel Logo" width="128" height="128"></p>
 
+<p align="center">
+  <a href="https://github.com/gna1280072/LeePanel/stargazers"><img src="https://img.shields.io/github/stars/gna1280072/LeePanel?style=flat-square" alt="Stars"></a>
+  <a href="https://github.com/gna1280072/LeePanel/releases"><img src="https://img.shields.io/github/v/release/gna1280072/LeePanel?style=flat-square" alt="Release"></a>
+  <a href="https://github.com/gna1280072/LeePanel/releases"><img src="https://img.shields.io/github/downloads/gna1280072/LeePanel/total?style=flat-square" alt="Downloads"></a>
+  <a href="https://github.com/gna1280072/LeePanel/blob/main/LICENSE"><img src="https://img.shields.io/github/license/gna1280072/LeePanel?style=flat-square" alt="License"></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Tauri-2.x-FFC131?style=flat-square&logo=tauri" alt="Tauri">
+  <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react" alt="React">
+  <img src="https://img.shields.io/badge/TypeScript-6.0-3178C6?style=flat-square&logo=typescript" alt="TypeScript">
+  <img src="https://img.shields.io/badge/Rust-stable-DEA584?style=flat-square&logo=rust" alt="Rust">
+  <img src="https://img.shields.io/badge/Vite-8-646CFF?style=flat-square&logo=vite" alt="Vite">
+</p>
+
 [English](README.md) | [download软件下载](https://github.com/gna1280072/LeePanel/releases)
 
 LeePanel — 免费开源，下一代 Linux 服务器管理面板。
@@ -22,6 +37,20 @@ LeePanel — 免费开源，下一代 Linux 服务器管理面板。
 
 官网: https://www.LeePanel.com
  
+
+## 界面预览
+
+<p align="center">
+  <img src="public/img/01.png" alt="Preview 1" width="800">
+</p>
+
+<p align="center">
+  <img src="public/img/02.png" alt="Preview 2" width="800">
+</p>
+
+<p align="center">
+  <img src="public/img/03.png" alt="Preview 3" width="800">
+</p>
 
 ## 功能特性
 

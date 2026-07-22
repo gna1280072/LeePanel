@@ -782,6 +782,7 @@
     "remove": "移除",
     "removeFromList": "從清單移除",
     "installMultiplePHP": "在此安裝多版本php",
+        "installMore": "安裝更多",
     "selectMysqlVersion": "Select MySQL Variant",
     "noMysqlVersionsAvailable": "No MySQL or MariaDB packages available in system repositories.",
     "installMysqlVersion": "Install {{version}}",

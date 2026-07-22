@@ -782,6 +782,7 @@
     "remove": "Remover",
     "removeFromList": "Remover da lista",
     "installMultiplePHP": "Instale várias versões do PHP aqui",
+        "installMore": "Instalar mais",
     "selectMysqlVersion": "Select MySQL Variant",
     "noMysqlVersionsAvailable": "No MySQL or MariaDB packages available in system repositories.",
     "installMysqlVersion": "Install {{version}}",

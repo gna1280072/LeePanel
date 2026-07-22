@@ -735,7 +735,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                       <div className="sw-card-info">
                         {sw.installed ? (
                           <>
-                            <span className="sw-version">{sw.name === 'php' ? t('software.installMultiplePHP') : (sw.version || t('software.installed'))}</span>
+                            <span className="sw-version">{sw.name === 'php' ? (sw.version || t('software.installMultiplePHP')) : (sw.version || t('software.installed'))}</span>
                             <span className={`sw-state-label ${sw.running ? 'running' : 'stopped'}`}>
                               {sw.running ? t('software.runningLabel') : sw.service_name ? t('software.stoppedLabel') : t('software.installedLabel')}
                             </span>
@@ -767,7 +767,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                               </>
                             )}
                           </>
-                        ) : (sw.installed && sw.name !== 'php') ? (
+                        ) : sw.installed ? (
                           <>
                             {sw.service_name && (
                               <>
@@ -787,6 +787,12 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                                   disabled={!sw.running}
                                 >{t('common.restart')}</button>
                               </>
+                            )}
+                            {sw.name === 'php' && (
+                              <button
+                                className="sw-action-btn small primary"
+                                onClick={() => handlePHPInstallClick()}
+                              >{t('software.installMore')}</button>
                             )}
                             {getConfigPath(sw) && (
                               <button

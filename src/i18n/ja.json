@@ -782,6 +782,7 @@
     "remove": "削除",
     "removeFromList": "リストから削除",
     "installMultiplePHP": "ここで複数のPHPバージョンをインストール",
+        "installMore": "追加インストール",
     "selectMysqlVersion": "Select MySQL Variant",
     "noMysqlVersionsAvailable": "No MySQL or MariaDB packages available in system repositories.",
     "installMysqlVersion": "Install {{version}}",

@@ -525,6 +525,7 @@ function App() {
         showToast('⚠ Connection lost. Reconnecting...')
 
         const attemptReconnect = async () => {
+          if (!reconnectingRef.current) return
           reconnectAttemptRef.current++
           if (reconnectAttemptRef.current > settings.max_reconnect_attempts) {
             showToast(`✗ Reconnect failed after ${settings.max_reconnect_attempts} attempts`)

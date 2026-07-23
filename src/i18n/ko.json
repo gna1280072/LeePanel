@@ -69,7 +69,8 @@
     "reconnectAttempt": "재연결 중 {{attempt}}/{{max}}회...",
     "reconnectSuccess": "재연결 성공 ({{attempt}}회 시도)",
     "reconnectFailed": "{{max}}회 시도 후 재연결 실패",
-    "normalRebootHint": "재부팅 명령이 전송되었습니다. 빠르게 재부팅되지 않으면 강제 재부팅을 사용하세요"
+    "normalRebootHint": "재부팅 명령이 전송되었습니다. 빠르게 재부팅되지 않으면 강제 재부팅을 사용하세요",
+    "connectFirst": "먼저 서버에 연결하세요"
   },
   "welcome": {
     "title": "LeePanel에 오신 것을 환영합니다",

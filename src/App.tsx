@@ -893,7 +893,7 @@ function App() {
               </div>
             ))}
             {/* ponytail: show nav when no sessions — dashboard/discussions remain clickable, others disabled */}
-            {sessions.length === 0 && <ServerPanel sessionId={null} />}
+            {sessions.length === 0 && <ServerPanel sessionId={null} onShowToast={showToast} />}
           </div>
         </div>
       </div>

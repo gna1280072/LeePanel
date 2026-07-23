@@ -32,7 +32,7 @@ interface SidebarProps {
   onNew: () => void
   onCreateConnection: (data: NewConnectionData) => Promise<void>
   refreshKey?: number
-  currentSessionId?: string | null
+  connectedIds?: string[]
   connectingServerId?: string | null
 }
 
@@ -42,7 +42,7 @@ interface ContextMenu {
   conn: Connection
 }
 
-export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection, refreshKey, currentSessionId, connectingServerId }: SidebarProps) {
+export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection, refreshKey, connectedIds, connectingServerId }: SidebarProps) {
   const { t, i18n } = useTranslation()
   const [connections, setConnections] = useState<Connection[]>([])
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null)
@@ -219,8 +219,7 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
           <p className="empty-hint">{t('sidebar.clickToAdd')}</p>
         )}
         {connections.map((conn) => {
-          const isConnected = conn.id === currentSessionId
-          console.log(`Connection ${conn.name}: id=${conn.id}, currentSessionId=${currentSessionId}, isConnected=${isConnected}`)
+          const isConnected = connectedIds?.includes(conn.id) ?? false
           return (
             <div
               key={conn.id}
@@ -242,8 +241,8 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
                   onClick={(e) => {
                     e.stopPropagation()
                     if (isConnected) {
-                      // Disconnect - call the onDisconnect handler directly
-                      window.dispatchEvent(new CustomEvent('sidebar-disconnect'))
+                      // Disconnect this specific session
+                      window.dispatchEvent(new CustomEvent('sidebar-disconnect', { detail: { configId: conn.id } }))
                     } else {
                       onConnect(conn)
                     }

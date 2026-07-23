@@ -65,7 +65,13 @@
     "noData": "Sem dados",
     "hidePanel": "Ocultar painel de servidores",
     "showPanel": "Mostrar painel de servidores",
-    "connectionLost": "Conexão perdida"
+    "connectionLost": "Conexão perdida",
+    "reconnectAttempt": "Reconectando {{attempt}}/{{max}}...",
+    "reconnectSuccess": "Reconectado (tentativa {{attempt}})",
+    "reconnectFailed": "Falha na reconexão após {{max}} tentativas",
+    "normalRebootHint": "Comando de reinicialização enviado. Se o servidor não reiniciar rapidamente, use a reinicialização forçada",
+    "connectFirst": "Conecte-se a um servidor primeiro",
+"disconnectedBanner": "Servidor desconectado, reconecte-se!"
   },
   "welcome": {
     "title": "Bem-vindo ao LeePanel",
@@ -537,6 +543,7 @@
     "autoReconnect": "Reconexão SSH automática",
     "reconnectInterval": "Intervalo de reconexão (segundos)",
     "maxAttempts": "Máximo de tentativas",
+        "closeTabOnDisconnect": "Fechar aba ao desconectar",
     "commandTimeout": "Tempo limite do comando (minutos)",
     "commandTimeoutHint": "tempo máximo de execução dos scripts de instalação/remoção",
     "uploadWorkers": "Concorrência de arquivos upload",

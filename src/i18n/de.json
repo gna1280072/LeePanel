@@ -65,7 +65,13 @@
     "noData": "Keine Daten",
     "hidePanel": "Server-Panel ausblenden",
     "showPanel": "Server-Panel anzeigen",
-    "connectionLost": "Verbindung verloren"
+    "connectionLost": "Verbindung verloren",
+    "reconnectAttempt": "Verbindungsversuch {{attempt}}/{{max}}...",
+    "reconnectSuccess": "Wieder verbunden (Versuch {{attempt}})",
+    "reconnectFailed": "Wiederverbindung nach {{max}} Versuchen fehlgeschlagen",
+    "normalRebootHint": "Neustart-Befehl gesendet. Wenn der Server nicht schnell neu startet, verwenden Sie den erzwungenen Neustart",
+    "connectFirst": "Bitte zuerst einen Server verbinden",
+"disconnectedBanner": "Server getrennt, bitte erneut verbinden!"
   },
   "welcome": {
     "title": "Willkommen bei LeePanel",
@@ -537,6 +543,7 @@
     "autoReconnect": "SSH-Auto-Wiederverbindung",
     "reconnectInterval": "Wiederverbindungsintervall (Sekunden)",
     "maxAttempts": "Max. Versuche",
+        "closeTabOnDisconnect": "Tab bei Trennung schließen",
     "commandTimeout": "Befehls-Timeout (Minuten)",
     "commandTimeoutHint": "max. Ausführungszeit für Installations-/Deinstallationsskripte",
     "uploadWorkers": "Upload-Dateien Parallelität",

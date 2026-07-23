@@ -16,6 +16,7 @@ interface AppSettings {
   auto_reconnect: boolean
   reconnect_interval: number
   max_reconnect_attempts: number
+  close_tab_on_disconnect: boolean
   cache_ttl_hours: number
   cache_max_files: number
   cache_enabled: boolean
@@ -175,6 +176,11 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
       status: 'running',
     })
 
+    // ponytail: normal reboot → suppress auto-reconnect, let user reconnect manually
+    if (!force) {
+      window.dispatchEvent(new CustomEvent('normal-reboot', { detail: { sessionId } }))
+    }
+
     try {
       const result = await invoke<string>('server_reboot', { sessionId, force })
       setRebootExecPanel(prev => ({
@@ -294,6 +300,16 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
                 >
                   <span className="toggle-track"><span className="toggle-thumb" /></span>
                   <span className="toggle-label">{appSettings.auto_reconnect ? t('common.on') : t('common.off')}</span>
+                </button>
+              </div>
+              <div className="settings-row">
+                <span className="settings-label">{t('settings.closeTabOnDisconnect')}</span>
+                <button
+                  className={`firewall-toggle ${appSettings.close_tab_on_disconnect ? 'on' : 'off'}`}
+                  onClick={() => onUpdateSettings?.({ close_tab_on_disconnect: !appSettings.close_tab_on_disconnect })}
+                >
+                  <span className="toggle-track"><span className="toggle-thumb" /></span>
+                  <span className="toggle-label">{appSettings.close_tab_on_disconnect ? t('common.on') : t('common.off')}</span>
                 </button>
               </div>
               <div className="edit-field">

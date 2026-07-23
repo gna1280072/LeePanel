@@ -65,7 +65,13 @@
     "noData": "데이터 없음",
     "hidePanel": "서버 패널 숨기기",
     "showPanel": "서버 패널 표시",
-    "connectionLost": "연결이 끊어졌습니다"
+    "connectionLost": "연결이 끊어졌습니다",
+    "reconnectAttempt": "재연결 중 {{attempt}}/{{max}}회...",
+    "reconnectSuccess": "재연결 성공 ({{attempt}}회 시도)",
+    "reconnectFailed": "{{max}}회 시도 후 재연결 실패",
+    "normalRebootHint": "재부팅 명령이 전송되었습니다. 빠르게 재부팅되지 않으면 강제 재부팅을 사용하세요",
+    "connectFirst": "먼저 서버에 연결하세요",
+"disconnectedBanner": "서버 연결이 끊어졌습니다. 다시 연결하세요!"
   },
   "welcome": {
     "title": "LeePanel에 오신 것을 환영합니다",
@@ -537,6 +543,7 @@
     "autoReconnect": "SSH 자동 재연결",
     "reconnectInterval": "재연결 간격 (초)",
     "maxAttempts": "최대 시도 횟수",
+        "closeTabOnDisconnect": "연결 해제 시 탭 닫기",
     "commandTimeout": "명령 시간 초과 (분)",
     "commandTimeoutHint": "설치/제거 스크립트의 최대 실행 시간",
     "uploadWorkers": "업로드 파일 동시 실행 수",

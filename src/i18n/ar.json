@@ -65,7 +65,13 @@
     "noData": "لا توجد بيانات",
     "hidePanel": "إخفاء لوحة الخوادم",
     "showPanel": "إظهار لوحة الخوادم",
-    "connectionLost": "فُقد الاتصال"
+    "connectionLost": "فُقد الاتصال",
+    "reconnectAttempt": "جارٍ إعادة الاتصال {{attempt}}/{{max}}...",
+    "reconnectSuccess": "تم إعادة الاتصال (المحاولة {{attempt}})",
+    "reconnectFailed": "فشل إعادة الاتصال بعد {{max}} محاولات",
+    "normalRebootHint": "تم إرسال أمر إعادة التشغيل. إذا لم تتم إعادة التشغيل بسرعة، استخدم إعادة التشغيل القسري",
+    "connectFirst": "يرجى الاتصال بالخادم أولاً",
+"disconnectedBanner": "تم قطع الاتصال بالخادم، يرجى إعادة الاتصال!"
   },
   "welcome": {
     "title": "مرحباً بك في LeePanel",
@@ -537,6 +543,7 @@
     "autoReconnect": "إعادة اتصال SSH تلقائية",
     "reconnectInterval": "فاصل إعادة الاتصال (ثواني)",
     "maxAttempts": "الحد الأقصى للمحاولات",
+        "closeTabOnDisconnect": "إغلاق علامة التبويب عند قطع الاتصال",
     "commandTimeout": "مهلة الأمر (دقائق)",
     "commandTimeoutHint": "الحد الأقصى لوقت تنفيذ سكريبتات التثبيت/الإزالة",
     "uploadWorkers": "تزامن تحميل الملفات",

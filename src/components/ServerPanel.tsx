@@ -30,6 +30,7 @@ interface AppSettings {
   auto_reconnect: boolean
   reconnect_interval: number
   max_reconnect_attempts: number
+  close_tab_on_disconnect: boolean
   cache_ttl_hours: number
   cache_max_files: number
   cache_enabled: boolean
@@ -50,6 +51,7 @@ interface ServerPanelProps {
   appSettings?: AppSettings
   onToggleAutoReconnect?: () => void
   onUpdateSettings?: (settings: Partial<AppSettings>) => Promise<void>
+  onShowToast?: (msg: string) => void
 }
 
 const NAV_ITEMS: { key: PanelSection; labelKey: string; icon: string }[] = [
@@ -74,7 +76,7 @@ const NAV_ITEMS: { key: PanelSection; labelKey: string; icon: string }[] = [
   { key: 'discussions', labelKey: 'nav.discussions', icon: '💬' },
 ]
 
-export default function ServerPanel({ sessionId, connHost, connUsername, initialSection = 'dashboard', jumpToPath, setJumpToPath, termRef, onStartUpload, onUploadComplete, appSettings, onToggleAutoReconnect, onUpdateSettings }: ServerPanelProps) {
+export default function ServerPanel({ sessionId, connHost, connUsername, initialSection = 'dashboard', jumpToPath, setJumpToPath, termRef, onStartUpload, onUploadComplete, appSettings, onToggleAutoReconnect, onUpdateSettings, onShowToast }: ServerPanelProps) {
   const { t } = useTranslation()
   const [activeSection, setActiveSectionRaw] = useState<PanelSection>((initialSection && NAV_ITEMS.some(s => s.key === initialSection) ? initialSection : 'dashboard') as PanelSection)
   const cdHereRef = useRef<string | null>(null)
@@ -187,8 +189,12 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
           <button
             key={item.key}
             className={`sp-nav-item ${activeSection === item.key ? 'active' : ''}`}
-            onClick={() => item.key === 'discussions' ? open('https://github.com/gna1280072/LeePanel/discussions') : setActiveSection(item.key)}
-            disabled={!sessionId && item.key !== 'dashboard' && item.key !== 'discussions'}
+            onClick={() => {
+              if (item.key === 'discussions') { open('https://github.com/gna1280072/LeePanel/discussions'); return }
+              // ponytail: no session → toast hint instead of disabling nav items
+              if (!sessionId) { onShowToast?.(`⚠ ${t('common.connectFirst')}`); return }
+              setActiveSection(item.key)
+            }}
           >
             <span className="sp-nav-icon">{item.icon}</span>
             <span className="sp-nav-label">{t(item.labelKey)}</span>

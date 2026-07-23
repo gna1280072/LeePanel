@@ -65,7 +65,13 @@
     "noData": "暂无数据",
     "hidePanel": "隐藏服务器面板",
     "showPanel": "显示服务器面板",
-    "connectionLost": "连接已断开"
+    "connectionLost": "连接已断开",
+    "reconnectAttempt": "正在重连 第{{attempt}}/{{max}}次...",
+    "reconnectSuccess": "已重连（第{{attempt}}次尝试）",
+    "reconnectFailed": "重连失败，已尝试{{max}}次",
+    "normalRebootHint": "重启命令已发出，如果无法快速重启成功，请使用强制重启",
+    "connectFirst": "请先连接服务器",
+"disconnectedBanner": "服务器已经断开，请重新连接！"
   },
   "welcome": {
     "title": "欢迎使用 LeePanel",
@@ -537,6 +543,7 @@
     "autoReconnect": "SSH断线自动重连",
     "reconnectInterval": "重连间隔（秒）",
     "maxAttempts": "最大尝试次数",
+        "closeTabOnDisconnect": "断开时关闭标签页",
     "commandTimeout": "命令超时（分钟）",
     "commandTimeoutHint": "安装/卸载脚本的最大执行时间",
     "uploadWorkers": "上传文件的并发数",

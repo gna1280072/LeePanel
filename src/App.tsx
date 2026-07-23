@@ -50,15 +50,26 @@ interface Settings {
   upload_workers: number
 }
 
+interface ActiveSession {
+  configId: string
+  sessionId: string
+  name: string
+  hostKey: string
+  username: string
+  initialSection: string
+}
+
 function App() {
   const { t } = useTranslation()
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const [connectedConfigId, setConnectedConfigId] = useState<string | null>(null)
+  // ponytail: multi-session — sessions array + active tab, backend already supports N concurrent SSH
+  const [sessions, setSessions] = useState<ActiveSession[]>([])
+  const [activeConfigId, setActiveConfigId] = useState<string | null>(null)
   const [connectingServerId, setConnectingServerId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
   const [showWelcome, setShowWelcome] = useState(false)
-  const termRef = useRef<TerminalHandle | null>(null)
+  const termRefMap = useRef(new Map<string, TerminalHandle | null>())
+  const activeTermRef = useRef<TerminalHandle | null>(null)
   const [errorDialog, setErrorDialog] = useState<{ visible: boolean; message: string; type: 'auth' | 'network' | 'connection' | 'other' } | null>(null)
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null)
 
@@ -72,43 +83,50 @@ function App() {
   const reconnectingRef = useRef(false)
   const manualDisconnectRef = useRef(false)
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0)
-  const [connHost, setConnHost] = useState('')
-  const [connUsername, setConnUsername] = useState('')
-  const [initialSection, setInitialSection] = useState<string>('dashboard')
 
-  const clearSession = () => {
-    setSessionId(null)
-    setConnectedConfigId(null)
-    setConnHost('')
-    setConnUsername('')
-    setInitialSection('dashboard')
+  const activeSession = sessions.find(s => s.configId === activeConfigId) || null
+  const activeSessionId = activeSession?.sessionId ?? null
+
+  const removeSession = (configId: string) => {
+    termRefMap.current.delete(configId)
+    setSessions(prev => prev.filter(s => s.configId !== configId))
+    setActiveConfigId(prev => {
+      if (prev !== configId) return prev
+      const rest = sessions.filter(s => s.configId !== configId)
+      return rest.length > 0 ? rest[rest.length - 1].configId : null
+    })
   }
+
+  // ponytail: sync activeTermRef when switching tabs
+  useEffect(() => {
+    activeTermRef.current = activeConfigId ? (termRefMap.current.get(activeConfigId) ?? null) : null
+  }, [activeConfigId])
 
   // Draggable dividers
   const [sidebarWidth, setSidebarWidth] = useState(240)
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const draggingRef = useRef<'sidebar' | null>(null)
   const splitContainerRef = useRef<HTMLDivElement>(null)
-  // Listen for disconnect request from Sidebar
+  // Listen for disconnect request from Sidebar (per-session)
   useEffect(() => {
-    const handleDisconnectRequest = () => {
-      console.log('Received sidebar-disconnect event')
-      if (sessionId) {
-        manualDisconnectRef.current = true
-        const doClear = () => {
-          clearSession()
-          termRef.current?.clear()
-        }
-        // ponytail: race disconnect against 3s local timeout — ensures UI always responds
-        Promise.race([
-          invoke('ssh_disconnect', { sessionId }).catch(() => {}),
-          new Promise<void>(resolve => setTimeout(resolve, 3000)),
-        ]).then(doClear)
+    const handleDisconnectRequest = (e: Event) => {
+      const configId = (e as CustomEvent).detail?.configId
+      const sess = sessions.find(s => s.configId === configId)
+      if (!sess) return
+      manualDisconnectRef.current = true
+      const doRemove = () => {
+        termRefMap.current.get(configId)?.clear()
+        removeSession(configId)
       }
+      // ponytail: race disconnect against 3s local timeout — ensures UI always responds
+      Promise.race([
+        invoke('ssh_disconnect', { sessionId: sess.sessionId }).catch(() => {}),
+        new Promise<void>(resolve => setTimeout(resolve, 3000)),
+      ]).then(doRemove)
     }
     window.addEventListener('sidebar-disconnect', handleDisconnectRequest)
     return () => window.removeEventListener('sidebar-disconnect', handleDisconnectRequest)
-  }, [sessionId])
+  }, [sessions])
 
   // Upload queue state
   const [upload, setUpload] = useState<UploadState>({
@@ -153,8 +171,8 @@ function App() {
   }
 
   const handleStartUpload = useCallback(async (files: { file: File; fileName: string; remotePath: string }[]) => {
-    if (!sessionId || files.length === 0) return
-    const sid = sessionId
+    if (!activeSessionId || files.length === 0) return
+    const sid = activeSessionId
     const totalBytes = files.reduce((sum, f) => sum + f.file.size, 0)
     const retryCounts = new Map<string, number>()
     const queue: UploadItem[] = files.map(f => ({ ...f, status: 'pending' as const, retryCount: 0 }))
@@ -376,7 +394,7 @@ function App() {
       setUpload(prev => ({ ...prev, active: false, paused: false }))
       uploadCompleteRef.current?.()
     }
-  }, [sessionId, settings.upload_workers])
+  }, [activeSessionId, settings.upload_workers])
 
   const handlePauseUpload = useCallback(() => {
     uploadPauseRef.current = true
@@ -509,13 +527,15 @@ function App() {
     autoReconnectRef.current = settings.auto_reconnect
   }, [settings.auto_reconnect])
 
-  // Listen for ssh-disconnected event
+  // Listen for ssh-disconnected event (per-session)
   useEffect(() => {
     const unlisten = listen<{ sessionId: string; reason: string }>('ssh-disconnected', async (event) => {
       const sid = event.payload.sessionId
+      const sess = sessions.find(s => s.sessionId === sid)
+      if (!sess) return
       // Skip auto-reconnect if user manually disconnected
       if (manualDisconnectRef.current) {
-        clearSession()
+        removeSession(sess.configId)
         return
       }
       if (sid && autoReconnectRef.current && !reconnectingRef.current) {
@@ -531,7 +551,7 @@ function App() {
             showToast(`✗ Reconnect failed after ${settings.max_reconnect_attempts} attempts`)
             reconnectingRef.current = false
             setReconnecting(false)
-            clearSession()
+            removeSession(sess.configId)
             return
           }
           try {
@@ -547,20 +567,19 @@ function App() {
         setTimeout(attemptReconnect, settings.reconnect_interval * 1000)
       } else if (!autoReconnectRef.current) {
         showToast(t('common.connectionLost'))
-        clearSession()
+        removeSession(sess.configId)
       }
     })
     return () => { unlisten.then((fn) => fn()) }
-  }, [settings]) // eslint-disable-line
+  }, [settings, sessions]) // eslint-disable-line
 
   useEffect(() => {
     const unlisten = listen<string>('ssh-closed', (event) => {
-      if (sessionId && event.payload === sessionId) {
-        clearSession()
-      }
+      const sess = sessions.find(s => s.sessionId === event.payload)
+      if (sess) removeSession(sess.configId)
     })
     return () => { unlisten.then((fn) => fn()) }
-  }, [sessionId])
+  }, [sessions])
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -602,22 +621,12 @@ function App() {
   }
 
   const handleDirectConnect = useCallback(async (conn: SidebarConnection) => {
-    // If already connected, disconnect first (mark as manual to prevent auto-reconnect)
-    if (sessionId) {
-      manualDisconnectRef.current = true
-      await invoke('ssh_disconnect', { sessionId }).catch(() => {})
-      clearSession()
+    // ponytail: multi-session — if already connected, just switch tab
+    const existing = sessions.find(s => s.configId === conn.id)
+    if (existing) {
+      setActiveConfigId(conn.id)
+      return
     }
-
-    console.log('Direct connect config:', {
-      host: conn.host,
-      port: conn.port,
-      username: conn.username,
-      auth_type: conn.auth_type,
-      has_password: !!conn.password,
-      has_key_path: !!conn.key_path,
-      remember_me: conn.remember_me,
-    })
 
     const doConnect = (username: string, password?: string, keyPath?: string) => {
       setConnectingServerId(conn.id)
@@ -637,12 +646,16 @@ function App() {
         ]),
         invoke<string>('ui_state_get', { key: panelKey }).catch(() => ''),
       ]).then(([sid, savedPanel]) => {
-        setSessionId(sid)
-        setConnectedConfigId(conn.id)
-        console.log('Direct connect! sessionId:', sid, 'configId:', conn.id)
-        setConnHost(hostKey)
-        setConnUsername(username)
-        setInitialSection(savedPanel || 'dashboard')
+        const newSession: ActiveSession = {
+          configId: conn.id,
+          sessionId: sid,
+          name: conn.name || conn.host,
+          hostKey,
+          username,
+          initialSection: savedPanel || 'dashboard',
+        }
+        setSessions(prev => [...prev, newSession])
+        setActiveConfigId(conn.id)
         manualDisconnectRef.current = false
         // Show welcome modal on successful connection (once per 6 hours)
         const WELCOME_INTERVAL = 6 * 60 * 60 * 1000
@@ -650,13 +663,7 @@ function App() {
         if (Date.now() - lastShown >= WELCOME_INTERVAL) {
           setShowWelcome(true)
           localStorage.setItem('welcome_last_shown', String(Date.now()))
-          console.log('Showing welcome modal (direct connect)')
-          setTimeout(() => {
-            setShowWelcome(false)
-            console.log('Hiding welcome modal after 4 seconds')
-          }, 4000)
-        } else {
-          console.log('Welcome modal skipped, shown recently')
+          setTimeout(() => setShowWelcome(false), 4000)
         }
       }).catch(e => {
         const msg = String(e)
@@ -682,7 +689,7 @@ function App() {
     }
 
     doConnect(conn.username, password, keyPath)
-  }, [sessionId])
+  }, [sessions])
 
   // Listen for reconnect-after-edit from Sidebar (Connect button)
   useEffect(() => {
@@ -699,7 +706,7 @@ function App() {
       {sidebarVisible && (
         <>
           <div style={{ width: sidebarWidth, minWidth: sidebarWidth, flexShrink: 0, display: 'flex', position: 'relative' }}>
-            <Sidebar onSelect={handleSelectConnection} onConnect={handleDirectConnect} onNew={() => clearSession()} onCreateConnection={handleCreateConnection} refreshKey={sidebarRefreshKey} currentSessionId={connectedConfigId} connectingServerId={connectingServerId} />
+            <Sidebar onSelect={handleSelectConnection} onConnect={handleDirectConnect} onNew={() => {}} onCreateConnection={handleCreateConnection} refreshKey={sidebarRefreshKey} connectedIds={sessions.map(s => s.configId)} connectingServerId={connectingServerId} />
             {/* Sidebar Toggle Button */}
             <button 
               className="sidebar-toggle-btn visible"
@@ -731,7 +738,7 @@ function App() {
             <div className="toast-bar">
               <span>{toast}</span>
               {reconnecting && (
-                <button className="toast-stop-btn" onClick={() => { reconnectingRef.current = false; setReconnecting(false); clearSession() }}>Stop</button>
+                <button className="toast-stop-btn" onClick={() => { reconnectingRef.current = false; setReconnecting(false); if (activeConfigId) removeSession(activeConfigId) }}>Stop</button>
               )}
             </div>
           )}
@@ -761,8 +768,51 @@ function App() {
           </div>
         )}
         <div className="split-container" ref={splitContainerRef}>
+          {/* ponytail: session tab bar — quick switch between connected servers */}
+          {sessions.length > 0 && (
+            <div className="session-tabs">
+              {sessions.map(s => (
+                <div
+                  key={s.configId}
+                  className={`session-tab ${s.configId === activeConfigId ? 'active' : ''}`}
+                  onClick={() => setActiveConfigId(s.configId)}
+                >
+                  <span className="session-tab-name">{s.name}</span>
+                  <button
+                    className="session-tab-close"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      manualDisconnectRef.current = true
+                      invoke('ssh_disconnect', { sessionId: s.sessionId }).catch(() => {})
+                      removeSession(s.configId)
+                    }}
+                  >×</button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="split-full">
-            <ServerPanel key={connHost} sessionId={sessionId} connHost={connHost} connUsername={connUsername} initialSection={initialSection} jumpToPath={jumpToPath} setJumpToPath={setJumpToPath} termRef={termRef} onStartUpload={handleStartUpload} onUploadComplete={uploadCompleteRef} appSettings={settings} onToggleAutoReconnect={toggleAutoReconnect} onUpdateSettings={handleUpdateSettings} />
+            {sessions.map(s => (
+              <div key={s.configId} style={{ display: s.configId === activeConfigId ? 'block' : 'none', height: '100%' }}>
+                <ServerPanel
+                  sessionId={s.sessionId}
+                  connHost={s.hostKey}
+                  connUsername={s.username}
+                  initialSection={s.initialSection}
+                  jumpToPath={s.configId === activeConfigId ? jumpToPath : null}
+                  setJumpToPath={setJumpToPath}
+                  termRef={{
+                    get current() { return termRefMap.current.get(s.configId) ?? null },
+                    set current(h: TerminalHandle | null) { termRefMap.current.set(s.configId, h); if (s.configId === activeConfigId) activeTermRef.current = h }
+                  }}
+                  onStartUpload={handleStartUpload}
+                  onUploadComplete={uploadCompleteRef}
+                  appSettings={settings}
+                  onToggleAutoReconnect={toggleAutoReconnect}
+                  onUpdateSettings={handleUpdateSettings}
+                />
+              </div>
+            ))}
           </div>
         </div>
       </div>

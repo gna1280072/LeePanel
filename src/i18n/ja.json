@@ -541,6 +541,7 @@
     "autoReconnect": "SSH 自動再接続",
     "reconnectInterval": "再接続間隔（秒）",
     "maxAttempts": "最大試行回数",
+        "closeTabOnDisconnect": "切断時にタブを閉じる",
     "commandTimeout": "コマンドタイムアウト（分）",
     "commandTimeoutHint": "インストール/アンインストールスクリプトの最大実行時間",
     "uploadWorkers": "アップロードファイルの同時実行数",

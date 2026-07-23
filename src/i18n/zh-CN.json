@@ -541,6 +541,7 @@
     "autoReconnect": "SSH断线自动重连",
     "reconnectInterval": "重连间隔（秒）",
     "maxAttempts": "最大尝试次数",
+        "closeTabOnDisconnect": "断开时关闭标签页",
     "commandTimeout": "命令超时（分钟）",
     "commandTimeoutHint": "安装/卸载脚本的最大执行时间",
     "uploadWorkers": "上传文件的并发数",

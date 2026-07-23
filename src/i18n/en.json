@@ -541,6 +541,7 @@
     "autoReconnect": "SSH Auto Reconnect",
     "reconnectInterval": "Reconnect Interval (seconds)",
     "maxAttempts": "Max Attempts",
+        "closeTabOnDisconnect": "Close Tab on Disconnect",
     "commandTimeout": "Command Timeout (minutes)",
     "commandTimeoutHint": "max execution time for install/uninstall scripts",
     "uploadWorkers": "Upload Files Concurrency",

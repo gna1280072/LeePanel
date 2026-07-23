@@ -541,6 +541,7 @@
     "autoReconnect": "SSH-Auto-Wiederverbindung",
     "reconnectInterval": "Wiederverbindungsintervall (Sekunden)",
     "maxAttempts": "Max. Versuche",
+        "closeTabOnDisconnect": "Tab bei Trennung schließen",
     "commandTimeout": "Befehls-Timeout (Minuten)",
     "commandTimeoutHint": "max. Ausführungszeit für Installations-/Deinstallationsskripte",
     "uploadWorkers": "Upload-Dateien Parallelität",

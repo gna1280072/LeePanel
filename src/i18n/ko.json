@@ -541,6 +541,7 @@
     "autoReconnect": "SSH 자동 재연결",
     "reconnectInterval": "재연결 간격 (초)",
     "maxAttempts": "최대 시도 횟수",
+        "closeTabOnDisconnect": "연결 해제 시 탭 닫기",
     "commandTimeout": "명령 시간 초과 (분)",
     "commandTimeoutHint": "설치/제거 스크립트의 최대 실행 시간",
     "uploadWorkers": "업로드 파일 동시 실행 수",

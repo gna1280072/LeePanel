@@ -541,6 +541,7 @@
     "autoReconnect": "Авто-переподключение SSH",
     "reconnectInterval": "Интервал переподключения (секунды)",
     "maxAttempts": "Макс. попыток",
+        "closeTabOnDisconnect": "Закрывать вкладку при отключении",
     "commandTimeout": "Таймаут команды (мин)",
     "commandTimeoutHint": "макс. время выполнения скриптов установки/удаления",
     "uploadWorkers": "Параллельность загрузки файлов",

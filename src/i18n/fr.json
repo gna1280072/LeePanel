@@ -541,6 +541,7 @@
     "autoReconnect": "Reconnexion SSH automatique",
     "reconnectInterval": "Intervalle de reconnexion (secondes)",
     "maxAttempts": "Nombre max de tentatives",
+        "closeTabOnDisconnect": "Fermer l'onglet à la déconnexion",
     "commandTimeout": "Délai d'expiration (minutes)",
     "commandTimeoutHint": "durée max d'exécution des scripts d'installation/désinstallation",
     "uploadWorkers": "Concurrence de fichiers upload",

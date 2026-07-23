@@ -30,6 +30,7 @@ interface AppSettings {
   auto_reconnect: boolean
   reconnect_interval: number
   max_reconnect_attempts: number
+  close_tab_on_disconnect: boolean
   cache_ttl_hours: number
   cache_max_files: number
   cache_enabled: boolean

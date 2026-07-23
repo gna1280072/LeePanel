@@ -541,6 +541,7 @@
     "autoReconnect": "إعادة اتصال SSH تلقائية",
     "reconnectInterval": "فاصل إعادة الاتصال (ثواني)",
     "maxAttempts": "الحد الأقصى للمحاولات",
+        "closeTabOnDisconnect": "إغلاق علامة التبويب عند قطع الاتصال",
     "commandTimeout": "مهلة الأمر (دقائق)",
     "commandTimeoutHint": "الحد الأقصى لوقت تنفيذ سكريبتات التثبيت/الإزالة",
     "uploadWorkers": "تزامن تحميل الملفات",

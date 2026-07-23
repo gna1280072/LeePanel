@@ -173,6 +173,9 @@ pub struct Settings {
     pub reconnect_interval: u32,
     #[serde(default = "default_max_attempts")]
     pub max_reconnect_attempts: u32,
+    // ponytail: when true, tab is removed on disconnect; when false, tab stays alive (greyed out)
+    #[serde(default)]
+    pub close_tab_on_disconnect: bool,
     #[serde(default = "default_cache_ttl")]
     pub cache_ttl_hours: u32,
     #[serde(default = "default_cache_max_files")]
@@ -199,6 +202,7 @@ impl Default for Settings {
             auto_reconnect: true,
             reconnect_interval: 5,
             max_reconnect_attempts: 10,
+            close_tab_on_disconnect: false,
             cache_ttl_hours: 24,
             cache_max_files: 500,
             cache_enabled: true,
@@ -223,6 +227,9 @@ impl SettingsManager {
         if let Ok(val) = Self::get(conn, "max_reconnect_attempts") {
             if let Ok(v) = val.parse::<u32>() { settings.max_reconnect_attempts = v; }
         }
+        if let Ok(val) = Self::get(conn, "close_tab_on_disconnect") {
+            if let Ok(v) = val.parse::<bool>() { settings.close_tab_on_disconnect = v; }
+        }
         if let Ok(val) = Self::get(conn, "cache_ttl_hours") {
             if let Ok(v) = val.parse::<u32>() { settings.cache_ttl_hours = v; }
         }
@@ -246,6 +253,7 @@ impl SettingsManager {
         Self::set(conn, "auto_reconnect", &settings.auto_reconnect.to_string())?;
         Self::set(conn, "reconnect_interval", &settings.reconnect_interval.to_string())?;
         Self::set(conn, "max_reconnect_attempts", &settings.max_reconnect_attempts.to_string())?;
+        Self::set(conn, "close_tab_on_disconnect", &settings.close_tab_on_disconnect.to_string())?;
         Self::set(conn, "cache_ttl_hours", &settings.cache_ttl_hours.to_string())?;
         Self::set(conn, "cache_max_files", &settings.cache_max_files.to_string())?;
         Self::set(conn, "cache_enabled", &settings.cache_enabled.to_string())?;
@@ -385,6 +393,7 @@ mod tests {
             auto_reconnect: false,
             reconnect_interval: 10,
             max_reconnect_attempts: 5,
+            close_tab_on_disconnect: true,
             cache_ttl_hours: 48,
             cache_max_files: 1000,
             cache_enabled: false,

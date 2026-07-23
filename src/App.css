@@ -932,6 +932,13 @@ body {
   opacity: 0.7;
 }
 
+/* ponytail: disconnected toast-bar — persistent warning at top when session lost */
+.toast-bar.disconnected-bar {
+  background: transparent;
+  color: #da3633;
+  font-weight: 500;
+}
+
 .split-top {
   min-height: 100px;
   overflow: hidden;

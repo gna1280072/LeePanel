@@ -95,6 +95,10 @@ function App() {
 
   const activeSession = sessions.find(s => s.configId === activeConfigId) || null
   const activeSessionId = activeSession?.sessionId ?? null
+  // ponytail: active tab disconnected and not reconnecting → show persistent toast
+  const isDisconnected = activeConfigId
+    ? !connectedConfigIds.has(activeConfigId) && !reconnectingSessions.has(activeConfigId)
+    : false
 
   // ponytail: mark session as disconnected — keeps tab alive, only removes SSH connection state
   const markDisconnected = (configId: string) => {
@@ -805,10 +809,14 @@ function App() {
               </div>
             )
           })()}
-          {toast && !reconnectingSessions.has(activeConfigId || '') && (
+          {toast && !reconnectingSessions.has(activeConfigId || '') && !isDisconnected && (
             <div className="toast-bar">
               <span>{toast}</span>
             </div>
+          )}
+          {/* ponytail: persistent disconnected toast-bar — always visible until reconnected */}
+          {isDisconnected && (
+            <div className="toast-bar disconnected-bar">⚠ {t('common.disconnectedBanner')}</div>
           )}
           {pendingUpdate && (
             <div className="update-ready-bar">

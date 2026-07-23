@@ -70,7 +70,8 @@
     "reconnectSuccess": "已重连（第{{attempt}}次尝试）",
     "reconnectFailed": "重连失败，已尝试{{max}}次",
     "normalRebootHint": "重启命令已发出，如果无法快速重启成功，请使用强制重启",
-    "connectFirst": "请先连接服务器"
+    "connectFirst": "请先连接服务器",
+"disconnectedBanner": "服务器已经断开，请重新连接！"
   },
   "welcome": {
     "title": "欢迎使用 LeePanel",

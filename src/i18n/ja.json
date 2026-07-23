@@ -70,7 +70,8 @@
     "reconnectSuccess": "再接続成功（{{attempt}}回目の試行）",
     "reconnectFailed": "再接続失敗 {{max}}回試行後",
     "normalRebootHint": "再起動コマンドを送信しました。再起動が遅い場合は強制再起動を使用してください",
-    "connectFirst": "先にサーバーに接続してください"
+    "connectFirst": "先にサーバーに接続してください",
+"disconnectedBanner": "サーバーが切断されました。再接続してください！"
   },
   "welcome": {
     "title": "LeePanel へようこそ",

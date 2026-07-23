@@ -70,7 +70,8 @@
     "reconnectSuccess": "Reconectado (tentativa {{attempt}})",
     "reconnectFailed": "Falha na reconexão após {{max}} tentativas",
     "normalRebootHint": "Comando de reinicialização enviado. Se o servidor não reiniciar rapidamente, use a reinicialização forçada",
-    "connectFirst": "Conecte-se a um servidor primeiro"
+    "connectFirst": "Conecte-se a um servidor primeiro",
+"disconnectedBanner": "Servidor desconectado, reconecte-se!"
   },
   "welcome": {
     "title": "Bem-vindo ao LeePanel",

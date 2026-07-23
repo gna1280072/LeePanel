@@ -64,6 +64,8 @@ function App() {
   // ponytail: multi-session — sessions array + active tab, backend already supports N concurrent SSH
   const [sessions, setSessions] = useState<ActiveSession[]>([])
   const [activeConfigId, setActiveConfigId] = useState<string | null>(null)
+  // ponytail: track which sessions have an active SSH connection (decoupled from tab existence)
+  const [connectedConfigIds, setConnectedConfigIds] = useState<Set<string>>(new Set())
   const [connectingServerId, setConnectingServerId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
@@ -90,6 +92,11 @@ function App() {
 
   const activeSession = sessions.find(s => s.configId === activeConfigId) || null
   const activeSessionId = activeSession?.sessionId ?? null
+
+  // ponytail: mark session as disconnected — keeps tab alive, only removes SSH connection state
+  const markDisconnected = (configId: string) => {
+    setConnectedConfigIds(prev => { const s = new Set(prev); s.delete(configId); return s })
+  }
 
   const removeSession = (configId: string) => {
     termRefMap.current.delete(configId)
@@ -120,7 +127,7 @@ function App() {
       manualDisconnectRef.current = true
       const doRemove = () => {
         termRefMap.current.get(configId)?.clear()
-        removeSession(configId)
+        markDisconnected(configId)
       }
       // ponytail: race disconnect against 3s local timeout — ensures UI always responds
       Promise.race([
@@ -539,14 +546,14 @@ function App() {
       if (!sess) return
       // Skip auto-reconnect if user manually disconnected
       if (manualDisconnectRef.current) {
-        removeSession(sess.configId)
+        markDisconnected(sess.configId)
         return
       }
       // ponytail: skip auto-reconnect after normal (graceful) reboot
       if (normalRebootSessionsRef.current.has(sess.sessionId)) {
         normalRebootSessionsRef.current.delete(sess.sessionId)
         showToast(`ℹ [${sess.name}] ${t('common.normalRebootHint')}`)
-        removeSession(sess.configId)
+        markDisconnected(sess.configId)
         return
       }
       if (sid && autoReconnectRef.current && !reconnectingActiveRef.current.get(sess.configId)) {
@@ -565,7 +572,7 @@ function App() {
             reconnectingActiveRef.current.delete(sess.configId)
             reconnectAttemptRef.current.delete(sess.configId)
             setReconnectingSessions(prev => { const m = new Map(prev); m.delete(sess.configId); return m })
-            removeSession(sess.configId)
+            markDisconnected(sess.configId)
             return
           }
           try {
@@ -582,7 +589,7 @@ function App() {
         setTimeout(attemptReconnect, settings.reconnect_interval * 1000)
       } else if (!autoReconnectRef.current) {
         showToast(`⚠ [${sess.name}] ${t('common.connectionLost')}`)
-        removeSession(sess.configId)
+        markDisconnected(sess.configId)
       }
     })
     return () => { unlisten.then((fn) => fn()) }
@@ -591,7 +598,7 @@ function App() {
   useEffect(() => {
     const unlisten = listen<string>('ssh-closed', (event) => {
       const sess = sessions.find(s => s.sessionId === event.payload)
-      if (sess) removeSession(sess.configId)
+      if (sess) markDisconnected(sess.configId)
     })
     return () => { unlisten.then((fn) => fn()) }
   }, [sessions])
@@ -648,7 +655,8 @@ function App() {
   const handleDirectConnect = useCallback(async (conn: SidebarConnection) => {
     // ponytail: multi-session — if already connected, just switch tab
     const existing = sessions.find(s => s.configId === conn.id)
-    if (existing) {
+    const isConnected = existing !== undefined && connectedConfigIds.has(conn.id)
+    if (isConnected) {
       setActiveConfigId(conn.id)
       return
     }
@@ -671,15 +679,21 @@ function App() {
         ]),
         invoke<string>('ui_state_get', { key: panelKey }).catch(() => ''),
       ]).then(([sid, savedPanel]) => {
-        const newSession: ActiveSession = {
-          configId: conn.id,
-          sessionId: sid,
-          name: conn.name || conn.host,
-          hostKey,
-          username,
-          initialSection: savedPanel || 'dashboard',
+        if (existing) {
+          // ponytail: reconnect to existing disconnected tab — update sessionId, keep tab
+          setSessions(prev => prev.map(s => s.configId === conn.id ? { ...s, sessionId: sid } : s))
+        } else {
+          const newSession: ActiveSession = {
+            configId: conn.id,
+            sessionId: sid,
+            name: conn.name || conn.host,
+            hostKey,
+            username,
+            initialSection: savedPanel || 'dashboard',
+          }
+          setSessions(prev => [...prev, newSession])
         }
-        setSessions(prev => [...prev, newSession])
+        setConnectedConfigIds(prev => new Set(prev).add(conn.id))
         setActiveConfigId(conn.id)
         manualDisconnectRef.current = false
         // Show welcome modal on successful connection (once per 6 hours)
@@ -714,7 +728,7 @@ function App() {
     }
 
     doConnect(conn.username, password, keyPath)
-  }, [sessions])
+  }, [sessions, connectedConfigIds])
 
   // Listen for reconnect-after-edit from Sidebar (Connect button)
   useEffect(() => {
@@ -731,7 +745,7 @@ function App() {
       {sidebarVisible && (
         <>
           <div style={{ width: sidebarWidth, minWidth: sidebarWidth, flexShrink: 0, display: 'flex', position: 'relative' }}>
-            <Sidebar onSelect={handleSelectConnection} onConnect={handleDirectConnect} onNew={() => {}} onCreateConnection={handleCreateConnection} refreshKey={sidebarRefreshKey} connectedIds={sessions.map(s => s.configId)} connectingServerId={connectingServerId} />
+            <Sidebar onSelect={handleSelectConnection} onConnect={handleDirectConnect} onNew={() => {}} onCreateConnection={handleCreateConnection} refreshKey={sidebarRefreshKey} connectedIds={Array.from(connectedConfigIds)} connectingServerId={connectingServerId} />
             {/* Sidebar Toggle Button */}
             <button 
               className="sidebar-toggle-btn visible"
@@ -770,7 +784,7 @@ function App() {
                   reconnectingActiveRef.current.delete(cid)
                   reconnectAttemptRef.current.delete(cid)
                   setReconnectingSessions(prev => { const m = new Map(prev); m.delete(cid); return m })
-                  removeSession(cid)
+                  markDisconnected(cid)
                 }}>{t('common.stop')}</button>
               </div>
             )
@@ -812,21 +826,27 @@ function App() {
               {sessions.map(s => {
                 const reconInfo = reconnectingSessions.get(s.configId)
                 const isReconnecting = reconInfo !== undefined
+                const isTabConnected = connectedConfigIds.has(s.configId)
                 return (
                 <div
                   key={s.configId}
-                  className={`session-tab ${s.configId === activeConfigId ? 'active' : ''} ${isReconnecting ? 'reconnecting' : ''}`}
+                  className={`session-tab ${s.configId === activeConfigId ? 'active' : ''} ${isReconnecting ? 'reconnecting' : ''} ${!isTabConnected && !isReconnecting ? 'disconnected' : ''}`}
                   onClick={() => setActiveConfigId(s.configId)}
                 >
                   {isReconnecting && <span className="session-tab-recon-icon" title={`Reconnecting... (${reconInfo!.attempt}/${settings.max_reconnect_attempts})`}>↻</span>}
+                  {!isTabConnected && !isReconnecting && <span className="session-tab-discon-icon" title="Disconnected">⚠</span>}
                   <span className="session-tab-name">{s.name}</span>
                   <button
                     className="session-tab-close"
                     onClick={(e) => {
                       e.stopPropagation()
-                      manualDisconnectRef.current = true
-                      invoke('ssh_disconnect', { sessionId: s.sessionId }).catch(() => {})
-                      removeSession(s.configId)
+                      if (isTabConnected) {
+                        manualDisconnectRef.current = true
+                        invoke('ssh_disconnect', { sessionId: s.sessionId }).catch(() => {})
+                        markDisconnected(s.configId)
+                      } else {
+                        removeSession(s.configId)
+                      }
                     }}
                   >×</button>
                 </div>
@@ -836,7 +856,7 @@ function App() {
           )}
           <div className="split-full">
             {sessions.map(s => (
-              <div key={s.configId} style={{ display: s.configId === activeConfigId ? 'block' : 'none', height: '100%' }}>
+              <div key={s.configId + s.sessionId} style={{ display: s.configId === activeConfigId ? 'block' : 'none', height: '100%' }}>
                 <ServerPanel
                   sessionId={s.sessionId}
                   connHost={s.hostKey}

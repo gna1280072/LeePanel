@@ -923,6 +923,15 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* ponytail: disconnected tab — dimmed text + warning icon so user sees which tab lost SSH */
+.session-tab.disconnected {
+  color: #8b949e;
+}
+.session-tab-discon-icon {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
 .split-top {
   min-height: 100px;
   overflow: hidden;

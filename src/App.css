@@ -902,6 +902,27 @@ body {
   background: rgba(248, 81, 73, 0.1);
 }
 
+/* ponytail: reconnecting state — yellow pulse so user sees which tab is unstable */
+.session-tab.reconnecting {
+  color: #d29922;
+}
+.session-tab.reconnecting .session-tab-name {
+  animation: reconnect-pulse 1.5s ease-in-out infinite;
+}
+@keyframes reconnect-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.session-tab-recon-icon {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+  font-size: 13px;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .split-top {
   min-height: 100px;
   overflow: hidden;

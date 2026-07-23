@@ -295,10 +295,10 @@ pub async fn ssh_extract(ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
 }
 
 #[tauri::command]
-pub async fn ssh_reconnect(ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>, session_id: &str) -> Result<(), String> {
+pub async fn ssh_reconnect(ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>, app: tauri::AppHandle, session_id: &str) -> Result<(), String> {
     // ponytail: reconnect modifies sessions map, needs mgr lock briefly for disconnect/connect
     let mgr = ssh_mgr.lock().await;
-    mgr.reconnect(session_id).await
+    mgr.reconnect(session_id, app).await
 }
 
 #[tauri::command]

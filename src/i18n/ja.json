@@ -65,7 +65,10 @@
     "noData": "データなし",
     "hidePanel": "サーバーパネルを隠す",
     "showPanel": "サーバーパネルを表示",
-    "connectionLost": "接続が切断されました"
+    "connectionLost": "接続が切断されました",
+    "reconnectAttempt": "再接続中 {{attempt}}/{{max}}回目...",
+    "reconnectSuccess": "再接続成功（{{attempt}}回目の試行）",
+    "reconnectFailed": "再接続失敗 {{max}}回試行後"
   },
   "welcome": {
     "title": "LeePanel へようこそ",

@@ -65,7 +65,10 @@
     "noData": "Keine Daten",
     "hidePanel": "Server-Panel ausblenden",
     "showPanel": "Server-Panel anzeigen",
-    "connectionLost": "Verbindung verloren"
+    "connectionLost": "Verbindung verloren",
+    "reconnectAttempt": "Verbindungsversuch {{attempt}}/{{max}}...",
+    "reconnectSuccess": "Wieder verbunden (Versuch {{attempt}})",
+    "reconnectFailed": "Wiederverbindung nach {{max}} Versuchen fehlgeschlagen"
   },
   "welcome": {
     "title": "Willkommen bei LeePanel",

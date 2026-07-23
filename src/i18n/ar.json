@@ -65,7 +65,10 @@
     "noData": "لا توجد بيانات",
     "hidePanel": "إخفاء لوحة الخوادم",
     "showPanel": "إظهار لوحة الخوادم",
-    "connectionLost": "فُقد الاتصال"
+    "connectionLost": "فُقد الاتصال",
+    "reconnectAttempt": "جارٍ إعادة الاتصال {{attempt}}/{{max}}...",
+    "reconnectSuccess": "تم إعادة الاتصال (المحاولة {{attempt}})",
+    "reconnectFailed": "فشل إعادة الاتصال بعد {{max}} محاولات"
   },
   "welcome": {
     "title": "مرحباً بك في LeePanel",

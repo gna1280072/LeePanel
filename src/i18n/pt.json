@@ -65,7 +65,10 @@
     "noData": "Sem dados",
     "hidePanel": "Ocultar painel de servidores",
     "showPanel": "Mostrar painel de servidores",
-    "connectionLost": "Conexão perdida"
+    "connectionLost": "Conexão perdida",
+    "reconnectAttempt": "Reconectando {{attempt}}/{{max}}...",
+    "reconnectSuccess": "Reconectado (tentativa {{attempt}})",
+    "reconnectFailed": "Falha na reconexão após {{max}} tentativas"
   },
   "welcome": {
     "title": "Bem-vindo ao LeePanel",

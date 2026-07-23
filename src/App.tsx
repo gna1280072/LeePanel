@@ -77,10 +77,12 @@ function App() {
   const [settings, setSettings] = useState<Settings>({
     auto_reconnect: true, reconnect_interval: 5, max_reconnect_attempts: 10, cache_ttl_hours: 24, cache_max_files: 500, cache_enabled: true, command_timeout_minutes: 30, upload_workers: 3
   })
-  const [reconnecting, setReconnecting] = useState(false)
-  const reconnectAttemptRef = useRef(0)
+  // ponytail: per-session reconnect state — each server reconnects independently
+  // ponytail: Map value stores { name, attempt } so the reconnect bar renders without toast flicker
+  const [reconnectingSessions, setReconnectingSessions] = useState<Map<string, { name: string; attempt: number }>>(new Map())
+  const reconnectingActiveRef = useRef(new Map<string, boolean>())
+  const reconnectAttemptRef = useRef(new Map<string, number>())
   const autoReconnectRef = useRef(true)
-  const reconnectingRef = useRef(false)
   const manualDisconnectRef = useRef(false)
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0)
 
@@ -538,35 +540,39 @@ function App() {
         removeSession(sess.configId)
         return
       }
-      if (sid && autoReconnectRef.current && !reconnectingRef.current) {
-        reconnectingRef.current = true
-        setReconnecting(true)
-        reconnectAttemptRef.current = 0
-        showToast('⚠ Connection lost. Reconnecting...')
+      if (sid && autoReconnectRef.current && !reconnectingActiveRef.current.get(sess.configId)) {
+        reconnectingActiveRef.current.set(sess.configId, true)
+        reconnectAttemptRef.current.set(sess.configId, 0)
+        setReconnectingSessions(prev => new Map(prev).set(sess.configId, { name: sess.name, attempt: 0 }))
 
         const attemptReconnect = async () => {
-          if (!reconnectingRef.current) return
-          reconnectAttemptRef.current++
-          if (reconnectAttemptRef.current > settings.max_reconnect_attempts) {
-            showToast(`✗ Reconnect failed after ${settings.max_reconnect_attempts} attempts`)
-            reconnectingRef.current = false
-            setReconnecting(false)
+          if (!reconnectingActiveRef.current.get(sess.configId)) return
+          // ponytail: use ref for attempt count — state is stale in recursive async closures
+          const attempt = (reconnectAttemptRef.current.get(sess.configId) ?? 0) + 1
+          reconnectAttemptRef.current.set(sess.configId, attempt)
+          setReconnectingSessions(prev => new Map(prev).set(sess.configId, { name: sess.name, attempt }))
+          if (attempt > settings.max_reconnect_attempts) {
+            showToast(`✗ [${sess.name}] ${t('common.reconnectFailed', { max: settings.max_reconnect_attempts })}`)
+            reconnectingActiveRef.current.delete(sess.configId)
+            reconnectAttemptRef.current.delete(sess.configId)
+            setReconnectingSessions(prev => { const m = new Map(prev); m.delete(sess.configId); return m })
             removeSession(sess.configId)
             return
           }
           try {
             await invoke('ssh_reconnect', { sessionId: sid })
-            showToast(`✓ Reconnected (attempt ${reconnectAttemptRef.current})`)
-            reconnectingRef.current = false
-            setReconnecting(false)
+            showToast(`✓ [${sess.name}] ${t('common.reconnectSuccess', { attempt })}`)
+            reconnectingActiveRef.current.delete(sess.configId)
+            reconnectAttemptRef.current.delete(sess.configId)
+            setReconnectingSessions(prev => { const m = new Map(prev); m.delete(sess.configId); return m })
           } catch {
-            showToast(`↻ Reconnect attempt ${reconnectAttemptRef.current}/${settings.max_reconnect_attempts}...`)
+            // ponytail: no showToast here — reconnect bar renders from state, no flicker
             setTimeout(attemptReconnect, settings.reconnect_interval * 1000)
           }
         }
         setTimeout(attemptReconnect, settings.reconnect_interval * 1000)
       } else if (!autoReconnectRef.current) {
-        showToast(t('common.connectionLost'))
+        showToast(`⚠ [${sess.name}] ${t('common.connectionLost')}`)
         removeSession(sess.configId)
       }
     })
@@ -734,12 +740,25 @@ function App() {
       <div className="main-area">
         <div className="top-bar">
           {error && <div className="error-bar">{error}</div>}
-          {toast && (
+          {/* ponytail: persistent reconnect bar — driven by state, not toast (no 4s flicker) */}
+          {activeConfigId && reconnectingSessions.has(activeConfigId) && (() => {
+            const info = reconnectingSessions.get(activeConfigId)!
+            return (
+              <div className="toast-bar">
+                <span>↻ [{info.name}] {t('common.reconnectAttempt', { attempt: info.attempt, max: settings.max_reconnect_attempts })}</span>
+                <button className="toast-stop-btn" onClick={() => {
+                  const cid = activeConfigId
+                  reconnectingActiveRef.current.delete(cid)
+                  reconnectAttemptRef.current.delete(cid)
+                  setReconnectingSessions(prev => { const m = new Map(prev); m.delete(cid); return m })
+                  removeSession(cid)
+                }}>{t('common.stop')}</button>
+              </div>
+            )
+          })()}
+          {toast && !reconnectingSessions.has(activeConfigId || '') && (
             <div className="toast-bar">
               <span>{toast}</span>
-              {reconnecting && (
-                <button className="toast-stop-btn" onClick={() => { reconnectingRef.current = false; setReconnecting(false); if (activeConfigId) removeSession(activeConfigId) }}>Stop</button>
-              )}
             </div>
           )}
           {pendingUpdate && (
@@ -771,12 +790,16 @@ function App() {
           {/* ponytail: session tab bar — quick switch between connected servers */}
           {sessions.length > 0 && (
             <div className="session-tabs">
-              {sessions.map(s => (
+              {sessions.map(s => {
+                const reconInfo = reconnectingSessions.get(s.configId)
+                const isReconnecting = reconInfo !== undefined
+                return (
                 <div
                   key={s.configId}
-                  className={`session-tab ${s.configId === activeConfigId ? 'active' : ''}`}
+                  className={`session-tab ${s.configId === activeConfigId ? 'active' : ''} ${isReconnecting ? 'reconnecting' : ''}`}
                   onClick={() => setActiveConfigId(s.configId)}
                 >
+                  {isReconnecting && <span className="session-tab-recon-icon" title={`Reconnecting... (${reconInfo!.attempt}/${settings.max_reconnect_attempts})`}>↻</span>}
                   <span className="session-tab-name">{s.name}</span>
                   <button
                     className="session-tab-close"
@@ -788,7 +811,8 @@ function App() {
                     }}
                   >×</button>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
           <div className="split-full">

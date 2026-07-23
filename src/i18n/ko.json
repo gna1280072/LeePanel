@@ -65,7 +65,10 @@
     "noData": "데이터 없음",
     "hidePanel": "서버 패널 숨기기",
     "showPanel": "서버 패널 표시",
-    "connectionLost": "연결이 끊어졌습니다"
+    "connectionLost": "연결이 끊어졌습니다",
+    "reconnectAttempt": "재연결 중 {{attempt}}/{{max}}회...",
+    "reconnectSuccess": "재연결 성공 ({{attempt}}회 시도)",
+    "reconnectFailed": "{{max}}회 시도 후 재연결 실패"
   },
   "welcome": {
     "title": "LeePanel에 오신 것을 환영합니다",

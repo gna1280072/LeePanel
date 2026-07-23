@@ -1211,9 +1211,9 @@ impl SshManager {
         self.sessions.read().unwrap().get(session_id).map(|s| s.connect_info.clone())
     }
 
-    pub async fn reconnect(&self, session_id: &str) -> Result<(), String> {
+    pub async fn reconnect(&self, session_id: &str, app_handle: AppHandle) -> Result<(), String> {
         let info = self.get_connect_info(session_id).ok_or("Session not found")?;
-        let app_handle = self.app_handle.clone().ok_or("App handle not available")?;
+        // ponytail: use AppHandle from command context — self.app_handle is never initialised
         self.disconnect(session_id).await.ok();
         let result = tokio::time::timeout(std::time::Duration::from_secs(30), self.connect(
             session_id.to_string(),

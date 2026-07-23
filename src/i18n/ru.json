@@ -65,7 +65,10 @@
     "noData": "Нет данных",
     "hidePanel": "Скрыть панель серверов",
     "showPanel": "Показать панель серверов",
-    "connectionLost": "Соединение потеряно"
+    "connectionLost": "Соединение потеряно",
+    "reconnectAttempt": "Переподключение {{attempt}}/{{max}}...",
+    "reconnectSuccess": "Переподключено (попытка {{attempt}})",
+    "reconnectFailed": "Не удалось переподключиться после {{max}} попыток"
   },
   "welcome": {
     "title": "Добро пожаловать в LeePanel",

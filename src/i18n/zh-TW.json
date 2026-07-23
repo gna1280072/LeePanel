@@ -65,7 +65,10 @@
     "noData": "暫無資料",
     "hidePanel": "隱藏伺服器面板",
     "showPanel": "顯示伺服器面板",
-    "connectionLost": "連線已中斷"
+    "connectionLost": "連線已中斷",
+    "reconnectAttempt": "正在重連 第{{attempt}}/{{max}}次...",
+    "reconnectSuccess": "已重連（第{{attempt}}次嘗試）",
+    "reconnectFailed": "重連失敗，已嘗試{{max}}次"
   },
   "welcome": {
     "title": "歡迎使用 LeePanel",

@@ -68,7 +68,8 @@
     "connectionLost": "Connexion perdue",
     "reconnectAttempt": "Reconnexion en cours {{attempt}}/{{max}}...",
     "reconnectSuccess": "Reconnecté (tentative {{attempt}})",
-    "reconnectFailed": "Échec de reconnexion après {{max}} tentatives"
+    "reconnectFailed": "Échec de reconnexion après {{max}} tentatives",
+    "normalRebootHint": "Commande de redémarrage envoyée. Si le serveur ne redémarre pas rapidement, utilisez le redémarrage forcé"
   },
   "welcome": {
     "title": "Bienvenue sur LeePanel",

@@ -175,6 +175,11 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
       status: 'running',
     })
 
+    // ponytail: normal reboot → suppress auto-reconnect, let user reconnect manually
+    if (!force) {
+      window.dispatchEvent(new CustomEvent('normal-reboot', { detail: { sessionId } }))
+    }
+
     try {
       const result = await invoke<string>('server_reboot', { sessionId, force })
       setRebootExecPanel(prev => ({

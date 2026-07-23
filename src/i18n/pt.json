@@ -68,7 +68,8 @@
     "connectionLost": "Conexão perdida",
     "reconnectAttempt": "Reconectando {{attempt}}/{{max}}...",
     "reconnectSuccess": "Reconectado (tentativa {{attempt}})",
-    "reconnectFailed": "Falha na reconexão após {{max}} tentativas"
+    "reconnectFailed": "Falha na reconexão após {{max}} tentativas",
+    "normalRebootHint": "Comando de reinicialização enviado. Se o servidor não reiniciar rapidamente, use a reinicialização forçada"
   },
   "welcome": {
     "title": "Bem-vindo ao LeePanel",

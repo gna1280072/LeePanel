@@ -84,6 +84,8 @@ function App() {
   const reconnectAttemptRef = useRef(new Map<string, number>())
   const autoReconnectRef = useRef(true)
   const manualDisconnectRef = useRef(false)
+  // ponytail: sessions that initiated normal reboot — skip auto-reconnect on disconnect
+  const normalRebootSessionsRef = useRef(new Set<string>())
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0)
 
   const activeSession = sessions.find(s => s.configId === activeConfigId) || null
@@ -540,6 +542,13 @@ function App() {
         removeSession(sess.configId)
         return
       }
+      // ponytail: skip auto-reconnect after normal (graceful) reboot
+      if (normalRebootSessionsRef.current.has(sess.sessionId)) {
+        normalRebootSessionsRef.current.delete(sess.sessionId)
+        showToast(`ℹ [${sess.name}] ${t('common.normalRebootHint')}`)
+        removeSession(sess.configId)
+        return
+      }
       if (sid && autoReconnectRef.current && !reconnectingActiveRef.current.get(sess.configId)) {
         reconnectingActiveRef.current.set(sess.configId, true)
         reconnectAttemptRef.current.set(sess.configId, 0)
@@ -586,6 +595,16 @@ function App() {
     })
     return () => { unlisten.then((fn) => fn()) }
   }, [sessions])
+
+  // ponytail: listen for normal-reboot event from ServerSettingsPanel
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const sid = (e as CustomEvent<{ sessionId: string }>).detail?.sessionId
+      if (sid) normalRebootSessionsRef.current.add(sid)
+    }
+    window.addEventListener('normal-reboot', handler)
+    return () => window.removeEventListener('normal-reboot', handler)
+  }, [])
 
   const showToast = (msg: string) => {
     setToast(msg)

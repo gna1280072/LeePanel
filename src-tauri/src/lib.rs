@@ -47,7 +47,7 @@ pub fn run() {
             commands::ssh::ssh_get_cwd, commands::ssh::ssh_list_dir, commands::ssh::ssh_stat_file, commands::ssh::ssh_read_file, commands::ssh::ssh_write_file,
             commands::ssh::ssh_delete_file, commands::ssh::ssh_delete_files_batch, commands::ssh::ssh_create_dir, commands::ssh::ssh_rename_file, commands::ssh::ssh_rename_files_batch,
             commands::ssh::ssh_copy_file, commands::ssh::ssh_copy_files_batch, commands::ssh::ssh_copy_dir, commands::ssh::ssh_set_permissions, commands::ssh::ssh_set_permissions_batch,
-            commands::ssh::ssh_check_space, commands::ssh::ssh_upload, commands::ssh::ssh_upload_chunk, commands::ssh::ssh_sftp_reset, commands::ssh::ssh_upload_files_batch, commands::ssh::ssh_create_dirs_batch, commands::ssh::ssh_exec, commands::ssh::ssh_download_file,
+            commands::ssh::ssh_check_space, commands::ssh::ssh_upload, commands::ssh::ssh_upload_chunk, commands::ssh::ssh_sftp_reset, commands::ssh::ssh_upload_file, commands::ssh::ssh_upload_files_batch, commands::ssh::ssh_create_dirs_batch, commands::ssh::ssh_exec, commands::ssh::ssh_download_file,
             commands::ssh::ssh_download_to_local, commands::ssh::ssh_save_as_local,
             commands::ssh::ssh_compress, commands::ssh::ssh_extract, commands::ssh::ssh_reconnect,
             commands::ssh::ssh_generate_keypair, commands::ssh::save_key_to_local,

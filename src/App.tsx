@@ -206,6 +206,22 @@ function App() {
     uploadPauseRef.current = false
     uploadStopRef.current = false
 
+    // ponytail: single file < 50MB — whole-file upload in 1 IPC call (no chunking overhead)
+    const WHOLE_FILE_LIMIT = 50 * 1024 * 1024
+    if (files.length === 1 && files[0].file.size <= WHOLE_FILE_LIMIT) {
+      const f = files[0]
+      setUpload(prev => ({ ...prev, queue: prev.queue.map(q => ({ ...q, status: 'uploading' as const })) }))
+      try {
+        const data = new Uint8Array(await f.file.arrayBuffer())
+        await invoke('ssh_upload_file', { sessionId: sid, remotePath: f.remotePath, data })
+        setUpload(prev => ({ ...prev, uploadedBytes: f.file.size, speed: f.file.size, queue: prev.queue.map(q => ({ ...q, status: 'done' as const })), active: false }))
+      } catch (err) {
+        setUpload(prev => ({ ...prev, queue: prev.queue.map(q => ({ ...q, status: 'error' as const, error: String(err) })), active: false }))
+      }
+      uploadCompleteRef.current?.()
+      return
+    }
+
     let uploadedBytes = 0
     let activeWorkers = 0
     const startTime = Date.now()

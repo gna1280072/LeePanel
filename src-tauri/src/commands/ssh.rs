@@ -204,6 +204,19 @@ pub async fn ssh_sftp_reset(ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>
     Ok(())
 }
 
+// ponytail: whole-file upload in one IPC call — avoids per-chunk open/close overhead
+#[tauri::command]
+pub async fn ssh_upload_file(ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>, session_id: &str, remote_path: &str, data: Vec<u8>) -> Result<(), String> {
+    let session = { let mgr = ssh_mgr.lock().await; mgr.get_session(session_id)? };
+    let sftp = ssh::session_open_sftp(&session).await?;
+    let mut file = sftp.create(remote_path).await
+        .map_err(|e| format!("Failed to create file: {}", e))?;
+    use tokio::io::AsyncWriteExt;
+    file.write_all(&data).await.map_err(|e| format!("Write failed: {}", e))?;
+    file.shutdown().await.map_err(|e| format!("Failed to finalize: {}", e))?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn ssh_upload_files_batch(ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>, app: tauri::AppHandle, session_id: &str, files: Vec<(String, Vec<u8>)>) -> Result<u32, String> {
     // ponytail: get session under lock, then release lock for all I/O

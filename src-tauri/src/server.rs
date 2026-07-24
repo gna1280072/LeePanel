@@ -4206,7 +4206,8 @@ if command -v mysqld &>/dev/null || command -v mariadbd &>/dev/null || [ -x /www
     echo "MYSQL_SERVICE=mariadb"
   else
     echo "MYSQL_RUNNING=inactive"
-    echo "MYSQL_SERVICE=$(systemctl list-units --type=service 2>/dev/null | grep -E 'mysql|maria' | awk '{print $1}' | head -1 | sed 's/.service//')"
+    # ponytail: list-unit-files finds services even when stopped (list-units only shows loaded)
+    echo "MYSQL_SERVICE=$(systemctl list-unit-files --type=service 2>/dev/null | grep -E 'mysql|maria' | awk '{print $1}' | head -1 | sed 's/.service//')"
   fi
 else
   echo "MYSQL_INSTALLED=0"

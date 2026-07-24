@@ -220,11 +220,16 @@ function App() {
     }
 
     // ponytail: batch small files by parent directory into tar archives — N SFTP ops → 1 per dir
+    // ponytail: single file always uses chunked upload; tar batch only for 2+ small files
     const smallFiles: typeof files = []
     const largeFiles: typeof files = []
     for (const f of files) {
       if (f.file.size < SMALL_THRESHOLD && f.file.size > 0) smallFiles.push(f)
       else largeFiles.push(f)
+    }
+    if (smallFiles.length === 1) {
+      largeFiles.push(...smallFiles)
+      smallFiles.length = 0
     }
 
     if (smallFiles.length > 1) {

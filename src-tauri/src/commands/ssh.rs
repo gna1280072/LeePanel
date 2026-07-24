@@ -204,15 +204,24 @@ pub async fn ssh_sftp_reset(ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>
     Ok(())
 }
 
-// ponytail: whole-file upload in one IPC call — avoids per-chunk open/close overhead
+// ponytail: whole-file upload in one IPC call — internal chunked write with progress events
 #[tauri::command]
-pub async fn ssh_upload_file(ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>, session_id: &str, remote_path: &str, data: Vec<u8>) -> Result<(), String> {
+pub async fn ssh_upload_file(ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>, app: tauri::AppHandle, session_id: &str, remote_path: &str, data: Vec<u8>) -> Result<(), String> {
     let session = { let mgr = ssh_mgr.lock().await; mgr.get_session(session_id)? };
     let sftp = ssh::session_open_sftp(&session).await?;
     let mut file = sftp.create(remote_path).await
         .map_err(|e| format!("Failed to create file: {}", e))?;
     use tokio::io::AsyncWriteExt;
-    file.write_all(&data).await.map_err(|e| format!("Write failed: {}", e))?;
+    let total = data.len();
+    const CHUNK: usize = 256 * 1024;
+    let mut sent: usize = 0;
+    for chunk in data.chunks(CHUNK) {
+        file.write_all(chunk).await.map_err(|e| format!("Write failed: {}", e))?;
+        sent += chunk.len();
+        let _ = app.emit("upload-file-progress", serde_json::json!({
+            "sessionId": session_id, "uploaded": sent, "total": total
+        }));
+    }
     file.shutdown().await.map_err(|e| format!("Failed to finalize: {}", e))?;
     Ok(())
 }

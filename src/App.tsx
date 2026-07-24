@@ -210,13 +210,21 @@ function App() {
     const WHOLE_FILE_LIMIT = 50 * 1024 * 1024
     if (files.length === 1 && files[0].file.size <= WHOLE_FILE_LIMIT) {
       const f = files[0]
+      const t0 = Date.now()
       setUpload(prev => ({ ...prev, queue: prev.queue.map(q => ({ ...q, status: 'uploading' as const })) }))
+      const unlisten = await listen<{ uploaded: number; total: number }>('upload-file-progress', (e) => {
+        const elapsed = (Date.now() - t0) / 1000
+        const speed = elapsed > 0 ? e.payload.uploaded / elapsed : 0
+        setUpload(prev => ({ ...prev, uploadedBytes: e.payload.uploaded, speed }))
+      })
       try {
         const data = new Uint8Array(await f.file.arrayBuffer())
         await invoke('ssh_upload_file', { sessionId: sid, remotePath: f.remotePath, data })
-        setUpload(prev => ({ ...prev, uploadedBytes: f.file.size, speed: f.file.size, queue: prev.queue.map(q => ({ ...q, status: 'done' as const })), active: false }))
+        setUpload(prev => ({ ...prev, uploadedBytes: f.file.size, speed: 0, queue: prev.queue.map(q => ({ ...q, status: 'done' as const })), active: false }))
       } catch (err) {
         setUpload(prev => ({ ...prev, queue: prev.queue.map(q => ({ ...q, status: 'error' as const, error: String(err) })), active: false }))
+      } finally {
+        unlisten()
       }
       uploadCompleteRef.current?.()
       return

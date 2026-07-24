@@ -67,8 +67,8 @@ export default function SitesPanel({ sessionId, onOpenFolder, visible, onNavigat
   // Toggle toast notification
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-  // Nginx status warning (null = ok, string = warning message)
-  const [nginxWarning, setNginxWarning] = useState<string | null>(null)
+  // ponytail: nginx status flag — true means not installed or not running
+  const [nginxDown, setNginxDown] = useState(false)
 
   const fetchSites = useCallback(async () => {
     if (!sessionId) return
@@ -84,12 +84,10 @@ export default function SitesPanel({ sessionId, onOpenFolder, visible, onNavigat
       setSites(list)
       // ponytail: check nginx status — show banner if not installed or not running
       const nginx = softwareList.find(s => s.name.toLowerCase() === 'nginx')
-      if (!nginx || !nginx.installed) {
-        setNginxWarning(t('sites.nginxNotInstalled'))
-      } else if (!nginx.running) {
-        setNginxWarning(t('sites.nginxNotRunning'))
+      if (!nginx || !nginx.installed || !nginx.running) {
+        setNginxDown(true)
       } else {
-        setNginxWarning(null)
+        setNginxDown(false)
       }
     } catch (e) {
       setError(String(e))
@@ -222,8 +220,8 @@ export default function SitesPanel({ sessionId, onOpenFolder, visible, onNavigat
       {error && <div className="svc-error">{error}</div>}
 
       {/* Nginx not running warning banner */}
-      {nginxWarning && view === 'list' && (
-        <ServiceUnavailable message={nginxWarning} onNavigate={onNavigateToSoftware} />
+      {nginxDown && view === 'list' && (
+        <ServiceUnavailable serviceName="Nginx" onNavigate={onNavigateToSoftware} />
       )}
 
       {/* Edit page */}

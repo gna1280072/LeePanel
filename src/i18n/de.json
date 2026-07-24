@@ -71,7 +71,8 @@
     "reconnectFailed": "Wiederverbindung nach {{max}} Versuchen fehlgeschlagen",
     "normalRebootHint": "Neustart-Befehl gesendet. Wenn der Server nicht schnell neu startet, verwenden Sie den erzwungenen Neustart",
     "disconnectedBanner": "Server getrennt, bitte erneut verbinden!",
-    "goToSoftwareRepo": "Zum Software-Repository"
+    "goToSoftwareRepo": "Zum Software-Repository",
+    "serviceUnavailable": "{{name}} ist nicht installiert oder gestoppt. Bitte im Software-Repository installieren oder starten."
   },
   "welcome": {
     "title": "Willkommen bei LeePanel",

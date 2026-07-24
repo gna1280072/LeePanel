@@ -71,7 +71,8 @@
     "reconnectFailed": "再接続失敗 {{max}}回試行後",
     "normalRebootHint": "再起動コマンドを送信しました。再起動が遅い場合は強制再起動を使用してください",
     "disconnectedBanner": "サーバーが切断されました。再接続してください！",
-    "goToSoftwareRepo": "ソフトウェアリポジトリへ"
+    "goToSoftwareRepo": "ソフトウェアリポジトリへ",
+    "serviceUnavailable": "{{name}} が未インストールまたは停止しています。ソフトウェアリポジトリでインストールまたは起動してください。"
   },
   "welcome": {
     "title": "LeePanel へようこそ",

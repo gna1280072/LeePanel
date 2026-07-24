@@ -704,7 +704,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       
       {error && (
         (error.includes('command not found') || error.toLowerCase().includes('mysql')) ? (
-          <ServiceUnavailable message={t('database.mysqlNotInstalled')} onNavigate={onNavigateToSoftware} />
+          <ServiceUnavailable serviceName="MySQL" onNavigate={onNavigateToSoftware} />
         ) : (
           <div className="alert alert-error">{error}</div>
         )

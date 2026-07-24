@@ -71,7 +71,8 @@
     "reconnectFailed": "Échec de reconnexion après {{max}} tentatives",
     "normalRebootHint": "Commande de redémarrage envoyée. Si le serveur ne redémarre pas rapidement, utilisez le redémarrage forcé",
     "disconnectedBanner": "Serveur déconnecté, veuillez vous reconnecter !",
-    "goToSoftwareRepo": "Aller au dépôt de logiciels"
+    "goToSoftwareRepo": "Aller au dépôt de logiciels",
+    "serviceUnavailable": "{{name}} n'est pas installé ou est arrêté. Veuillez aller au dépôt de logiciels pour l'installer ou le démarrer."
   },
   "welcome": {
     "title": "Bienvenue sur LeePanel",

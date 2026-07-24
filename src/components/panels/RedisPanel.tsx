@@ -420,7 +420,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
         <div className="panel-header">
           <h2>{t('redis.title')}</h2>
         </div>
-        <ServiceUnavailable message={t('redis.notInstalled')} onNavigate={onNavigateToSoftware} />
+        <ServiceUnavailable serviceName="Redis" onNavigate={onNavigateToSoftware} />
       </div>
     )
   }

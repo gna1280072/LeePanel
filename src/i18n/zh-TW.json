@@ -71,7 +71,8 @@
     "reconnectFailed": "重連失敗，已嘗試{{max}}次",
     "normalRebootHint": "重啟命令已發出，如果無法快速重啟成功，請使用強制重啟",
     "disconnectedBanner": "伺服器已經斷開，請重新連接！",
-    "goToSoftwareRepo": "前往軟體庫"
+    "goToSoftwareRepo": "前往軟體庫",
+    "serviceUnavailable": "{{name}} 未安裝或已停止，請前往軟體庫頁面安裝或開啟。"
   },
   "welcome": {
     "title": "歡迎使用 LeePanel",

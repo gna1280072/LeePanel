@@ -339,12 +339,10 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
                 </>
               )}
             </div>
-            {/* ponytail: unified alert component for not-installed/stopped */}
-            {!status.installed ? (
+            {/* ponytail: unified alert for not-installed or stopped */}
+            {(!status.installed || !status.running) && (
               <ServiceUnavailable serviceName="Docker" onNavigate={onNavigateToSoftware} />
-            ) : !status.running ? (
-              <ServiceUnavailable serviceName="Docker" onNavigate={onNavigateToSoftware} />
-            ) : null}
+            )}
           </>
         ) : null}
       </div>

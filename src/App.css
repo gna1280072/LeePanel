@@ -143,10 +143,10 @@ body {
   background: #21262d;
 }
 
-/* ponytail: green left border marks the currently active server */
+/* ponytail: border marks the currently active server */
 .connection-item.active {
-  border-left: 3px solid #4CAF50;
-  padding-left: 9px;
+  border: 1px solid #4CAF50;
+  padding: 9px 11px;
 }
 
 .conn-info {

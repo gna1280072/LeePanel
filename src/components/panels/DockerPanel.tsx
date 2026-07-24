@@ -326,20 +326,16 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
           <div className="docker-status-loading">{t('dockerPanel.checking')}</div>
         ) : status ? (
           <>
-            <div className="docker-status-info">
-              <span className={`docker-status-badge ${status.installed && status.running ? 'active' : status.installed ? 'installed' : 'not-installed'}`}>
-                {status.installed
-                  ? status.running ? t('dockerPanel.running') : t('dockerPanel.stopped')
-                  : t('dockerPanel.installed')}
-              </span>
-              {status.installed && (
-                <>
-                  <span className="docker-version">Docker {status.version || 'unknown'}</span>
-                  {status.compose_version && <span className="docker-version">Compose {status.compose_version}</span>}
-                </>
-              )}
-            </div>
-            {/* ponytail: unified alert for not-installed or stopped */}
+            {/* ponytail: only show status badge when running — ServiceUnavailable covers the rest */}
+            {status.installed && status.running && (
+              <div className="docker-status-info">
+                <span className="docker-status-badge active">
+                  {t('dockerPanel.running')}
+                </span>
+                <span className="docker-version">Docker {status.version || 'unknown'}</span>
+                {status.compose_version && <span className="docker-version">Compose {status.compose_version}</span>}
+              </div>
+            )}
             {(!status.installed || !status.running) && (
               <ServiceUnavailable serviceName="Docker" onNavigate={onNavigateToSoftware} />
             )}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { useTranslation } from 'react-i18next'
+import ServiceUnavailable from './ServiceUnavailable'
 
 interface DbInfo {
   name: string
@@ -702,25 +703,11 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       )}
       
       {error && (
-        <div className="alert alert-error">
-          {error.includes('command not found') || error.toLowerCase().includes('mysql') ? (
-            <>
-              <div style={{ marginBottom: '12px', fontSize: '14px' }}>
-                {t('database.mysqlNotInstalled')}
-              </div>
-              {onNavigateToSoftware && (
-                <button 
-                  className="btn-primary"
-                  onClick={onNavigateToSoftware}
-                >
-                  {t('database.goToSoftware')}
-                </button>
-              )}
-            </>
-          ) : (
-            error
-          )}
-        </div>
+        (error.includes('command not found') || error.toLowerCase().includes('mysql')) ? (
+          <ServiceUnavailable message={t('database.mysqlNotInstalled')} onNavigate={onNavigateToSoftware} />
+        ) : (
+          <div className="alert alert-error">{error}</div>
+        )
       )}
       
       {/* Search and filters */}

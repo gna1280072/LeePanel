@@ -70,7 +70,8 @@
     "reconnectSuccess": "Reconnecté (tentative {{attempt}})",
     "reconnectFailed": "Échec de reconnexion après {{max}} tentatives",
     "normalRebootHint": "Commande de redémarrage envoyée. Si le serveur ne redémarre pas rapidement, utilisez le redémarrage forcé",
-    "disconnectedBanner": "Serveur déconnecté, veuillez vous reconnecter !"
+    "disconnectedBanner": "Serveur déconnecté, veuillez vous reconnecter !",
+    "goToSoftwareRepo": "Aller au dépôt de logiciels"
   },
   "welcome": {
     "title": "Bienvenue sur LeePanel",

@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useTranslation } from 'react-i18next'
 import EditSite from './EditSite'
+import ServiceUnavailable from './ServiceUnavailable'
 
 interface SiteInfo {
   domain: string
@@ -222,16 +223,7 @@ export default function SitesPanel({ sessionId, onOpenFolder, visible, onNavigat
 
       {/* Nginx not running warning banner */}
       {nginxWarning && view === 'list' && (
-        <div className="alert alert-error">
-          <div style={{ marginBottom: '12px', fontSize: '14px' }}>
-            {nginxWarning}
-          </div>
-          {onNavigateToSoftware && (
-            <button className="btn-primary" onClick={onNavigateToSoftware}>
-              {t('sites.goToSoftware')}
-            </button>
-          )}
-        </div>
+        <ServiceUnavailable message={nginxWarning} onNavigate={onNavigateToSoftware} />
       )}
 
       {/* Edit page */}

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useTranslation } from 'react-i18next'
+import ServiceUnavailable from './ServiceUnavailable'
 
 interface DockerStatus {
   installed: boolean
@@ -338,29 +339,11 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
                 </>
               )}
             </div>
-            {/* ponytail: unified alert style — same as MySQL/Redis/Nginx warnings */}
+            {/* ponytail: unified alert component for not-installed/stopped */}
             {!status.installed ? (
-              <div className="alert alert-error">
-                <div style={{ marginBottom: '12px', fontSize: '14px' }}>
-                  {t('dockerPanel.notInstalled')}
-                </div>
-                {onNavigateToSoftware && (
-                  <button className="btn-primary" onClick={onNavigateToSoftware}>
-                    {t('dockerPanel.goToSoftware')}
-                  </button>
-                )}
-              </div>
+              <ServiceUnavailable message={t('dockerPanel.notInstalled')} onNavigate={onNavigateToSoftware} />
             ) : !status.running ? (
-              <div className="alert alert-error">
-                <div style={{ marginBottom: '12px', fontSize: '14px' }}>
-                  {t('dockerPanel.notRunning')}
-                </div>
-                {onNavigateToSoftware && (
-                  <button className="btn-primary" onClick={onNavigateToSoftware}>
-                    {t('dockerPanel.goToSoftware')}
-                  </button>
-                )}
-              </div>
+              <ServiceUnavailable message={t('dockerPanel.notRunning')} onNavigate={onNavigateToSoftware} />
             ) : null}
           </>
         ) : null}

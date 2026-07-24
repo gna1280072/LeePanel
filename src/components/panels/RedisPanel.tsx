@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { useTranslation } from 'react-i18next'
+import ServiceUnavailable from './ServiceUnavailable'
 
 interface RedisKeyInfo {
   key: string
@@ -419,17 +420,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
         <div className="panel-header">
           <h2>{t('redis.title')}</h2>
         </div>
-        
-        <div className="alert alert-error">
-          <div style={{ marginBottom: '12px', fontSize: '14px' }}>
-            {t('redis.notInstalled')}
-          </div>
-          {onNavigateToSoftware && (
-            <button className="btn-primary" onClick={onNavigateToSoftware}>
-              {t('redis.goToSoftware')}
-            </button>
-          )}
-        </div>
+        <ServiceUnavailable message={t('redis.notInstalled')} onNavigate={onNavigateToSoftware} />
       </div>
     )
   }

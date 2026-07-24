@@ -70,7 +70,8 @@
     "reconnectSuccess": "재연결 성공 ({{attempt}}회 시도)",
     "reconnectFailed": "{{max}}회 시도 후 재연결 실패",
     "normalRebootHint": "재부팅 명령이 전송되었습니다. 빠르게 재부팅되지 않으면 강제 재부팅을 사용하세요",
-    "disconnectedBanner": "서버 연결이 끊어졌습니다. 다시 연결하세요!"
+    "disconnectedBanner": "서버 연결이 끊어졌습니다. 다시 연결하세요!",
+    "goToSoftwareRepo": "소프트웨어 저장소로 이동"
   },
   "welcome": {
     "title": "LeePanel에 오신 것을 환영합니다",

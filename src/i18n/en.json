@@ -434,7 +434,7 @@
     "fillKeyAndValue": "Please fill in key name and value",
     "selectKeysToDelete": "Please select keys to delete first",
     "flushCancelled": "Flush operation cancelled",
-    "notInstalled": "Redis is not installed",
+    "notInstalled": "Redis is not installed or has stopped. Please go to Software Repository to install or start it.",
     "installRedis": "Please install Redis first from Software Repository",
     "goToSoftware": "Go to Software Repository",
     "notRunning": "Redis service is not running. Please start Redis.",

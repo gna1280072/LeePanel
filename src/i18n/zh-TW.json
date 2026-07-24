@@ -434,7 +434,7 @@
     "fillKeyAndValue": "請填寫 key 名稱和值",
     "selectKeysToDelete": "請先選擇要刪除的 key",
     "flushCancelled": "清空操作已取消",
-    "notInstalled": "Redis 未安裝",
+    "notInstalled": "Redis 未安裝或已停止，請前往軟體庫頁面安裝或開啟。",
     "installRedis": "請先在軟體庫中安裝 Redis",
     "goToSoftware": "前往軟體庫",
     "notRunning": "Redis 服務未執行，請先啟動 Redis。",

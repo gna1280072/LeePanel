@@ -434,7 +434,7 @@
     "fillKeyAndValue": "يرجى ملء اسم المفتاح والقيمة",
     "selectKeysToDelete": "يرجى اختيار المفاتيح للحذف أولاً",
     "flushCancelled": "تم إلغاء عملية المسح",
-    "notInstalled": "Redis غير مُثبَّت",
+    "notInstalled": "Redis غير مثبت أو متوقف. يرجى الذهاب إلى مستودع البرمجيات لتثبيته أو تشغيله.",
     "installRedis": "يرجى تثبيت Redis من مستودع البرمجيات أولاً",
     "goToSoftware": "الذهاب إلى مستودع البرمجيات",
     "notRunning": "خدمة Redis غير قيد التشغيل. يرجى تشغيل Redis.",

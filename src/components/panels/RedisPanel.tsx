@@ -412,8 +412,8 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
     }
   }
   
-  // Render Redis not installed message
-  if (redisStatus === 'not_installed') {
+  // ponytail: unified not-installed/stopped warning — same pattern as MySQL
+  if (redisStatus === 'not_installed' || redisStatus === 'stopped') {
     return (
       <div className="panel-container">
         <div className="panel-header">
@@ -425,55 +425,10 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
             {t('redis.notInstalled')}
           </div>
           {onNavigateToSoftware && (
-            <button 
-              className="btn-primary"
-              onClick={onNavigateToSoftware}
-            >
+            <button className="btn-primary" onClick={onNavigateToSoftware}>
               {t('redis.goToSoftware')}
             </button>
           )}
-        </div>
-      </div>
-    )
-  }
-  
-  // Render Redis stopped message
-  if (redisStatus === 'stopped') {
-    const handleStartRedis = async () => {
-      try {
-        setMsg(t('common.loading'))
-        await invoke<string>('server_service_action', { 
-          sessionId, 
-          service: 'redis', 
-          action: 'start' 
-        })
-        setMsg(t('common.loading'))
-        // Auto-check after 2 seconds
-        setTimeout(() => {
-          checkRedis()
-          setMsg('')
-        }, 2000)
-      } catch (e) {
-        setMsg(`${t('common.error')}: ` + String(e))
-      }
-    }
-    
-    return (
-      <div className="panel-container">
-        <div className="panel-header">
-          <h2>{t('redis.title')}</h2>
-        </div>
-        
-        <div className="alert alert-error">
-          <div style={{ marginBottom: '12px', fontSize: '14px' }}>
-            {t('redis.notRunning')}
-          </div>
-          <button 
-            className="btn-primary"
-            onClick={handleStartRedis}
-          >
-            {t('redis.startRedis')}
-          </button>
         </div>
       </div>
     )

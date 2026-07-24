@@ -434,7 +434,7 @@
     "fillKeyAndValue": "Preencha o nome e o valor da chave",
     "selectKeysToDelete": "Selecione as chaves para excluir primeiro",
     "flushCancelled": "Operação de limpeza cancelada",
-    "notInstalled": "Redis não está instalado",
+    "notInstalled": "Redis não está instalado ou está parado. Vá ao repositório de software para instalar ou iniciar.",
     "installRedis": "Instale o Redis no repositório de software primeiro",
     "goToSoftware": "Ir ao repositório de software",
     "notRunning": "O serviço Redis não está em execução. Inicie o Redis.",

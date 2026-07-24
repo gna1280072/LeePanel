@@ -434,7 +434,7 @@
     "fillKeyAndValue": "키 이름과 값을 입력하세요",
     "selectKeysToDelete": "먼저 삭제할 키를 선택하세요",
     "flushCancelled": "비우기 작업이 취소되었습니다",
-    "notInstalled": "Redis가 설치되지 않았습니다",
+    "notInstalled": "Redis가 설치되지 않았거나 중지되었습니다. 소프트웨어 저장소에서 설치하거나 시작하세요.",
     "installRedis": "먼저 소프트웨어 저장소에서 Redis를 설치하세요",
     "goToSoftware": "소프트웨어 저장소로 이동",
     "notRunning": "Redis 서비스가 실 중이 아닙니다. Redis를 시작하세요.",

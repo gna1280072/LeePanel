@@ -434,7 +434,7 @@
     "fillKeyAndValue": "Key 名と値を入力してください",
     "selectKeysToDelete": "先に削除する Key を選択してください",
     "flushCancelled": "消去操作がキャンセルされました",
-    "notInstalled": "Redis がインストールされていません",
+    "notInstalled": "Redis が未インストールまたは停止しています。ソフトウェアリポジトリでインストールまたは起動してください。",
     "installRedis": "ソフトウェアリポジトリから Redis をインストールしてください",
     "goToSoftware": "ソフトウェアリポジトリへ",
     "notRunning": "Redis サービスが実行されていません。Redis を起動してください。",

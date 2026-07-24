@@ -215,6 +215,14 @@ export default function EditSite({
       <div className="edit-site-header">
         <button className="back-btn" onClick={onBack}>← {t('common.back')}</button>
         <h2>{t('sites.editSite', { domain: site.domain })}</h2>
+        <div className="edit-header-actions">
+          <button className="fb-dialog-btn" onClick={onBack} disabled={saving}>
+            {t('common.cancel')}
+          </button>
+          <button className="fb-dialog-btn primary" onClick={handleSaveAll} disabled={saving}>
+            {saving ? t('common.saving') : t('common.save')}
+          </button>
+        </div>
       </div>
 
       {/* Content - Single Page with Cards */}

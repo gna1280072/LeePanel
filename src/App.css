@@ -7227,6 +7227,12 @@ body.dragging-files * {
   border-color: #3fb950;
 }
 
+.edit-header-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
 .edit-site-page .edit-tabs {
   flex-shrink: 0;
   border-bottom: 1px solid #30363d;

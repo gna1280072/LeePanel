@@ -6715,21 +6715,16 @@ pub struct DockerImage {
 /// Check Docker installation status
 pub async fn check_docker(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<DockerStatus, String> {
-    // ponytail: cache Docker status briefly — running state can change anytime
-    if let Some(cached) = cache.get(session_id, "docker_status", 30) {
-        if let Ok(status) = serde_json::from_str::<DockerStatus>(&cached) {
-            return Ok(status);
-        }
-    }
+    // ponytail: no cache — always real-time check since systemctl is-active is fast
     let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
 if command -v docker &>/dev/null; then
     echo "INSTALLED=true"
     echo "VERSION=$(docker --version 2>/dev/null | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
-    echo "RUNNING=$(docker info &>/dev/null && echo true || echo false)"
+    echo "RUNNING=$(systemctl is-active docker 2>/dev/null || echo false)"
 else
     echo "INSTALLED=false"
     echo "VERSION="
@@ -6764,14 +6759,10 @@ fi
         } else if let Some(v) = line.strip_prefix("COMPOSE=") {
             status.compose_version = v.to_string();
         } else if let Some(v) = line.strip_prefix("RUNNING=") {
-            status.running = v == "true";
+            status.running = v == "active";
         }
     }
 
-    // ponytail: cache Docker status
-    if let Ok(json) = serde_json::to_string(&status) {
-        cache.put(session_id, "docker_status", json);
-    }
     Ok(status)
 }
 

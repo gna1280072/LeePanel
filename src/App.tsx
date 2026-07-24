@@ -765,7 +765,7 @@ function App() {
       {sidebarVisible && (
         <>
           <div style={{ width: sidebarWidth, minWidth: sidebarWidth, flexShrink: 0, display: 'flex', position: 'relative' }}>
-            <Sidebar onSelect={handleSelectConnection} onConnect={handleDirectConnect} onNew={() => {}} onCreateConnection={handleCreateConnection} refreshKey={sidebarRefreshKey} connectedIds={Array.from(connectedConfigIds)} connectingServerId={connectingServerId} />
+            <Sidebar onSelect={handleSelectConnection} onConnect={handleDirectConnect} onNew={() => {}} onCreateConnection={handleCreateConnection} refreshKey={sidebarRefreshKey} connectedIds={Array.from(connectedConfigIds)} connectingServerId={connectingServerId} activeConfigId={activeConfigId} />
             {/* Sidebar Toggle Button */}
             <button 
               className="sidebar-toggle-btn visible"

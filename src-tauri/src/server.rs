@@ -6718,8 +6718,8 @@ pub async fn check_docker(
     cache: &SshCache,
     session_id: &str,
 ) -> Result<DockerStatus, String> {
-    // ponytail: cache Docker status for connection lifetime
-    if let Some(cached) = cache.get(session_id, "docker_status", 0) {
+    // ponytail: cache Docker status briefly — running state can change anytime
+    if let Some(cached) = cache.get(session_id, "docker_status", 30) {
         if let Ok(status) = serde_json::from_str::<DockerStatus>(&cached) {
             return Ok(status);
         }

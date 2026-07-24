@@ -143,10 +143,16 @@ body {
   background: #21262d;
 }
 
-/* ponytail: border marks the currently active server */
-.connection-item.active {
-  border: 1px solid #4CAF50;
-  padding: 9px 11px;
+/* ponytail: green dot marks the currently active server */
+.connection-item.active .conn-name::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4CAF50;
+  margin-right: 6px;
+  vertical-align: middle;
 }
 
 .conn-info {

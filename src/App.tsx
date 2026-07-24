@@ -668,8 +668,9 @@ function App() {
     return { type: 'other', message: errorMsg }
   }
 
-  const handleSelectConnection = (_conn: SidebarConnection) => {
-    // ponytail: no-op, kept for interface compatibility
+  const handleSelectConnection = (conn: SidebarConnection) => {
+    // ponytail: single-click switches to server if connected, otherwise connects
+    handleDirectConnect(conn)
   }
 
   const handleDirectConnect = useCallback(async (conn: SidebarConnection) => {

@@ -341,7 +341,17 @@ export default function EditSite({
 
         {/* Card 4: Hotlink Protection */}
         <div className="sp-card">
-          <div className="sp-card-title">{t('sites.hotlinkProtection')}</div>
+          <div className="sp-card-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>{t('sites.hotlinkProtection')}</span>
+            <button
+              className={`firewall-toggle ${hotlinkEnabled ? 'on' : 'off'}`}
+              onClick={() => setHotlinkEnabled(!hotlinkEnabled)}
+              type="button"
+            >
+              <div className="toggle-track"><div className="toggle-thumb" /></div>
+              <span className="toggle-label">{hotlinkEnabled ? t('common.on') : t('common.off')}</span>
+            </button>
+          </div>
           
           <div className="edit-field">
             <label>{t('sites.urlSuffixes')} <span className="edit-hint">({t('sites.urlSuffixesHint')})</span></label>
@@ -351,6 +361,7 @@ export default function EditSite({
               placeholder="jpg,jpeg,gif,png,js,css"
               value={hotlinkExtensions}
               onChange={(e) => setHotlinkExtensions(e.target.value)}
+              disabled={!hotlinkEnabled}
             />
           </div>
 
@@ -362,6 +373,7 @@ export default function EditSite({
               placeholder="example.com&#10;www.example.com"
               value={hotlinkDomains}
               onChange={(e) => setHotlinkDomains(e.target.value)}
+              disabled={!hotlinkEnabled}
             />
           </div>
 
@@ -373,16 +385,12 @@ export default function EditSite({
               placeholder="404"
               value={hotlinkResponse}
               onChange={(e) => setHotlinkResponse(e.target.value)}
+              disabled={!hotlinkEnabled}
             />
           </div>
 
           <label className="create-checkbox">
-            <input type="checkbox" checked={hotlinkEnabled} onChange={(e) => setHotlinkEnabled(e.target.checked)} />
-            <span>{t('sites.enableHotlink')}</span>
-          </label>
-
-          <label className="create-checkbox">
-            <input type="checkbox" checked={hotlinkAllowEmpty} onChange={(e) => setHotlinkAllowEmpty(e.target.checked)} />
+            <input type="checkbox" checked={hotlinkAllowEmpty} onChange={(e) => setHotlinkAllowEmpty(e.target.checked)} disabled={!hotlinkEnabled} />
             <span>{t('sites.allowEmptyReferer')}</span>
           </label>
         </div>
@@ -408,21 +416,21 @@ export default function EditSite({
 
           <div className="edit-field">
             <label>{t('sites.proxyPath')} <span className="edit-hint">({t('sites.proxyPathHint')})</span></label>
-            <input type="text" className="create-input" value={proxyPath} onChange={(e) => setProxyPath(e.target.value)} placeholder="/" />
+            <input type="text" className="create-input" value={proxyPath} onChange={(e) => setProxyPath(e.target.value)} placeholder="/" disabled={!proxyEnabled} />
           </div>
 
           <div className="edit-field">
             <label>{t('sites.targetUrl')} <span className="edit-hint">({t('sites.targetUrlHint')})</span></label>
-            <input type="text" className="create-input" value={proxyTarget} onChange={(e) => setProxyTarget(e.target.value)} placeholder="http://127.0.0.1:3000" />
+            <input type="text" className="create-input" value={proxyTarget} onChange={(e) => setProxyTarget(e.target.value)} placeholder="http://127.0.0.1:3000" disabled={!proxyEnabled} />
           </div>
 
           <label className="create-checkbox">
-            <input type="checkbox" checked={proxyWebsocket} onChange={(e) => setProxyWebsocket(e.target.checked)} />
+            <input type="checkbox" checked={proxyWebsocket} onChange={(e) => setProxyWebsocket(e.target.checked)} disabled={!proxyEnabled} />
             <span>{t('sites.websocketSupport')}</span>
           </label>
 
           <label className="create-checkbox">
-            <input type="checkbox" checked={proxyPreserveHost} onChange={(e) => setProxyPreserveHost(e.target.checked)} />
+            <input type="checkbox" checked={proxyPreserveHost} onChange={(e) => setProxyPreserveHost(e.target.checked)} disabled={!proxyEnabled} />
             <span>{t('sites.preserveHost')}</span>
           </label>
         </div>

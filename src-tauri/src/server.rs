@@ -4216,7 +4216,7 @@ fi
 # Check PHP versions — dynamic scan for any installed PHP-FPM
 # ponytail: no hardcoded version list — detect whatever is on the system
 # Supports: php8.1-fpm (Debian/Ubuntu), php81-php-fpm (CentOS Remi SCL)
-for _svc in $(systemctl list-unit-files --type=service 2>/dev/null | grep -oE 'php[0-9]+(\.[0-9]+)?-?php-fpm' | sed 's/.service$//' | sort -uV); do
+for _svc in $(systemctl list-unit-files --type=service 2>/dev/null | grep -oE 'php[0-9]+(\.[0-9]+)?-?(php-)?fpm' | sed 's/.service$//' | sort -uV); do
   # Extract version: php8.1-fpm → 8.1, php81-php-fpm → 81
   phpver=$(echo "$_svc" | sed -E 's/^php([0-9]+(\.[0-9]+)?)-?(php-)?fpm$/\1/')
   _bin="/usr/sbin/php-fpm-${phpver}"

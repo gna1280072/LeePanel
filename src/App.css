@@ -2626,7 +2626,13 @@ body.dragging-files * {
   margin-bottom: 4px;
 }
 
-.edit-field .create-input:disabled {
+.edit-field .create-input:disabled,
+.edit-field .edit-textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.create-checkbox input:disabled + span {
   opacity: 0.5;
   cursor: not-allowed;
 }

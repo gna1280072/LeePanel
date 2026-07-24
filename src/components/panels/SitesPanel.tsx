@@ -30,11 +30,12 @@ interface SitesPanelProps {
   sessionId: string | null
   onOpenFolder?: (path: string) => void
   visible?: boolean
+  onNavigateToSoftware?: () => void
 }
 
 type View = 'list' | 'create' | 'edit' | 'progress'
 
-export default function SitesPanel({ sessionId, onOpenFolder, visible }: SitesPanelProps) {
+export default function SitesPanel({ sessionId, onOpenFolder, visible, onNavigateToSoftware }: SitesPanelProps) {
   const { t } = useTranslation()
   const [view, setView] = useState<View>('list')
   const [sites, setSites] = useState<SiteInfo[]>([])
@@ -221,9 +222,15 @@ export default function SitesPanel({ sessionId, onOpenFolder, visible }: SitesPa
 
       {/* Nginx not running warning banner */}
       {nginxWarning && view === 'list' && (
-        <div className="svc-error" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '16px' }}>⚠</span>
-          <span>{nginxWarning}</span>
+        <div className="alert alert-error">
+          <div style={{ marginBottom: '12px', fontSize: '14px' }}>
+            {nginxWarning}
+          </div>
+          {onNavigateToSoftware && (
+            <button className="btn-primary" onClick={onNavigateToSoftware}>
+              {t('sites.goToSoftware')}
+            </button>
+          )}
         </div>
       )}
 

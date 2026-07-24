@@ -338,20 +338,30 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
                 </>
               )}
             </div>
-            <div className="docker-status-actions">
-              {!status.installed ? (
-                <div className="docker-install-section" style={{ textAlign: 'center', padding: '24px 0' }}>
-                  <div style={{ marginBottom: '12px', fontSize: '14px' }}>
-                    {t('dockerPanel.notInstalled')}
-                  </div>
-                  {onNavigateToSoftware && (
-                    <button className="docker-btn primary" onClick={onNavigateToSoftware}>
-                      {t('dockerPanel.goToSoftware')}
-                    </button>
-                  )}
+            {/* ponytail: unified alert style — same as MySQL/Redis/Nginx warnings */}
+            {!status.installed ? (
+              <div className="alert alert-error">
+                <div style={{ marginBottom: '12px', fontSize: '14px' }}>
+                  {t('dockerPanel.notInstalled')}
                 </div>
-              ) : null}
-            </div>
+                {onNavigateToSoftware && (
+                  <button className="btn-primary" onClick={onNavigateToSoftware}>
+                    {t('dockerPanel.goToSoftware')}
+                  </button>
+                )}
+              </div>
+            ) : !status.running ? (
+              <div className="alert alert-error">
+                <div style={{ marginBottom: '12px', fontSize: '14px' }}>
+                  {t('dockerPanel.notRunning')}
+                </div>
+                {onNavigateToSoftware && (
+                  <button className="btn-primary" onClick={onNavigateToSoftware}>
+                    {t('dockerPanel.goToSoftware')}
+                  </button>
+                )}
+              </div>
+            ) : null}
           </>
         ) : null}
       </div>

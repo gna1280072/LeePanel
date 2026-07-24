@@ -29,11 +29,12 @@ interface SiteInfo {
 interface SitesPanelProps {
   sessionId: string | null
   onOpenFolder?: (path: string) => void
+  visible?: boolean
 }
 
 type View = 'list' | 'create' | 'edit' | 'progress'
 
-export default function SitesPanel({ sessionId, onOpenFolder }: SitesPanelProps) {
+export default function SitesPanel({ sessionId, onOpenFolder, visible }: SitesPanelProps) {
   const { t } = useTranslation()
   const [view, setView] = useState<View>('list')
   const [sites, setSites] = useState<SiteInfo[]>([])
@@ -64,23 +65,41 @@ export default function SitesPanel({ sessionId, onOpenFolder }: SitesPanelProps)
   // Toggle toast notification
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
+  // Nginx status warning (null = ok, string = warning message)
+  const [nginxWarning, setNginxWarning] = useState<string | null>(null)
+
   const fetchSites = useCallback(async () => {
     if (!sessionId) return
     setLoading(true)
     setError('')
     try {
-      const list = await invoke<SiteInfo[]>('server_list_sites', { sessionId })
+      const [list, softwareList] = await Promise.all([
+        invoke<SiteInfo[]>('server_list_sites', { sessionId }),
+        invoke<{ name: string; installed: boolean; running: boolean }[]>('server_get_software_list', { sessionId }),
+      ])
       // Sort by creation time descending (newest first), based on config file mtime
       list.sort((a, b) => b.created_at - a.created_at)
       setSites(list)
+      // ponytail: check nginx status — show banner if not installed or not running
+      const nginx = softwareList.find(s => s.name.toLowerCase() === 'nginx')
+      if (!nginx || !nginx.installed) {
+        setNginxWarning(t('sites.nginxNotInstalled'))
+      } else if (!nginx.running) {
+        setNginxWarning(t('sites.nginxNotRunning'))
+      } else {
+        setNginxWarning(null)
+      }
     } catch (e) {
       setError(String(e))
     } finally {
       setLoading(false)
     }
-  }, [sessionId])
+  }, [sessionId, t])
 
-  useEffect(() => { fetchSites() }, [fetchSites])
+  // ponytail: fetch on mount, and refetch each time panel becomes visible
+  useEffect(() => {
+    if (visible !== false) fetchSites()
+  }, [visible, fetchSites])
 
   // Listen for site creation progress events (always active)
   useEffect(() => {
@@ -199,6 +218,14 @@ export default function SitesPanel({ sessionId, onOpenFolder }: SitesPanelProps)
       </div>
 
       {error && <div className="svc-error">{error}</div>}
+
+      {/* Nginx not running warning banner */}
+      {nginxWarning && view === 'list' && (
+        <div className="svc-error" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '16px' }}>⚠</span>
+          <span>{nginxWarning}</span>
+        </div>
+      )}
 
       {/* Edit page */}
       {view === 'edit' && editTarget ? (

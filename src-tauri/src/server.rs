@@ -1339,7 +1339,7 @@ fi
 fn parse_site_config(path: &str, content: &str) -> Option<SiteInfo> {
     // ponytail: extract all server_names from all server_name directives, dedupe to handle Certbot's multiple server blocks
     use std::collections::HashSet;
-    let domains: Vec<String> = content
+    let mut domains: Vec<String> = content
         .lines()
         .filter(|l| l.trim().starts_with("server_name"))
         .flat_map(|l| {
@@ -1354,6 +1354,8 @@ fn parse_site_config(path: &str, content: &str) -> Option<SiteInfo> {
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
+    // ponytail: sort for deterministic primary domain (HashSet order is random)
+    domains.sort();
     
     let domains_str = if domains.is_empty() {
         "unknown".to_string()

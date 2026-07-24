@@ -212,7 +212,7 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
         </div>
         {/* Sites always mounted to preserve list state */}
         <div style={{ display: activeSection === 'sites' ? 'block' : 'none', height: '100%' }}>
-          <SitesPanel sessionId={sessionId} onOpenFolder={handleInternalOpenFolder} />
+          <SitesPanel sessionId={sessionId} onOpenFolder={handleInternalOpenFolder} visible={activeSection === 'sites'} />
         </div>
         {/* Software always mounted to preserve install progress state */}
         <div style={{ display: activeSection === 'software' ? 'block' : 'none', height: '100%' }}>

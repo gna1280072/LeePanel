@@ -1,23 +1,23 @@
 {
-  "version": "1.0.18",
-  "notes": "LeePanel v1.0.18",
-  "pub_date": "2026-07-23T13:04:02Z",
+  "version": "1.0.19",
+  "notes": "LeePanel v1.0.19",
+  "pub_date": "2026-07-27T14:26:19Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdEw5Q3FHMEM1SllZU3ZPNTJzMEhSM3AzZkk5VUxOTFAydDFIZHlKSjRydURnaEtHbWpaM25DMzR2N21YVjVuT29pdkRzZlpUK3IvN3RKaGNrTUJ6V013RHFKRzJxeVE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0ODExNzgwCWZpbGU6TGVlUGFuZWxfMS4wLjE4X3g2NC1zZXR1cC5leGUKZURTTjI5MlVPQ3dpWHIwV3NOb3laRFdMTFJBd1ZkdWxZcW9ORUpxdWpJU3hkYlBId3lMUDlkY2ppY25kZGtHN3NSSGVmNGtYVTBLRnc4NzhIbkNNQnc9PQo=",
-      "url": "https://github.com/gna1280072/LeePanel/releases/download/v1.0.18/LeePanel_1.0.18_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdEw5Q3FHMEM1SlI3Y0FNUGxtR2lQUGd6OXZyckJFV29FZmxIcHdnN2p3c1dHZW4rZ3QyQlp2WERRQlJSNzRxeTdQcTV6YnhqSnZWN1ljZnJpdnFQS2VNRFdRbGNGOWdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MTYyMzAzCWZpbGU6TGVlUGFuZWxfMS4wLjE5X3g2NC1zZXR1cC5leGUKb243L0YxZWs4WVhmdWVLeTZTWHZhUURacnRHR05obVBoVG9walVhbXNYTmRKZ1lPVy9wd0JERXYyTzRIbWtYamo0V2syRVZvWXhRWXpMcGNiSDkyQ2c9PQo=",
+      "url": "https://github.com/gna1280072/LeePanel/releases/download/v1.0.19/LeePanel_1.0.19_x64-setup.exe"
     },
     "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdEw5Q3FHMEM1SlZUMG1ueFU3SDQ5OXZ3STl3dEd6VXl3V3piQmw2TW1JdGFHdVRJak4rb3RXdlFseXdoVWpEQS9GQ01abEUrZ0JKK05CT3FuYTl6MCtCVzJORzF3QVFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0ODExNjM5CWZpbGU6TGVlUGFuZWwuYXBwLnRhci5negpRRU9Sd2l3MU9Vb202YTlpbXZBOVJpOXZYaGlzbzZ1ZURsWS9vRjBlZU1lU29hT2t3VlJneVFtWjhlQ1gveUNxR2xnR29OK2tJZVJpTmlGR1E3cFVBZz09Cg==",
-      "url": "https://github.com/gna1280072/LeePanel/releases/download/v1.0.18/LeePanel_x64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdEw5Q3FHMEM1SmVIL0tPU1FvVG1UdXM4eTQzLzE2NWVsdnJ5eXhOcUhhSVVQNjFVTGJRRzlNVnF5NzZyMTVTOVFiaFE2bGtuSHpKTFB4UnB4OFhkdnlMYzlpbTVWeGdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MTYyMjg5CWZpbGU6TGVlUGFuZWwuYXBwLnRhci5negpzemNxSlVDeU52VHc4Zy9NTUxpM3NKQ3hSeHByZUwvMVNveHp5dUxJMjBNMnU2WFptV000cmNkTUpFazZtQ0pvSXhldm9yd0d6dlpaL0g1aVY5U1BEZz09Cg==",
+      "url": "https://github.com/gna1280072/LeePanel/releases/download/v1.0.19/LeePanel_x64.app.tar.gz"
     },
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdEw5Q3FHMEM1SmJTaGFraUw3L3lrNGxqWHFqajFEVHVYSUFRdUk4VnIrNzJaRFJxcS9DNjBsVTFQdVBmYlZVcWhpTXVhL1preElrbGRFL2Z2RFlTRExSU3V3Vm9EMEEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0ODExNjExCWZpbGU6TGVlUGFuZWwuYXBwLnRhci5negp0SVE1d1ZuRFlGdFlzNVBVRjdTbHJwNUZEL2dhdmVPRm9sSEpaQmZHbm52TmhSUXZTWUk3enRSU1hoSVpDSkx3c3lueFp4VUVtUS9KS2Y3QjhxeWhCUT09Cg==",
-      "url": "https://github.com/gna1280072/LeePanel/releases/download/v1.0.18/LeePanel_aarch64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdEw5Q3FHMEM1SlN1T3ZPLzFyRjlGcnE2R1pZblBkV2pQZWFyMTFndk5QQmlIZHdxdEpERGcyVS9FNlhPRzFYQzJ6eVc1NTRWcHd0eVJZTWZxUXRSbXA4enAyTXlJWkFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MTYyMTk3CWZpbGU6TGVlUGFuZWwuYXBwLnRhci5negpaTmx2R3U0ZDlWMjdRckN1blJ5NFNDSlNSRXp2bk9SWDd4WDhKTElvaEp1dllWVFQ4WCtocCtzeGtNVWdhUy9yNXkzZTk1cmlCUG9VMzhtWU0wbFRDZz09Cg==",
+      "url": "https://github.com/gna1280072/LeePanel/releases/download/v1.0.19/LeePanel_aarch64.app.tar.gz"
     },
     "linux-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdEw5Q3FHMEM1SmVGVDVGamJ4aE16VnpkK0ZicHBOOHRuSmpKSC9iS0VKUHNtaUlDU3dOZFFocjl5aFg3czRaZGhFR2dsNXFXRFNaY1NBOHZMblMzQ2RFbjc2YVVPRlF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0ODExNjc1CWZpbGU6TGVlUGFuZWxfMS4wLjE4X2FtZDY0LmRlYgpIQXg4UXFCMkhscFZQUWR4UU91QmMzR1dSeWRMMkVzQ3o2M0h5ZG9zdGNYdzhjN1FBRE0zSXNYTmEyZU9IWVkza1hkWnlhVGFCNWIzL2ZDWUZwWUVDdz09Cg==",
-      "url": "https://github.com/gna1280072/LeePanel/releases/download/v1.0.18/LeePanel_1.0.18_amd64.deb"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdEw5Q3FHMEM1SmJBRmp3VlNDenNHSFozL2tOZURzU0htRnBMQU5XaWdteHZ3UGpBUUljQUZXOGJ5RXlnaGZQZmZvV3ZkVDF1cUZXWFFjaEQ4dzFrQUhGaU1Yc3Vja3d3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MTYyMjQxCWZpbGU6TGVlUGFuZWxfMS4wLjE5X2FtZDY0LmRlYgpNUVc4NnR3OXdnKzZUQnhvRjE5dHlrRndjRHRHL29VSDkvZG54eDRsdmhocU82aHg4UVFpb0FxZUdsY3NFSHAyT25LUWlQQXlvMlE2SDV2cDkzZkFBUT09Cg==",
+      "url": "https://github.com/gna1280072/LeePanel/releases/download/v1.0.19/LeePanel_1.0.19_amd64.deb"
     }
   }
 }

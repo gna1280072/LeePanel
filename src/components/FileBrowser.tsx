@@ -18,7 +18,6 @@ interface FileBrowserProps {
   sessionId: string | null
   connHost?: string
   jumpToPath?: string | null
-  onTerminalCommand?: (cmd: string) => void
   onCdHere?: (path: string) => void
   onStartUpload?: (files: { file: File; fileName: string; remotePath: string }[]) => void
   onNavigateToSoftware?: () => void
@@ -146,7 +145,7 @@ const RefreshIcon = () => (
   </svg>
 )
 
-export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrowser({ sessionId, connHost, jumpToPath, onTerminalCommand, onCdHere, onStartUpload, onNavigateToSoftware }, ref) {
+export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrowser({ sessionId, connHost, jumpToPath, onCdHere, onStartUpload, onNavigateToSoftware }, ref) {
   const { t } = useTranslation()
   const [currentPath, setCurrentPath] = useState('/')
   const [files, setFiles] = useState<FileEntry[]>([])
@@ -175,6 +174,9 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
   const [compressDialog, setCompressDialog] = useState<{ names: string[] } | null>(null)
   const [compressFormat, setCompressFormat] = useState<'zip' | 'tar.gz' | 'tar.bz2'>('zip')
   const [missingToolModal, setMissingToolModal] = useState<'zip' | 'unzip' | null>(null)
+  const [saveProgress, setSaveProgress] = useState<{ fileName: string; uploaded: number; total: number; speed: number; active: boolean; paused: boolean } | null>(null)
+  const [showSaveStopConfirm, setShowSaveStopConfirm] = useState(false)
+  const [saveStopInput, setSaveStopInput] = useState('')
   const [dropActive, setDropActive] = useState(false)
   const dragItemRef = useRef<FileEntry | null>(null)
   const [dragOverTarget, setDragOverTarget] = useState<string | null>(null)
@@ -327,7 +329,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
         setCacheTime(Date.now())
       }
       if (connHost) invoke('ui_state_set', { key: `fb_path_${connHost}`, value: resolvedPath }).catch(() => {})
-      onTerminalCommand?.(`cd ${resolvedPath} && ls -la`)
+      
     } catch (e) {
       console.error('list_dir error:', e)
       return false
@@ -335,7 +337,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       setLoading(false)
     }
     return true
-  }, [sessionId, currentPath, connHost, onTerminalCommand])
+  }, [sessionId, currentPath, connHost])
 
 
   useImperativeHandle(ref, () => ({
@@ -946,13 +948,13 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     const filePath = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`
     showToast(t('files.downloadingFile', { name: entry.name }), 'info')
     try {
-      const localPath = await invoke<string>('ssh_download_to_local', {
+      await invoke<string>('ssh_download_to_local', {
         sessionId,
         remotePath: filePath,
         fileName: entry.name,
       })
       showToast(t('files.openImage', { name: entry.name }), 'success')
-      onTerminalCommand?.(`# Downloaded ${filePath} -> ${localPath}`)
+      
     } catch (e) {
       showToast(t('files.failedOpenImage', { error: e }), 'error')
     }
@@ -962,14 +964,12 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     // ponytail: allow all files up to 3MB, no format restriction
     if (entry.size >= 3 * 1024 * 1024) {
       showToast(t('files.binaryOrLarge'), 'info')
-      onTerminalCommand?.(`file ${currentPath}/${entry.name}`)
       return
     }
     const filePath = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`
     try {
       const content = await invoke<string>('ssh_read_file', { sessionId, path: filePath })
       setEditor({ path: filePath, name: entry.name, content, originalContent: content, saving: false })
-      onTerminalCommand?.(`cat ${filePath}`)
     } catch (e) {
       console.error('read_file error:', e)
       showToast(t('files.readFailed', { error: e }), 'error')
@@ -983,7 +983,6 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       await invoke('ssh_write_file', { sessionId, path: editor.path, content: editor.content })
       setEditor({ ...editor, originalContent: editor.content, saving: false })
       showToast(t('files.savedFile', { name: editor.name }), 'success')
-      onTerminalCommand?.(`# Saved ${editor.path}`)
     } catch (e) {
       showToast(t('files.saveFailedMsg', { error: e }), 'error')
       setEditor({ ...editor, saving: false })
@@ -1336,17 +1335,28 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
     if (!sessionId || entry.isDir) return
     const filePath = resolvePath(entry)
     showToast(t('files.preparingDownload', { name: entry.name }), 'info')
+    const t0 = Date.now()
+    const unlisten = await listen<{ uploaded: number; total: number }>('save-local-progress', (e) => {
+      const elapsed = (Date.now() - t0) / 1000
+      const speed = elapsed > 0 ? e.payload.uploaded / elapsed : 0
+      setSaveProgress(prev => ({ fileName: entry.name, uploaded: e.payload.uploaded, total: e.payload.total, speed, active: true, paused: prev?.paused ?? false }))
+    })
     try {
       const localPath = await invoke<string>('ssh_save_as_local', {
         sessionId,
         remotePath: filePath,
         fileName: entry.name,
       })
+      setSaveProgress(prev => prev ? { ...prev, active: false } : null)
       showToast(t('files.savedTo', { path: localPath }), 'success')
+      setTimeout(() => setSaveProgress(null), 3000)
     } catch (e) {
+      setSaveProgress(null)
       if (String(e) !== 'Save cancelled') {
         showToast(t('files.saveFailed', { error: e }), 'error')
       }
+    } finally {
+      unlisten()
     }
   }
 
@@ -1476,6 +1486,15 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       }
       if (e.key === 'Delete' && selectedFiles.size > 0) {
         handleDelete()
+      }
+      if (e.key === 'Backspace') {
+        e.preventDefault()
+        goUp()
+      }
+      if (e.key === 'Enter' && selectedFiles.size === 1) {
+        e.preventDefault()
+        const entry = files.find(f => f.name === [...selectedFiles][0])
+        if (entry) handleItemDoubleClick(entry)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -2357,6 +2376,65 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
              downloadProgress.status === 'error' ? t('files.failed') :
              `${Math.round(downloadProgress.progress)}%`}
           </span>
+        </div>
+      )}
+
+      {/* Save-to-local progress panel — reuses upload panel styles */}
+      {saveProgress && (
+        <div className="upload-panel" style={{ position: 'absolute', bottom: 36, right: 12, zIndex: 200 }}>
+          <div className="upload-panel-header">
+            <span className="upload-panel-title">
+              💾 {saveProgress.active ? (saveProgress.paused ? t('upload.paused') : t('files.savingToLocal')) : t('upload.complete')} — {saveProgress.fileName}
+            </span>
+            {!saveProgress.active && <span className="upload-panel-toggle" style={{ cursor: 'pointer' }} onClick={() => setSaveProgress(null)}>✕</span>}
+          </div>
+          <div className="upload-panel-progress">
+            <div className="upload-progress-track">
+              <div className="upload-progress-fill" style={{ width: `${saveProgress.total > 0 ? Math.round((saveProgress.uploaded / saveProgress.total) * 100) : 0}%` }} />
+            </div>
+            <div className="upload-progress-info">
+              {(saveProgress.uploaded / 1048576).toFixed(1)}M / {saveProgress.total > 0 ? (saveProgress.total / 1048576).toFixed(1) + 'M' : '?'}
+              {saveProgress.active && !saveProgress.paused && saveProgress.speed > 0 && ` | ${saveProgress.speed >= 1048576 ? (saveProgress.speed / 1048576).toFixed(1) + ' MB/s' : (saveProgress.speed / 1024).toFixed(0) + ' KB/s'}`}
+            </div>
+          </div>
+          {saveProgress.active && (
+            <div className="upload-panel-actions">
+              {!saveProgress.paused ? (
+                <button className="upload-btn" onClick={async () => { await invoke('ssh_save_pause'); setSaveProgress(prev => prev ? { ...prev, paused: true } : null) }}>⏸ {t('upload.pause')}</button>
+              ) : (
+                <button className="upload-btn" onClick={async () => { await invoke('ssh_save_resume'); setSaveProgress(prev => prev ? { ...prev, paused: false } : null) }}>▶ {t('upload.resume')}</button>
+              )}
+              <button className="upload-btn" onClick={() => { setShowSaveStopConfirm(true); setSaveStopInput('') }}>⏹ {t('upload.stop')}</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Save stop confirmation modal — same pattern as upload panel */}
+      {showSaveStopConfirm && (
+        <div className="fb-dialog-overlay" onClick={() => setShowSaveStopConfirm(false)}>
+          <div className="fb-dialog" onClick={(e) => e.stopPropagation()} style={{ minWidth: 380 }}>
+            <button className="modal-close-btn" onClick={() => setShowSaveStopConfirm(false)} title={t('common.close')}>×</button>
+            <div className="fb-dialog-title" style={{ marginBottom: 12 }}>{t('upload.confirmStopTitle')}</div>
+            <p style={{ margin: '0 0 16px', fontSize: 13, color: '#8b949e', lineHeight: 1.6 }}>
+              {t('upload.confirmStopMsg')}
+            </p>
+            <input
+              className="fb-dialog-input"
+              value={saveStopInput}
+              onChange={e => setSaveStopInput(e.target.value)}
+              onKeyDown={async (e) => { if (e.key === 'Enter' && saveStopInput.trim().toLowerCase() === 'stop') { await invoke('ssh_save_stop'); setSaveProgress(null); setShowSaveStopConfirm(false) } }}
+              placeholder={t('upload.confirmStopPlaceholder')}
+              autoFocus
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #30363d', background: '#0d1117', color: '#c9d1d9', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+            />
+            <div className="fb-dialog-actions">
+              <button className="fb-dialog-btn" onClick={() => setShowSaveStopConfirm(false)}>{t('common.cancel')}</button>
+              <button className="fb-dialog-btn danger" disabled={saveStopInput.trim().toLowerCase() !== 'stop'} onClick={async () => { await invoke('ssh_save_stop'); setSaveProgress(null); setShowSaveStopConfirm(false) }} style={{ opacity: saveStopInput.trim().toLowerCase() === 'stop' ? 1 : 0.4 }}>
+                {t('upload.stop')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

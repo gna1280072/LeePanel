@@ -1339,7 +1339,7 @@ fi
 fn parse_site_config(path: &str, content: &str) -> Option<SiteInfo> {
     // ponytail: extract all server_names from all server_name directives, dedupe to handle Certbot's multiple server blocks
     use std::collections::HashSet;
-    let domains: Vec<String> = content
+    let mut domains: Vec<String> = content
         .lines()
         .filter(|l| l.trim().starts_with("server_name"))
         .flat_map(|l| {
@@ -1354,6 +1354,8 @@ fn parse_site_config(path: &str, content: &str) -> Option<SiteInfo> {
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
+    // ponytail: sort for deterministic primary domain (HashSet order is random)
+    domains.sort();
     
     let domains_str = if domains.is_empty() {
         "unknown".to_string()
@@ -4204,7 +4206,8 @@ if command -v mysqld &>/dev/null || command -v mariadbd &>/dev/null || [ -x /www
     echo "MYSQL_SERVICE=mariadb"
   else
     echo "MYSQL_RUNNING=inactive"
-    echo "MYSQL_SERVICE=$(systemctl list-units --type=service 2>/dev/null | grep -E 'mysql|maria' | awk '{print $1}' | head -1 | sed 's/.service//')"
+    # ponytail: list-unit-files finds services even when stopped (list-units only shows loaded)
+    echo "MYSQL_SERVICE=$(systemctl list-unit-files --type=service 2>/dev/null | grep -E 'mysql|maria' | awk '{print $1}' | head -1 | sed 's/.service//')"
   fi
 else
   echo "MYSQL_INSTALLED=0"
@@ -4213,7 +4216,8 @@ fi
 # Check PHP versions — dynamic scan for any installed PHP-FPM
 # ponytail: no hardcoded version list — detect whatever is on the system
 # Supports: php8.1-fpm (Debian/Ubuntu), php81-php-fpm (CentOS Remi SCL)
-for _svc in $(systemctl list-unit-files --type=service 2>/dev/null | grep -oE 'php[0-9]+(\.[0-9]+)?-?php-fpm' | sed 's/.service$//' | sort -uV); do
+_php_ver_found=0
+for _svc in $(systemctl list-unit-files --type=service 2>/dev/null | grep -oE 'php[0-9]+(\.[0-9]+)?-?(php-)?fpm' | sed 's/.service$//' | sort -uV); do
   # Extract version: php8.1-fpm → 8.1, php81-php-fpm → 81
   phpver=$(echo "$_svc" | sed -E 's/^php([0-9]+(\.[0-9]+)?)-?(php-)?fpm$/\1/')
   _bin="/usr/sbin/php-fpm-${phpver}"
@@ -4222,6 +4226,7 @@ for _svc in $(systemctl list-unit-files --type=service 2>/dev/null | grep -oE 'p
   _btbin="/www/server/php/${phpver}/sbin/php-fpm"
   if systemctl is-enabled "$_svc" &>/dev/null || [ -x "$_bin" ] || [ -x "$_remibin" ] || [ -x "$_btbin" ]; then
     echo "PHP_DETECT_VERSION=${phpver}"
+    _php_ver_found=1
     if [ -x "$_bin" ]; then
       _fullver=$("$_bin" -v 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "${phpver}.x")
     elif [ -x "$_remibin" ]; then
@@ -4252,6 +4257,7 @@ if [ -d /www/server/php ]; then
     _svc="php${phpver}-fpm"
     if ! systemctl list-unit-files --type=service 2>/dev/null | grep -q "${_svc}"; then
       echo "PHP_DETECT_VERSION=${phpver}"
+      _php_ver_found=1
       _fullver=$("$_btbin" -v 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "${phpver}.x")
       echo "PHP_DETECT_FULLVER=${_fullver}"
       echo "PHP_DETECT_SERVICE=$_svc"
@@ -4260,12 +4266,36 @@ if [ -d /www/server/php ]; then
   done
 fi
 
+# Fallback: php-fpm service without version in name (CentOS default, Alibaba Cloud Linux 3 DNF module)
+# ponytail: only triggers if no versioned PHP was detected by the loops above
+if systemctl list-unit-files --type=service 2>/dev/null | grep -qE '^php-fpm\.service'; then
+  # ponytail: only if no versioned PHP was detected by the loops above
+  if [ "$_php_ver_found" = "0" ]; then
+    _fv=""
+    for _b in /usr/sbin/php-fpm /usr/bin/php-fpm; do
+      [ -x "$_b" ] && _fv=$("$_b" -v 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1) && [ -n "$_fv" ] && break
+    done
+    [ -z "$_fv" ] && command -v php &>/dev/null && _fv=$(php -v 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+    if [ -n "$_fv" ]; then
+      _sv=$(echo "$_fv" | grep -oE '^[0-9]+\.[0-9]+')
+      echo "PHP_DETECT_VERSION=${_sv}"
+      echo "PHP_DETECT_FULLVER=${_fv}"
+      echo "PHP_DETECT_SERVICE=php-fpm"
+      if systemctl is-active php-fpm &>/dev/null; then
+        echo "PHP_DETECT_RUNNING=active"
+      else
+        echo "PHP_DETECT_RUNNING=inactive"
+      fi
+    fi
+  fi
+fi
+
 # Generic PHP detection (for always-visible install card)
 # ponytail: matches php-fpm (CentOS), php8.1-fpm (Debian), php81-php-fpm (Remi SCL)
 if command -v php &>/dev/null || ls /usr/sbin/php*-php-fpm /usr/sbin/php-fpm* /www/server/php/*/sbin/php-fpm &>/dev/null; then
   echo "PHP_GENERIC_INSTALLED=1"
   echo "PHP_GENERIC_VERSION=$(php -v 2>/dev/null || ls /usr/sbin/php*-php-fpm 2>/dev/null | head -1 | xargs -I{} {} -v 2>/dev/null || echo '' | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' || echo '')"
-  PHP_GENERIC_SVC=$(systemctl list-units --type=service 2>/dev/null | grep -E 'php([0-9]+(\.[0-9]+)?-?)?php-fpm|php-fpm' | awk '{print $1}' | head -1 | sed 's/.service//')
+  PHP_GENERIC_SVC=$(systemctl list-unit-files --type=service 2>/dev/null | grep -E '^php[0-9.]*-?(php-)?fpm' | awk '{print $1}' | head -1 | sed 's/.service//')
   echo "PHP_GENERIC_SERVICE=$PHP_GENERIC_SVC"
   if [ -n "$PHP_GENERIC_SVC" ] && systemctl is-active "$PHP_GENERIC_SVC" &>/dev/null; then
     echo "PHP_GENERIC_RUNNING=active"
@@ -4630,7 +4660,7 @@ if [ "{}" = "install" ]; then
     sleep 1
   done
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
-    apt-get update -qq --allow-releaseinfo-change || true
+    apt-get update -q --allow-releaseinfo-change 2>&1 || true
     apt-get install -y {} 2>&1
   else
     yum install -y --nogpgcheck --assumeyes {} 2>&1
@@ -4789,11 +4819,18 @@ if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
   apt-cache search --names-only '^php[0-9]+\.[0-9]+-fpm$' 2>/dev/null | \
     awk '{print $1}' | sed 's/^php//; s/-fpm$//' | sort -V | uniq
 else
-  # CentOS/RHEL: query yum/dnf for php*-fpm packages
+  # CentOS/RHEL: query multiple sources for available PHP versions
   if command -v dnf &>/dev/null; then
-    dnf list available 'php*-fpm' 2>/dev/null | grep -oP 'php\K[0-9.]+' | sort -V | uniq
+    # DNF module streams (RHEL 8+/CentOS 8+/Alibaba Cloud Linux 3)
+    dnf module list php 2>/dev/null | grep -E '^php[[:space:]]' | awk '{gsub(/\[.\]/, "", $2); print $2}' | grep -E '^[0-9]+\.[0-9]+$'
+    # Remi SCL packages (php81-php-fpm, php82-php-fpm, etc.)
+    dnf list available 'php*-php-fpm' 2>/dev/null | grep -oP 'php\K[0-9]+(?=-php-fpm)' | sed 's/^\([0-9]\{1,\}\)\([0-9]\)$/\1.\2/'
+    # Default php-fpm — extract version from package version field
+    dnf list available php-fpm 2>/dev/null | awk '/^php-fpm/ {print $2}' | grep -oE '^[0-9]+\.[0-9]+'
   else
-    yum list available 'php*-fpm' 2>/dev/null | grep -oP 'php\K[0-9.]+' | sort -V | uniq
+    # yum fallback (CentOS 7, no dnf)
+    yum list available 'php*-php-fpm' 2>/dev/null | grep -oP 'php\K[0-9]+(?=-php-fpm)' | sed 's/^\([0-9]\{1,\}\)\([0-9]\)$/\1.\2/'
+    yum list available php-fpm 2>/dev/null | awk '/^php-fpm/ {print $2}' | grep -oE '^[0-9]+\.[0-9]+'
   fi
 fi
 "#;
@@ -4831,7 +4868,7 @@ if [ -f /etc/os-release ]; then
 fi
 
 if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
-  apt-get update -qq --allow-releaseinfo-change 2>/dev/null || true
+  apt-get update -q --allow-releaseinfo-change 2>&1 || true
   M_CAND=$(apt-cache policy mariadb-server 2>/dev/null | grep 'Candidate:' | awk '{print $2}')
   if [ -n "$M_CAND" ] && [ "$M_CAND" != "(none)" ]; then
     echo "mariadb:$M_CAND"
@@ -5352,7 +5389,7 @@ install_deps() {{
       echo "Waiting for package manager lock... ($i/60)"
       sleep 1
     done
-    apt-get update -qq --allow-releaseinfo-change || true
+    apt-get update -q --allow-releaseinfo-change 2>&1 || true
     # Core build tools (always install)
     apt-get install -y build-essential autoconf pkg-config libtool re2c bison flex
     # Each lib individually — failures recorded but not fatal
@@ -5654,7 +5691,7 @@ if [ "{}" = "install" ]; then
       echo "Waiting for package manager lock... ($i/60)"
       sleep 1
     done
-    apt-get update -qq --allow-releaseinfo-change || true
+    apt-get update -q --allow-releaseinfo-change 2>&1 || true
     apt-get install -y redis-server
   else
     yum install -y --nogpgcheck --assumeyes epel-release
@@ -5703,7 +5740,7 @@ if [ "{}" = "install" ]; then
         echo "Waiting for package manager lock... ($i/60)"
         sleep 1
       done
-      apt-get update -qq --allow-releaseinfo-change || true
+      apt-get update -q --allow-releaseinfo-change 2>&1 || true
       apt-get install -y nodejs npm
     else
       yum install -y --nogpgcheck --assumeyes nodejs npm
@@ -5735,12 +5772,12 @@ echo "ACTION_SUCCESS"
                 // ponytail: bypass get.docker.com (blocked by GFW) — use Aliyun Docker CE repo directly
                 format!(r#"{} && . /etc/os-release
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
-    apt-get update -qq --allow-releaseinfo-change || true; apt-get install -y ca-certificates curl gnupg
+    apt-get update -q --allow-releaseinfo-change 2>&1 || true; apt-get install -y ca-certificates curl gnupg
     install -m 0755 -d /etc/apt/keyrings
     curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/$ID/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
     chmod a+r /etc/apt/keyrings/docker.gpg
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://mirrors.aliyun.com/docker-ce/linux/$ID $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
-    apt-get update -qq --allow-releaseinfo-change || true
+    apt-get update -q --allow-releaseinfo-change 2>&1 || true
     apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
   else
     yum install -y --nogpgcheck --assumeyes yum-utils
@@ -5822,7 +5859,7 @@ if [ "__ACTION__" = "install" ]; then
       echo "Waiting for package manager lock... ($i/60)"
       sleep 1
     done
-    apt-get update -qq --allow-releaseinfo-change || true
+    apt-get update -q --allow-releaseinfo-change 2>&1 || true
     
     # Auto-detect variant if not specified
     if [ -z "$VARIANT" ]; then
@@ -5958,7 +5995,7 @@ if [ "__ACTION__" = "install" ]; then
       echo "Waiting for package manager lock... ($i/60)"
       sleep 1
     done
-    apt-get update -qq
+    apt-get update -q 2>&1
     if [ -n "__VERSION__" ]; then
       # Core package — must succeed
       apt-get install -y php__VERSION__-fpm || { echo "ERROR: php__VERSION__-fpm install failed"; exit 1; }
@@ -5982,21 +6019,40 @@ if [ "__ACTION__" = "install" ]; then
     yum install -y --nogpgcheck --assumeyes epel-release 2>/dev/null || true
     if [ -n "__VERSION__" ]; then
       VER_NODOT=$(echo "__VERSION__" | tr -d '.')
-      yum install -y --nogpgcheck --assumeyes php${VER_NODOT}-php-fpm || { echo "ERROR: php${VER_NODOT}-php-fpm install failed"; exit 1; }
-      for pkg in php${VER_NODOT}-php-mysqlnd php${VER_NODOT}-php-curl php${VER_NODOT}-php-mbstring php${VER_NODOT}-php-xml php${VER_NODOT}-php-zip php${VER_NODOT}-php-gd php${VER_NODOT}-php-bcmath php${VER_NODOT}-php-opcache; do
-        yum install -y --nogpgcheck --assumeyes "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
-      done
+      # ponytail: try DNF module stream first (RHEL 8+/CentOS 8+), fallback to Remi SCL
+      if command -v dnf &>/dev/null && dnf module list php 2>/dev/null | grep -qE '^php[[:space:]]'; then
+        dnf module enable -y php:__VERSION__ 2>/dev/null || true
+        if dnf list available php-fpm 2>/dev/null | grep -q '^php-fpm'; then
+          dnf install -y php-fpm || { echo "ERROR: php-fpm install failed"; exit 1; }
+          for pkg in php-mysqlnd php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache; do
+            dnf install -y "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
+          done
+          SVC="php-fpm"
+        else
+          # Fallback to Remi SCL
+          yum install -y --nogpgcheck --assumeyes https://rpms.remirepo.net/enterprise/remi-release-$(rpm -E %{rhel}).rpm 2>/dev/null || true
+          yum module enable -y php:remi-__VERSION__ 2>/dev/null || true
+          yum install -y --nogpgcheck --assumeyes php${VER_NODOT}-php-fpm || { echo "ERROR: php${VER_NODOT}-php-fpm install failed"; exit 1; }
+          for pkg in php${VER_NODOT}-php-mysqlnd php${VER_NODOT}-php-curl php${VER_NODOT}-php-mbstring php${VER_NODOT}-php-xml php${VER_NODOT}-php-zip php${VER_NODOT}-php-gd php${VER_NODOT}-php-bcmath php${VER_NODOT}-php-opcache; do
+            yum install -y --nogpgcheck --assumeyes "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
+          done
+          SVC="php${VER_NODOT}-php-fpm"
+        fi
+      else
+        # yum (CentOS 7) or no module: use Remi SCL directly
+        yum install -y --nogpgcheck --assumeyes https://rpms.remirepo.net/enterprise/remi-release-$(rpm -E %{rhel}).rpm 2>/dev/null || true
+        yum install -y --nogpgcheck --assumeyes php${VER_NODOT}-php-fpm || { echo "ERROR: php${VER_NODOT}-php-fpm install failed"; exit 1; }
+        for pkg in php${VER_NODOT}-php-mysqlnd php${VER_NODOT}-php-curl php${VER_NODOT}-php-mbstring php${VER_NODOT}-php-xml php${VER_NODOT}-php-zip php${VER_NODOT}-php-gd php${VER_NODOT}-php-bcmath php${VER_NODOT}-php-opcache; do
+          yum install -y --nogpgcheck --assumeyes "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
+        done
+        SVC="php${VER_NODOT}-php-fpm"
+      fi
     else
       yum install -y --nogpgcheck --assumeyes php-fpm || { echo "ERROR: php-fpm install failed"; exit 1; }
       for pkg in php-mysqlnd php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache; do
         yum install -y --nogpgcheck --assumeyes "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
       done
-    fi
-    # ponytail: use exact versioned service name when version is known
-    if [ -n "__VERSION__" ]; then
-      SVC="php${VER_NODOT}-php-fpm"
-    else
-      SVC=$(systemctl list-units --type=service | grep -E 'php' | awk '{print $1}' | head -1 | sed 's/.service//')
+      SVC="php-fpm"
     fi
   fi
   if [ -n "$SVC" ]; then
@@ -6049,29 +6105,43 @@ if [ \"__ACTION__\" = \"install\" ]; then\n\
       echo \"Waiting for package manager lock... ($i/60)\"\n\
       sleep 1\n\
     done\n\
-    apt-get update -qq\n\
+    apt-get update -q 2>&1\n\
     apt-get install -y software-properties-common\n\
     add-apt-repository -y ppa:ondrej/php 2>/dev/null || true\n\
-    apt-get update -qq\n\
+    apt-get update -q 2>&1\n\
     apt-get install -y php__VER__-fpm || { echo \"ERROR: php__VER__-fpm install failed\"; exit 1; }\n\
     for pkg in php__VER__-mysql php__VER__-curl php__VER__-mbstring php__VER__-xml php__VER__-zip php__VER__-gd php__VER__-bcmath php__VER__-opcache; do\n\
       apt-get install -y \"$pkg\" || { echo \"SKIP: $pkg not available\"; SKIPPED=\"$SKIPPED $pkg\"; }\n\
     done\n\
+    SVC_NAME=php__VER__-fpm\n\
   else\n\
-    yum install -y --nogpgcheck --assumeyes epel-release 2>/dev/null || true\n\
-    yum install -y --nogpgcheck --assumeyes https://rpms.remirepo.net/enterprise/remi-release-$(rpm -E %{rhel}).rpm 2>/dev/null || true\n\
-    yum module enable -y php:remi-__VER__ 2>/dev/null || true\n\
-    yum install -y --nogpgcheck --assumeyes php__VER__-fpm || { echo \"ERROR: php__VER__-fpm install failed\"; exit 1; }\n\
-    for pkg in php__VER__-mysqlnd php__VER__-curl php__VER__-mbstring php__VER__-xml php__VER__-zip php__VER__-gd php__VER__-bcmath php__VER__-opcache; do\n\
-      yum install -y --nogpgcheck --assumeyes \"$pkg\" || { echo \"SKIP: $pkg not available\"; SKIPPED=\"$SKIPPED $pkg\"; }\n\
-    done\n\
+    # RHEL: try default DNF module stream first (RHEL 8+/Alibaba Cloud Linux 3)\n\
+    SVC_NAME=php-fpm\n\
+    dnf module enable -y php:__VER__ 2>/dev/null\n\
+    if dnf list available php-fpm 2>/dev/null | grep -q '^php-fpm'; then\n\
+      dnf install -y php-fpm || { echo \"ERROR: php-fpm install failed\"; exit 1; }\n\
+      for pkg in php-mysqlnd php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache; do\n\
+        dnf install -y \"$pkg\" || { echo \"SKIP: $pkg not available\"; SKIPPED=\"$SKIPPED $pkg\"; }\n\
+      done\n\
+    else\n\
+      # Fallback to Remi SCL\n\
+      yum install -y --nogpgcheck --assumeyes epel-release 2>/dev/null || true\n\
+      yum install -y --nogpgcheck --assumeyes https://rpms.remirepo.net/enterprise/remi-release-$(rpm -E %{rhel}).rpm 2>/dev/null || true\n\
+      yum module enable -y php:remi-__VER__ 2>/dev/null || true\n\
+      REMI_VER=$(echo __VER__ | tr -d '.')\n\
+      yum install -y --nogpgcheck --assumeyes php${REMI_VER}-php-fpm || { echo \"ERROR: php${REMI_VER}-php-fpm install failed\"; exit 1; }\n\
+      SVC_NAME=php${REMI_VER}-php-fpm\n\
+      for pkg in php${REMI_VER}-php-mysqlnd php${REMI_VER}-php-curl php${REMI_VER}-php-mbstring php${REMI_VER}-php-xml php${REMI_VER}-php-zip php${REMI_VER}-php-gd php${REMI_VER}-php-bcmath php${REMI_VER}-php-opcache; do\n\
+        yum install -y --nogpgcheck --assumeyes \"$pkg\" || { echo \"SKIP: $pkg not available\"; SKIPPED=\"$SKIPPED $pkg\"; }\n\
+      done\n\
+    fi\n\
   fi\n\
-  systemctl enable __SVC__ && systemctl start __SVC__\n\
+  systemctl enable $SVC_NAME && systemctl start $SVC_NAME\n\
   [ -n \"$SKIPPED\" ] && echo \"WARNING: skipped packages (not in repo):$SKIPPED\"\n\
 else\n\
   echo \"Removing PHP __VER__...\"\n\
-  systemctl stop __SVC__ 2>/dev/null || true\n\
-  systemctl disable __SVC__ 2>/dev/null || true\n\
+  systemctl stop $SVC_NAME 2>/dev/null || true\n\
+  systemctl disable $SVC_NAME 2>/dev/null || true\n\
   if [ \"$ID\" = \"ubuntu\" ] || [ \"$ID\" = \"debian\" ]; then\n\
     apt-get purge -y __EXT__ 2>/dev/null || true\n\
   else\n\
@@ -6098,7 +6168,7 @@ fi
 if [ "__ACTION__" = "install" ]; then
   echo "Installing Apache..."
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
-    apt-get update -qq
+    apt-get update -q 2>&1
     apt-get install -y apache2 apache2-utils
   else
     yum install -y httpd httpd-tools mod_ssl
@@ -6143,7 +6213,7 @@ if [ "{}" = "install" ]; then
   fi
   echo "Installing PostgreSQL..."
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
-    apt-get update -qq
+    apt-get update -q 2>&1
     apt-get install -y postgresql postgresql-contrib
   else
     yum install -y --nogpgcheck --assumeyes postgresql-server postgresql-contrib
@@ -6185,7 +6255,7 @@ if [ "{}" = "install" ]; then
       echo "Waiting for package manager lock... ($i/60)"
       sleep 1
     done
-    {} update -qq 2>/dev/null || true
+    {} update -y -q 2>&1 || true
     {} {} 2>&1
     {}
   fi
@@ -6713,21 +6783,16 @@ pub struct DockerImage {
 /// Check Docker installation status
 pub async fn check_docker(
     session: &SshSession,
-    cache: &SshCache,
-    session_id: &str,
+    _cache: &SshCache,
+    _session_id: &str,
 ) -> Result<DockerStatus, String> {
-    // ponytail: cache Docker status for connection lifetime
-    if let Some(cached) = cache.get(session_id, "docker_status", 0) {
-        if let Ok(status) = serde_json::from_str::<DockerStatus>(&cached) {
-            return Ok(status);
-        }
-    }
+    // ponytail: no cache — always real-time check since systemctl is-active is fast
     let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
             r#"
 if command -v docker &>/dev/null; then
     echo "INSTALLED=true"
     echo "VERSION=$(docker --version 2>/dev/null | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
-    echo "RUNNING=$(docker info &>/dev/null && echo true || echo false)"
+    echo "RUNNING=$(systemctl is-active docker 2>/dev/null || echo false)"
 else
     echo "INSTALLED=false"
     echo "VERSION="
@@ -6762,14 +6827,10 @@ fi
         } else if let Some(v) = line.strip_prefix("COMPOSE=") {
             status.compose_version = v.to_string();
         } else if let Some(v) = line.strip_prefix("RUNNING=") {
-            status.running = v == "true";
+            status.running = v == "active";
         }
     }
 
-    // ponytail: cache Docker status
-    if let Ok(json) = serde_json::to_string(&status) {
-        cache.put(session_id, "docker_status", json);
-    }
     Ok(status)
 }
 
@@ -7122,6 +7183,86 @@ pub async fn docker_container_remove(
     Ok(format!("Container {} removed successfully", safe_id))
 }
 
+/// Commit a container to a new image
+pub async fn docker_container_commit(
+    session: &SshSession,
+    cache: &SshCache,
+    session_id: &str,
+    container_id: &str,
+    image_name: &str,
+    message: &str,
+    mode: &str,
+    export_cmd: &str,
+    export_expose: &str,
+    app_handle: &AppHandle,
+) -> Result<String, String> {
+    let safe_id = container_id.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect::<String>();
+    // ponytail: sanitize image name — allow [a-z0-9._/:-]
+    let safe_image: String = image_name.chars().filter(|c| c.is_alphanumeric() || matches!(c, '.' | '_' | '/' | ':' | '-')).collect();
+    if safe_image.is_empty() {
+        return Err("Image name cannot be empty".to_string());
+    }
+
+    match mode {
+        "export" => {
+            // ponytail: build --change flags for CMD and EXPOSE
+            let mut changes = String::new();
+            if !export_cmd.trim().is_empty() {
+                changes.push_str(&format!("--change 'CMD {}' ", export_cmd.trim()));
+            }
+            if !export_expose.trim().is_empty() {
+                for port in export_expose.split(',') {
+                    let port = port.trim();
+                    if !port.is_empty() {
+                        changes.push_str(&format!("--change 'EXPOSE {}' ", port));
+                    }
+                }
+            }
+            let cmd = format!(
+                "echo '[export] Exporting container...'; docker export {} | docker import {} - {}",
+                safe_id, changes.trim(), safe_image
+            );
+            docker_stream_exec(session, cache, session_id, &cmd, 300, app_handle).await?;
+            Ok(format!("Container exported as {}", safe_image))
+        }
+        "clean" => {
+            let clean_cmd = format!(
+                "docker exec {} sh -c 'echo \"[clean] Clearing package cache...\"; apt-get clean 2>/dev/null; yum clean all 2>/dev/null; rm -rf /var/cache/apt/archives/* /var/cache/yum/* /tmp/* /var/tmp/* /var/log/*.log /var/log/*.gz 2>/dev/null; echo \"[clean] Done.\"'",
+                safe_id
+            );
+            docker_stream_exec(session, cache, session_id, &clean_cmd, 120, app_handle).await?;
+
+            let cmd = if message.is_empty() {
+                format!("docker commit {} {}", safe_id, safe_image)
+            } else {
+                let safe_msg = message.replace('"', "\\\"");
+                format!("docker commit -m \"{}\" {} {}", safe_msg, safe_id, safe_image)
+            };
+            let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 120).await?;
+            if code > 0 {
+                let err = if !stderr.trim().is_empty() { stderr.trim().to_string() } else if !stdout.trim().is_empty() { stdout.trim().to_string() } else { format!("Command failed with exit code {}", code) };
+                return Err(format!("Failed to commit container: {}", err));
+            }
+            Ok(format!("Container committed as {}", safe_image))
+        }
+        _ => {
+            // direct mode
+            let cmd = if message.is_empty() {
+                format!("docker commit {} {}", safe_id, safe_image)
+            } else {
+                let safe_msg = message.replace('"', "\\\"");
+                format!("docker commit -m \"{}\" {} {}", safe_msg, safe_id, safe_image)
+            };
+            let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 120).await?;
+            if code > 0 {
+                let err = if !stderr.trim().is_empty() { stderr.trim().to_string() } else if !stdout.trim().is_empty() { stdout.trim().to_string() } else { format!("Command failed with exit code {}", code) };
+                return Err(format!("Failed to commit container: {}", err));
+            }
+            Ok(format!("Container committed as {}", safe_image))
+        }
+    }
+}
+
 /// Get container logs
 pub async fn docker_container_logs(
     session: &SshSession,
@@ -7235,6 +7376,24 @@ pub async fn docker_image_remove(
         return Err(format!("Failed to remove image: {}", err));
     }
     Ok(format!("Image {} removed successfully", safe_id))
+}
+
+/// Load an image from a tar file on the server
+pub async fn docker_image_load(
+    session: &SshSession,
+    cache: &SshCache,
+    session_id: &str,
+    file_path: &str,
+    app_handle: &AppHandle,
+) -> Result<String, String> {
+    // ponytail: sanitize path — allow alphanumeric, /, ., -, _
+    let safe_path: String = file_path.chars().filter(|c| c.is_alphanumeric() || matches!(c, '/' | '.' | '-' | '_')).collect();
+    if safe_path.is_empty() || !safe_path.starts_with('/') {
+        return Err("Invalid file path".to_string());
+    }
+    let cmd = format!("docker load -i {}", safe_path);
+    docker_stream_exec(session, cache, session_id, &cmd, 600, app_handle).await?;
+    Ok(format!("Image loaded from {}", safe_path))
 }
 
 /// Run a container from an image

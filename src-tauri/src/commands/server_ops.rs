@@ -656,6 +656,25 @@ pub async fn server_docker_container_logs(
 }
 
 #[tauri::command]
+pub async fn server_docker_container_commit(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    app: tauri::AppHandle,
+    session_id: &str,
+    container_id: &str,
+    image_name: &str,
+    message: &str,
+    mode: &str,
+    export_cmd: &str,
+    export_expose: &str,
+) -> Result<String, String> {
+    let mgr = ssh_mgr.lock().await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::docker_container_commit(&session, &cache, session_id, container_id, image_name, message, mode, export_cmd, export_expose, &app).await
+}
+
+#[tauri::command]
 pub async fn server_docker_image_list(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
     session_id: &str,
@@ -692,6 +711,20 @@ pub async fn server_docker_image_remove(
     let cache = mgr.cache.clone();
     drop(mgr);
     server::docker_image_remove(&session, &cache, session_id, image_id).await
+}
+
+#[tauri::command]
+pub async fn server_docker_image_load(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    app: tauri::AppHandle,
+    session_id: &str,
+    file_path: &str,
+) -> Result<String, String> {
+    let mgr = ssh_mgr.lock().await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::docker_image_load(&session, &cache, session_id, file_path, &app).await
 }
 
 #[tauri::command]

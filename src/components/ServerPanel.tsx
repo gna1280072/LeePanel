@@ -208,11 +208,11 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
         </div>
         {/* Files always mounted to preserve state and avoid reload flash */}
         <div style={{ display: activeSection === 'files' ? 'block' : 'none', height: '100%' }}>
-          <FileBrowser sessionId={sessionId} connHost={connHost} jumpToPath={jumpToPath} ref={fileBrowserRef} onTerminalCommand={termRef?.current ? (cmd: string) => termRef.current?.sendCommand(cmd) : undefined} onCdHere={handleCdHere} onStartUpload={onStartUpload} onNavigateToSoftware={() => setActiveSection('software')} />
+          <FileBrowser sessionId={sessionId} connHost={connHost} jumpToPath={jumpToPath} ref={fileBrowserRef} onCdHere={handleCdHere} onStartUpload={onStartUpload} onNavigateToSoftware={() => setActiveSection('software')} />
         </div>
         {/* Sites always mounted to preserve list state */}
         <div style={{ display: activeSection === 'sites' ? 'block' : 'none', height: '100%' }}>
-          <SitesPanel sessionId={sessionId} onOpenFolder={handleInternalOpenFolder} />
+          <SitesPanel sessionId={sessionId} onOpenFolder={handleInternalOpenFolder} visible={activeSection === 'sites'} onNavigateToSoftware={() => setActiveSection('software')} />
         </div>
         {/* Software always mounted to preserve install progress state */}
         <div style={{ display: activeSection === 'software' ? 'block' : 'none', height: '100%' }}>

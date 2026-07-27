@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useTranslation } from 'react-i18next'
+import ServiceUnavailable from './ServiceUnavailable'
 
 interface DockerStatus {
   installed: boolean
@@ -58,6 +59,13 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
   const [containerLogs, setContainerLogs] = useState('')
   const [logsLoading, setLogsLoading] = useState(false)
   const [confirmDeleteContainer, setConfirmDeleteContainer] = useState<DockerContainer | null>(null)
+  const [commitContainer, setCommitContainer] = useState<DockerContainer | null>(null)
+  const [commitImageName, setCommitImageName] = useState('')
+  const [commitMessage, setCommitMessage] = useState('')
+  const [commitMode, setCommitMode] = useState<'direct' | 'clean' | 'export'>('clean')
+  const [commitExportCmd, setCommitExportCmd] = useState('')
+  const [commitExportExpose, setCommitExportExpose] = useState('')
+  const [committing, setCommitting] = useState(false)
 
   // Images
   const [images, setImages] = useState<DockerImage[]>([])
@@ -65,6 +73,9 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
   const [pullImageName, setPullImageName] = useState('')
   const [pulling, setPulling] = useState(false)
   const [confirmDeleteImage, setConfirmDeleteImage] = useState<DockerImage | null>(null)
+  const [loadImageModal, setLoadImageModal] = useState(false)
+  const [loadImagePath, setLoadImagePath] = useState('')
+  const [loadingImage, setLoadingImage] = useState(false)
   const [runImageModal, setRunImageModal] = useState<DockerImage | null>(null)
   const [runCommand, setRunCommand] = useState('')
   const [runningContainer, setRunningContainer] = useState(false)
@@ -223,6 +234,40 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
     }
   }
 
+  const handleOpenCommit = (container: DockerContainer) => {
+    setCommitContainer(container)
+    setCommitImageName(`${container.name}:latest`)
+    setCommitMessage('')
+    setCommitMode('clean')
+    setCommitExportCmd('')
+    setCommitExportExpose('')
+  }
+
+  const handleCommit = async () => {
+    if (!sessionId || !commitContainer || !commitImageName.trim()) return
+    clearMessages()
+    setCommitting(true)
+    if (commitMode !== 'direct') startStream()
+    try {
+      await invoke('server_docker_container_commit', {
+        sessionId,
+        containerId: commitContainer.id,
+        imageName: commitImageName.trim(),
+        message: commitMessage.trim(),
+        mode: commitMode,
+        exportCmd: commitExportCmd.trim(),
+        exportExpose: commitExportExpose.trim(),
+      })
+      setCommitContainer(null)
+      setSuccess(t('dockerPanel.commitSuccess', { name: commitImageName.trim() }))
+      await fetchImages()
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setCommitting(false)
+    }
+  }
+
   const handleViewLogs = async (container: DockerContainer) => {
     if (!sessionId) return
     setLogContainer(container)
@@ -264,6 +309,26 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
       await fetchImages()
     } catch (e) {
       setError(String(e))
+    }
+  }
+
+  const handleLoadImage = async () => {
+    if (!sessionId || !loadImagePath.trim()) return
+    clearMessages()
+    setLoadImageModal(false)
+    startStream()
+    setLoadingImage(true)
+    try {
+      await invoke('server_docker_image_load', {
+        sessionId,
+        filePath: loadImagePath.trim(),
+      })
+      setLoadImagePath('')
+      await fetchImages()
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setLoadingImage(false)
     }
   }
 
@@ -325,33 +390,19 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
           <div className="docker-status-loading">{t('dockerPanel.checking')}</div>
         ) : status ? (
           <>
-            <div className="docker-status-info">
-              <span className={`docker-status-badge ${status.installed && status.running ? 'active' : status.installed ? 'installed' : 'not-installed'}`}>
-                {status.installed
-                  ? status.running ? t('dockerPanel.running') : t('dockerPanel.stopped')
-                  : t('dockerPanel.installed')}
-              </span>
-              {status.installed && (
-                <>
-                  <span className="docker-version">Docker {status.version || 'unknown'}</span>
-                  {status.compose_version && <span className="docker-version">Compose {status.compose_version}</span>}
-                </>
-              )}
-            </div>
-            <div className="docker-status-actions">
-              {!status.installed ? (
-                <div className="docker-install-section" style={{ textAlign: 'center', padding: '24px 0' }}>
-                  <div style={{ marginBottom: '12px', fontSize: '14px' }}>
-                    {t('dockerPanel.notInstalled')}
-                  </div>
-                  {onNavigateToSoftware && (
-                    <button className="docker-btn primary" onClick={onNavigateToSoftware}>
-                      {t('dockerPanel.goToSoftware')}
-                    </button>
-                  )}
-                </div>
-              ) : null}
-            </div>
+            {/* ponytail: only show status badge when running — ServiceUnavailable covers the rest */}
+            {status.installed && status.running && (
+              <div className="docker-status-info">
+                <span className="docker-status-badge active">
+                  {t('dockerPanel.running')}
+                </span>
+                <span className="docker-version">Docker {status.version || 'unknown'}</span>
+                {status.compose_version && <span className="docker-version">Compose {status.compose_version}</span>}
+              </div>
+            )}
+            {(!status.installed || !status.running) && (
+              <ServiceUnavailable serviceName="Docker" onNavigate={onNavigateToSoftware} />
+            )}
           </>
         ) : null}
       </div>
@@ -426,6 +477,7 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
                           <button className="docker-action-btn" onClick={() => handleContainerAction(c, 'start')} disabled={!!containerAction} title={t('dockerPanel.start')}>▶</button>
                         )}
                         <button className="docker-action-btn" onClick={() => handleViewLogs(c)} disabled={!!containerAction} title={t('dockerPanel.logs')}>📋</button>
+                        <button className="docker-action-btn" onClick={() => handleOpenCommit(c)} disabled={!!containerAction} title={t('dockerPanel.commit')}>📦</button>
                         <button className="docker-action-btn danger" onClick={() => setConfirmDeleteContainer(c)} disabled={!!containerAction} title={t('dockerPanel.delete')}>🗑</button>
                         {containerAction === c.id + 'stop' || containerAction === c.id + 'start' || containerAction === c.id + 'restart' || containerAction === c.id + 'pause' || containerAction === c.id + 'unpause' || containerAction === c.id + 'delete' ? (
                           <span className="docker-action-loading">...</span>
@@ -452,6 +504,9 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
                 />
                 <button className="docker-btn primary" onClick={handlePullImage} disabled={pulling || !pullImageName.trim()}>
                   {pulling ? t('dockerPanel.pulling') : t('dockerPanel.pullImage')}
+                </button>
+                <button className="docker-btn" onClick={() => setLoadImageModal(true)} disabled={loadingImage} title={t('dockerPanel.loadImage')}>
+                  📂 {t('dockerPanel.loadImage')}
                 </button>
               </div>
 
@@ -621,6 +676,119 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
             <div className="docker-confirm-actions">
               <button className="docker-btn" onClick={() => setConfirmDeleteImage(null)}>{t('dockerPanel.cancel')}</button>
               <button className="docker-btn danger" onClick={() => handleDeleteImage(confirmDeleteImage)}>{t('dockerPanel.delete')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Commit Container Modal */}
+      {commitContainer && (
+        <div className="docker-modal-overlay">
+          <div className="docker-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="modal-close-btn"
+              onClick={() => setCommitContainer(null)}
+              title={t('dockerPanel.close')}
+            >×</button>
+            <div className="docker-confirm-title">{t('dockerPanel.commitTitle', { name: commitContainer.name })}</div>
+            <div className="docker-confirm-msg">
+              <label style={{ display: 'block', marginBottom: '8px' }}>{t('dockerPanel.commitImageName')}</label>
+              <input
+                className="docker-pull-input"
+                value={commitImageName}
+                onChange={(e) => setCommitImageName(e.target.value)}
+                placeholder="myimage:v1.0"
+                disabled={committing}
+                style={{ marginBottom: '12px' }}
+              />
+              {commitMode !== 'export' && (
+                <>
+                  <label style={{ display: 'block', marginBottom: '8px' }}>{t('dockerPanel.commitMsgLabel')}</label>
+                  <input
+                    className="docker-pull-input"
+                    value={commitMessage}
+                    onChange={(e) => setCommitMessage(e.target.value)}
+                    placeholder={t('dockerPanel.commitMsgPlaceholder')}
+                    disabled={committing}
+                    style={{ marginBottom: '12px' }}
+                  />
+                </>
+              )}
+              <label style={{ display: 'block', marginBottom: '8px' }}>{t('dockerPanel.commitModeLabel')}</label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', cursor: 'pointer' }}>
+                <input type="radio" name="commitMode" checked={commitMode === 'export'} onChange={() => setCommitMode('export')} disabled={committing} />
+                {t('dockerPanel.commitExport')}
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', cursor: 'pointer' }}>
+                <input type="radio" name="commitMode" checked={commitMode === 'clean'} onChange={() => setCommitMode('clean')} disabled={committing} />
+                {t('dockerPanel.commitCleanYes')}
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', cursor: 'pointer' }}>
+                <input type="radio" name="commitMode" checked={commitMode === 'direct'} onChange={() => setCommitMode('direct')} disabled={committing} />
+                {t('dockerPanel.commitCleanNo')}
+              </label>
+              <p style={{ fontSize: '12px', opacity: 0.7, margin: '4px 0 0 0' }}>
+                {commitMode === 'export' ? t('dockerPanel.commitExportHint') : t('dockerPanel.commitCleanHint')}
+              </p>
+              {commitMode === 'export' && (
+                <>
+                  <label style={{ display: 'block', marginTop: '12px', marginBottom: '8px' }}>{t('dockerPanel.commitExportCmd')}</label>
+                  <input
+                    className="docker-pull-input"
+                    value={commitExportCmd}
+                    onChange={(e) => setCommitExportCmd(e.target.value)}
+                    placeholder="nginx -g 'daemon off;'"
+                    disabled={committing}
+                    style={{ marginBottom: '12px' }}
+                  />
+                  <label style={{ display: 'block', marginBottom: '8px' }}>{t('dockerPanel.commitExportExpose')}</label>
+                  <input
+                    className="docker-pull-input"
+                    value={commitExportExpose}
+                    onChange={(e) => setCommitExportExpose(e.target.value)}
+                    placeholder="80/tcp, 443/tcp"
+                    disabled={committing}
+                  />
+                </>
+              )}
+            </div>
+            <div className="docker-confirm-actions">
+              <button className="docker-btn" onClick={() => setCommitContainer(null)} disabled={committing}>{t('dockerPanel.cancel')}</button>
+              <button className="docker-btn primary" onClick={handleCommit} disabled={committing || !commitImageName.trim()}>
+                {committing ? t('dockerPanel.committing') : t('dockerPanel.commit')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Load Image Modal */}
+      {loadImageModal && (
+        <div className="docker-modal-overlay">
+          <div className="docker-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="modal-close-btn"
+              onClick={() => setLoadImageModal(false)}
+              title={t('dockerPanel.close')}
+            >×</button>
+            <div className="docker-confirm-title">{t('dockerPanel.loadImageTitle')}</div>
+            <div className="docker-confirm-msg">
+              <label style={{ display: 'block', marginBottom: '8px' }}>{t('dockerPanel.loadImagePath')}</label>
+              <input
+                className="docker-pull-input"
+                value={loadImagePath}
+                onChange={(e) => setLoadImagePath(e.target.value)}
+                placeholder="/root/myimage.tar.gz"
+                onKeyDown={(e) => { if (e.key === 'Enter' && loadImagePath.trim()) handleLoadImage() }}
+                autoFocus
+              />
+              <p style={{ fontSize: '12px', opacity: 0.7, margin: '8px 0 0 0' }}>{t('dockerPanel.loadImageHint')}</p>
+            </div>
+            <div className="docker-confirm-actions">
+              <button className="docker-btn" onClick={() => setLoadImageModal(false)}>{t('dockerPanel.cancel')}</button>
+              <button className="docker-btn primary" onClick={handleLoadImage} disabled={!loadImagePath.trim()}>
+                {t('dockerPanel.loadImage')}
+              </button>
             </div>
           </div>
         </div>

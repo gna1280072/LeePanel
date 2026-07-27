@@ -220,11 +220,16 @@ function App() {
     }
 
     // ponytail: batch small files by parent directory into tar archives — N SFTP ops → 1 per dir
+    // ponytail: single file always uses chunked upload; tar batch only for 2+ small files
     const smallFiles: typeof files = []
     const largeFiles: typeof files = []
     for (const f of files) {
       if (f.file.size < SMALL_THRESHOLD && f.file.size > 0) smallFiles.push(f)
       else largeFiles.push(f)
+    }
+    if (smallFiles.length === 1) {
+      largeFiles.push(...smallFiles)
+      smallFiles.length = 0
     }
 
     if (smallFiles.length > 1) {
@@ -668,8 +673,9 @@ function App() {
     return { type: 'other', message: errorMsg }
   }
 
-  const handleSelectConnection = (_conn: SidebarConnection) => {
-    // ponytail: no-op, kept for interface compatibility
+  const handleSelectConnection = (conn: SidebarConnection) => {
+    // ponytail: single-click switches to server if connected, otherwise connects
+    handleDirectConnect(conn)
   }
 
   const handleDirectConnect = useCallback(async (conn: SidebarConnection) => {
@@ -765,7 +771,7 @@ function App() {
       {sidebarVisible && (
         <>
           <div style={{ width: sidebarWidth, minWidth: sidebarWidth, flexShrink: 0, display: 'flex', position: 'relative' }}>
-            <Sidebar onSelect={handleSelectConnection} onConnect={handleDirectConnect} onNew={() => {}} onCreateConnection={handleCreateConnection} refreshKey={sidebarRefreshKey} connectedIds={Array.from(connectedConfigIds)} connectingServerId={connectingServerId} />
+            <Sidebar onSelect={handleSelectConnection} onConnect={handleDirectConnect} onNew={() => {}} onCreateConnection={handleCreateConnection} refreshKey={sidebarRefreshKey} connectedIds={Array.from(connectedConfigIds)} connectingServerId={connectingServerId} activeConfigId={activeConfigId} />
             {/* Sidebar Toggle Button */}
             <button 
               className="sidebar-toggle-btn visible"

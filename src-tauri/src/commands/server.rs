@@ -452,6 +452,7 @@ pub async fn server_save_db_backup_to_local(
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
+    drop(mgr);
     let bytes = server::download_db_backup(&session, &cache, session_id, backup_filename).await?;
     std::fs::write(&local_str, &bytes).map_err(|e| format!("Failed to write local file: {}", e))?;
     Ok(local_str)

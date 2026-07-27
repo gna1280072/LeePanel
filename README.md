@@ -22,7 +22,7 @@
 
 LeePanel — Free and open-source, the next-generation Linux server management panel.
 
-Traditional Linux/VPS management panels frequently suffer from security vulnerabilities, causing endless headaches for server administrators.
+Traditional Linux/VPS control panels frequently suffer from security vulnerabilities, causing endless headaches for server administrators.
 
 **LeePanel was built to solve this once and for all.**
 
@@ -64,9 +64,9 @@ If you have any suggestions or feedback, feel free to share them in [GitHub Disc
 
 | Platform | Size |
 |----------|------|
-| Windows | ~6 MB |
-| macOS | ~6 MB |
-| Linux | ~6 MB |
+| Windows | 6 MB + |
+| macOS | 6 MB +|
+| Linux | 6 MB + |
 
 ## 🖥️ Supported Servers
 > 🖥️ All features are currently tested on **Ubuntu** / **Debian**. More distributions coming soon, stay tuned...

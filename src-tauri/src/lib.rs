@@ -48,7 +48,7 @@ pub fn run() {
             commands::ssh::ssh_delete_file, commands::ssh::ssh_delete_files_batch, commands::ssh::ssh_create_dir, commands::ssh::ssh_rename_file, commands::ssh::ssh_rename_files_batch,
             commands::ssh::ssh_copy_file, commands::ssh::ssh_copy_files_batch, commands::ssh::ssh_copy_dir, commands::ssh::ssh_set_permissions, commands::ssh::ssh_set_permissions_batch,
             commands::ssh::ssh_check_space, commands::ssh::ssh_upload, commands::ssh::ssh_upload_chunk, commands::ssh::ssh_sftp_reset, commands::ssh::ssh_upload_files_batch, commands::ssh::ssh_create_dirs_batch, commands::ssh::ssh_exec, commands::ssh::ssh_download_file,
-            commands::ssh::ssh_download_to_local, commands::ssh::ssh_save_as_local,
+            commands::ssh::ssh_download_to_local, commands::ssh::ssh_save_as_local, commands::ssh::ssh_save_pause, commands::ssh::ssh_save_resume, commands::ssh::ssh_save_stop,
             commands::ssh::ssh_compress, commands::ssh::ssh_extract, commands::ssh::ssh_reconnect,
             commands::ssh::ssh_generate_keypair, commands::ssh::save_key_to_local,
             // Config
@@ -103,8 +103,8 @@ pub fn run() {
             // Docker
             commands::server_ops::server_check_docker, commands::server_ops::server_install_docker, commands::server_ops::server_uninstall_docker,
             commands::server_ops::server_docker_container_list, commands::server_ops::server_docker_container_action,
-            commands::server_ops::server_docker_container_remove, commands::server_ops::server_docker_container_logs,
-            commands::server_ops::server_docker_image_list, commands::server_ops::server_docker_image_pull, commands::server_ops::server_docker_image_remove, commands::server_ops::server_docker_image_run,
+            commands::server_ops::server_docker_container_remove, commands::server_ops::server_docker_container_logs, commands::server_ops::server_docker_container_commit,
+            commands::server_ops::server_docker_image_list, commands::server_ops::server_docker_image_pull, commands::server_ops::server_docker_image_remove, commands::server_ops::server_docker_image_load, commands::server_ops::server_docker_image_run,
             commands::server_ops::server_docker_get_mirror_config, commands::server_ops::server_docker_set_mirror_config,
             // Cache
             commands::server_ops::server_cache_invalidate,

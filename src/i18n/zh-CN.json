@@ -308,7 +308,7 @@
     "addedToFavorites": "已添加到收藏夹: {{path}}",
     "alreadyInFavorites": "已在收藏夹中",
     "removedFromFavorites": "已从收藏夹移除: {{path}}",
-    "binaryOrLarge": "二进制或大文件 — 请使用终端",
+    "binaryOrLarge": "二进制或大文件 — 请使用终端\n或右键「保存到本地电脑」打开",
     "downloadComplete": "下载完成",
     "downloadFailed": "下载失败: {{error}}",
     "movedItems": "已移动 {{count}} 项",
@@ -704,7 +704,9 @@
     "installing": "安装中...",
     "freeInstall": "免费安装 SSL",
     "connectToManage": "连接服务器以管理 SSL 证书",
-    "startingSetup": "开始为 {{domain}} 配置 SSL..."
+    "startingSetup": "开始为 {{domain}} 配置 SSL...",
+    "infoNotice": "免费证书使用 Let's Encrypt，由 certbot 管理和安装，证书有效期 3 个月，到期后 certbot 会自动免费续期。",
+    "infoWarning": "安装免费 SSL 证书前，您需要先将域名解析到此服务器！"
   },
   "bbr": {
     "title": "BBR 加速",
@@ -808,6 +810,7 @@
     "addSourceSuccess": "软件源添加成功",
     "importantNotice": "重要：软件安装成功后，需要断开重新连接服务器，才能激活使用！",
     "viewFullOutput": "点击查看完整终端输出",
+    "pkgLockHint": "系统正在自动升级，请等待升级完成再安装，这不是错误，通常需要等待5-10分钟。",
     "customCategory": "自定义",
     "addCustomSoftware": "添加软件",
     "addCustomSoftwareTitle": "添加自定义软件",

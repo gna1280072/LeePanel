@@ -308,7 +308,7 @@
     "addedToFavorites": "Added to favorites: {{path}}",
     "alreadyInFavorites": "Already in favorites",
     "removedFromFavorites": "Removed from favorites: {{path}}",
-    "binaryOrLarge": "Binary or large file — use terminal",
+    "binaryOrLarge": "Binary or large file — use terminal\nOr right-click \"Save to local computer\" to download and open",
     "downloadComplete": "Download complete",
     "downloadFailed": "Download failed: {{error}}",
     "movedItems": "Moved {{count}} item",
@@ -704,7 +704,9 @@
     "installing": "Installing...",
     "freeInstall": "FREE Install SSL",
     "connectToManage": "Connect to a server to manage SSL certificates",
-    "startingSetup": "Starting SSL setup for {{domain}}..."
+    "startingSetup": "Starting SSL setup for {{domain}}...",
+    "infoNotice": "Free certificates use Let's Encrypt, managed and installed via certbot. Certificates are valid for 3 months and certbot will automatically renew them for free.",
+    "infoWarning": "Before installing a free SSL certificate, you must first point your domain DNS to this server!"
   },
   "bbr": {
     "title": "BBR Acceleration",
@@ -808,6 +810,7 @@
     "addSourceSuccess": "Source added successfully",
     "importantNotice": "IMPORTANT: After software installation succeeds, you need to disconnect and reconnect to the server to activate it!",
     "viewFullOutput": " Click to view full terminal output",
+    "pkgLockHint": "System is auto-updating, please wait for the update to complete before installing. This is not an error, it usually takes 5-10 minutes.",
     "customCategory": "Custom",
     "addCustomSoftware": "Add Software",
     "addCustomSoftwareTitle": "Add Custom Software",

@@ -308,7 +308,7 @@
     "addedToFavorites": "Ajouté aux favoris : {{path}}",
     "alreadyInFavorites": "Déjà dans les favoris",
     "removedFromFavorites": "Retiré des favoris : {{path}}",
-    "binaryOrLarge": "Fichier binaire ou volumineux — utilisez le terminal",
+    "binaryOrLarge": "Fichier binaire ou volumineux — utilisez le terminal\nOu clic droit \"Enregistrer sur l'ordinateur local\" pour télécharger et ouvrir",
     "downloadComplete": "Téléchargement terminé",
     "downloadFailed": "Échec du téléchargement : {{error}}",
     "movedItems": "{{count}} élément déplacé",
@@ -704,7 +704,9 @@
     "installing": "Installation...",
     "freeInstall": "Installer SSL GRATUITEMENT",
     "connectToManage": "Connectez-vous à un serveur pour gérer les certificats SSL",
-    "startingSetup": "Démarrage de la configuration SSL pour {{domain}}..."
+    "startingSetup": "Démarrage de la configuration SSL pour {{domain}}...",
+    "infoNotice": "Les certificats gratuits utilisent Let's Encrypt, gérés et installés via certbot. Les certificats sont valides 3 mois et certbot les renouvelle automatiquement gratuitement.",
+    "infoWarning": "Avant d'installer un certificat SSL gratuit, vous devez d'abord pointer votre domaine vers ce serveur !"
   },
   "bbr": {
     "title": "Accélération BBR",
@@ -798,6 +800,7 @@
     "addSourceSuccess": "Source ajoutée avec succès",
     "importantNotice": "IMPORTANT : Après l'installation réussie d'un logiciel, vous devez vous déconnecter et vous reconnecter au serveur pour l'activer !",
     "viewFullOutput": " Cliquez pour voir la sortie complète du terminal",
+    "pkgLockHint": "Le système est en cours de mise à jour automatique. Veuillez attendre la fin de la mise à jour avant d'installer. Ce n'est pas une erreur, cela prend généralement 5 à 10 minutes.",
     "customCategory": "Personnalisé",
     "addCustomSoftware": "Ajouter un logiciel",
     "addCustomSoftwareTitle": "Ajouter un logiciel personnalisé",

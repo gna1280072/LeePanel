@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
+import { systemToAppLocale } from '../src/i18n/locale'
 
 const I18N_DIR = join(__dirname, '..', 'src', 'i18n')
 
@@ -50,4 +51,32 @@ describe('i18n key consistency', () => {
       }
     })
   }
+})
+
+describe('systemToAppLocale', () => {
+  it('maps Chinese locales to simplified/traditional', () => {
+    expect(systemToAppLocale('zh-CN')).toBe('zh-CN')
+    expect(systemToAppLocale('zh')).toBe('zh-CN')
+    expect(systemToAppLocale('zh-Hans')).toBe('zh-CN')
+    expect(systemToAppLocale('zh-TW')).toBe('zh-TW')
+    expect(systemToAppLocale('zh-HK')).toBe('zh-TW')
+    expect(systemToAppLocale('zh-Hant')).toBe('zh-TW')
+  })
+
+  it('maps other supported locales to their base code', () => {
+    expect(systemToAppLocale('ja-JP')).toBe('ja')
+    expect(systemToAppLocale('fr-FR')).toBe('fr')
+    expect(systemToAppLocale('de-DE')).toBe('de')
+    expect(systemToAppLocale('ru-RU')).toBe('ru')
+    expect(systemToAppLocale('ar-EG')).toBe('ar')
+    expect(systemToAppLocale('pt-BR')).toBe('pt')
+    expect(systemToAppLocale('ko-KR')).toBe('ko')
+  })
+
+  it('returns null for English and unsupported locales (keep en default)', () => {
+    expect(systemToAppLocale('en-US')).toBeNull()
+    expect(systemToAppLocale('en-GB')).toBeNull()
+    expect(systemToAppLocale('es-ES')).toBeNull()
+    expect(systemToAppLocale('it-IT')).toBeNull()
+  })
 })

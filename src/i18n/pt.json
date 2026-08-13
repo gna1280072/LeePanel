@@ -308,7 +308,7 @@
     "addedToFavorites": "Adicionado aos favoritos: {{path}}",
     "alreadyInFavorites": "Já está nos favoritos",
     "removedFromFavorites": "Removido dos favoritos: {{path}}",
-    "binaryOrLarge": "Arquivo binário ou grande — use o terminal",
+    "binaryOrLarge": "Arquivo binário ou grande — use o terminal\nOu clique com o botão direito \"Salvar no computador local\" para baixar e abrir",
     "downloadComplete": "Download concluído",
     "downloadFailed": "Falha no download: {{error}}",
     "movedItems": "{{count}} item movido",
@@ -704,7 +704,9 @@
     "installing": "Instalando...",
     "freeInstall": "Instalar SSL GRÁTIS",
     "connectToManage": "Conecte-se a um servidor para gerenciar certificados SSL",
-    "startingSetup": "Iniciando configuração SSL para {{domain}}..."
+    "startingSetup": "Iniciando configuração SSL para {{domain}}...",
+    "infoNotice": "Os certificados gratuitos usam Let's Encrypt, gerenciados e instalados via certbot. Os certificados são válidos por 3 meses e o certbot os renova automaticamente de forma gratuita.",
+    "infoWarning": "Antes de instalar um certificado SSL gratuito, você deve primeiro apontar seu domínio para este servidor!"
   },
   "bbr": {
     "title": "Aceleração BBR",
@@ -798,6 +800,7 @@
     "addSourceSuccess": "Fonte adicionada com sucesso",
     "importantNotice": "IMPORTANTE: Após a instalação bem-sucedida do software, você precisa desconectar e reconectar ao servidor para ativá-lo!",
     "viewFullOutput": " Clique para ver a saída completa do terminal",
+    "pkgLockHint": "O sistema está atualizando automaticamente. Aguarde a conclusão da atualização antes de instalar. Isso não é um erro, geralmente leva de 5 a 10 minutos.",
     "customCategory": "Personalizado",
     "addCustomSoftware": "Adicionar Software",
     "addCustomSoftwareTitle": "Adicionar Software Personalizado",

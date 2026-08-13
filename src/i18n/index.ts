@@ -1,6 +1,7 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import { invoke } from '@tauri-apps/api/core'
+import { systemToAppLocale } from './locale'
 import en from './en.json'
 import zhCN from './zh-CN.json'
 import zhTW from './zh-TW.json'
@@ -30,9 +31,14 @@ i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false },
 })
 
-// ponytail: async load persisted language from SQLite, switch if different
+// ponytail: prefer saved language from SQLite; on first run auto-detect from
+// the system locale (navigator.language follows the OS display language) and persist it
 invoke<string>('ui_state_get', { key: 'language' })
-  .then(lang => { if (lang && lang !== 'en') i18n.changeLanguage(lang) })
+  .then(saved => {
+    const lang = saved || systemToAppLocale(navigator.language)
+    if (lang && lang !== 'en') i18n.changeLanguage(lang)
+    if (!saved && lang) invoke('ui_state_set', { key: 'language', value: lang }).catch(() => {})
+  })
   .catch(() => {})
 
 export default i18n

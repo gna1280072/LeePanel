@@ -27,6 +27,9 @@ dist-ssr
 target/
 src-tauri/target/
 
+# Local cargo config (target-dir points to local D: drive, breaks CI on mac/linux)
+src-tauri/.cargo/config.toml
+
 # Build artifacts
 *.exe
 *.msi

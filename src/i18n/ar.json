@@ -308,7 +308,7 @@
     "addedToFavorites": "أُضيف إلى المفضلة: {{path}}",
     "alreadyInFavorites": "موجود بالفعل في المفضلة",
     "removedFromFavorites": "أُزيل من المفضلة: {{path}}",
-    "binaryOrLarge": "ملف ثنائي أو كبير — استخدم الطرفية",
+    "binaryOrLarge": "ملف ثنائي أو كبير — استخدم الطرفية\nأو انقر بزر الماوس الأيمن \"حفظ على الكمبيوتر المحلي\" للتنزيل والفتح",
     "downloadComplete": "اكتمل التحميل",
     "downloadFailed": "فشل التحميل: {{error}}",
     "movedItems": "نُقل {{count}} عنصر",
@@ -704,7 +704,9 @@
     "installing": "جارٍ التثبيت...",
     "freeInstall": "تثبيت SSL مجاناً",
     "connectToManage": "اتصل بخادم لإدارة شهادات SSL",
-    "startingSetup": "بدء إعداد SSL لـ {{domain}}..."
+    "startingSetup": "بدء إعداد SSL لـ {{domain}}...",
+    "infoNotice": "تستخدم الشهادات المجانية Let's Encrypt، وتُدار وتُثبّت عبر certbot. صلاحية الشهادة 3 أشهر ويقوم certbot بتجديدها تلقائياً مجاناً.",
+    "infoWarning": "قبل تثبيت شهادة SSL المجانية، يجب أولاً توجيه نطاقك إلى هذا الخادم!"
   },
   "bbr": {
     "title": "تسريع BBR",
@@ -798,6 +800,7 @@
     "addSourceSuccess": "تمت إضافة المصدر بنجاح",
     "importantNotice": "مهم: بعد نجاح تثبيت البرمجيات، تحتاج إلى قطع الاتصال وإعادة الاتصال بالخادم لتفعيله!",
     "viewFullOutput": " انقر لعرض إخراج الطرفية الكامل",
+    "pkgLockHint": "النظام يقوم بالتحديث التلقائي. يرجى الانتظار حتى اكتمال التحديث قبل التثبيت. هذا ليس خطأ، وعادة ما يستغرق 5-10 دقائق.",
     "customCategory": "مخصص",
     "addCustomSoftware": "إضافة برنامج",
     "addCustomSoftwareTitle": "إضافة برنامج مخصص",

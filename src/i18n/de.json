@@ -308,7 +308,7 @@
     "addedToFavorites": "Zu Favoriten hinzugefügt: {{path}}",
     "alreadyInFavorites": "Bereits in Favoriten",
     "removedFromFavorites": "Aus Favoriten entfernt: {{path}}",
-    "binaryOrLarge": "Binärdatei oder große Datei — bitte Terminal verwenden",
+    "binaryOrLarge": "Binärdatei oder große Datei — bitte Terminal verwenden\nOder Rechtsklick \"Auf lokalen Computer speichern\" zum Herunterladen und Öffnen",
     "downloadComplete": "Download abgeschlossen",
     "downloadFailed": "Download fehlgeschlagen: {{error}}",
     "movedItems": "{{count}} Element verschoben",
@@ -704,7 +704,9 @@
     "installing": "Wird installiert...",
     "freeInstall": "SSL KOSTENLOS installieren",
     "connectToManage": "Mit einem Server verbinden, um SSL-Zertifikate zu verwalten",
-    "startingSetup": "SSL-Einrichtung für {{domain}} wird gestartet..."
+    "startingSetup": "SSL-Einrichtung für {{domain}} wird gestartet...",
+    "infoNotice": "Kostenlose Zertifikate verwenden Let's Encrypt, verwaltet und installiert über certbot. Zertifikate sind 3 Monate gültig und certbot verlängert sie automatisch kostenlos.",
+    "infoWarning": "Vor der Installation eines kostenlosen SSL-Zertifikats müssen Sie Ihre Domain auf diesen Server verweisen!"
   },
   "bbr": {
     "title": "BBR-Beschleunigung",
@@ -798,6 +800,7 @@
     "addSourceSuccess": "Quelle erfolgreich hinzugefügt",
     "importantNotice": "WICHTIG: Nach erfolgreicher Software-Installation müssen Sie die Verbindung zum Server trennen und erneut herstellen, um sie zu aktivieren!",
     "viewFullOutput": " Klicken, um die vollständige Terminal-Ausgabe anzuzeigen",
+    "pkgLockHint": "Das System wird automatisch aktualisiert. Bitte warten Sie, bis das Update abgeschlossen ist, bevor Sie installieren. Dies ist kein Fehler, es dauert normalerweise 5-10 Minuten.",
     "customCategory": "Benutzerdefiniert",
     "addCustomSoftware": "Software hinzufügen",
     "addCustomSoftwareTitle": "Benutzerdefinierte Software hinzufügen",

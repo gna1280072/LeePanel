@@ -308,7 +308,7 @@
     "addedToFavorites": "お気に入りに追加: {{path}}",
     "alreadyInFavorites": "既にお気に入りです",
     "removedFromFavorites": "お気に入りから削除: {{path}}",
-    "binaryOrLarge": "バイナリまたは大容量ファイル — ターミナルを使用してください",
+    "binaryOrLarge": "バイナリまたは大容量ファイル — ターミナルを使用してください\nまたは右クリック「ローカルPCに保存」でダウンロードして開く",
     "downloadComplete": "ダウンロード完了",
     "downloadFailed": "ダウンロード失敗: {{error}}",
     "movedItems": "{{count}} 件を移動しました",
@@ -704,7 +704,9 @@
     "installing": "インストール中...",
     "freeInstall": "SSL を無料インストール",
     "connectToManage": "サーバーに接続して SSL 証明書を管理",
-    "startingSetup": "{{domain}} の SSL 設定を開始..."
+    "startingSetup": "{{domain}} の SSL 設定を開始...",
+    "infoNotice": "無料証明書は Let's Encrypt を使用し、certbot で管理・インストールされます。証明書の有効期間は 3 ヶ月で、certbot が自動的に無料更新します。",
+    "infoWarning": "無料 SSL 証明書をインストールする前に、ドメインをこのサーバーに向けてください！"
   },
   "bbr": {
     "title": "BBR 高速化",
@@ -798,6 +800,7 @@
     "addSourceSuccess": "パッケージソースが追加されました",
     "importantNotice": "重要：ソフトウェアのインストール成功後、サーバーを切断して再接続する必要があります！",
     "viewFullOutput": "クリックして完全なターミナル出力を表示",
+    "pkgLockHint": "システムが自動アップデート中です。インストール前にアップデートが完了するまでお待ちください。これはエラーではなく、通常5〜10分かかります。",
     "customCategory": "カスタム",
     "addCustomSoftware": "ソフトウェアを追加",
     "addCustomSoftwareTitle": "カスタムソフトウェアを追加",

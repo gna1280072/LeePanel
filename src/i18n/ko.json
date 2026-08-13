@@ -308,7 +308,7 @@
     "addedToFavorites": "즐겨찾기에 추가됨: {{path}}",
     "alreadyInFavorites": "이미 즐겨찾기에 있음",
     "removedFromFavorites": "즐겨찾기에서 제거됨: {{path}}",
-    "binaryOrLarge": "바이너리 또는 대용량 파일 — 터미널을 사용하세요",
+    "binaryOrLarge": "바이너리 또는 대용량 파일 — 터미널을 사용하세요\n또는 마우스 우클릭 \"로컬 컴퓨터에 저장\"으로 다운로드하여 열기",
     "downloadComplete": "다운로드 완료",
     "downloadFailed": "다운로드 실패: {{error}}",
     "movedItems": "{{count}} 항목 이동됨",
@@ -704,7 +704,9 @@
     "installing": "설치 중...",
     "freeInstall": "무료 SSL 설치",
     "connectToManage": "SSL 인증서를 관리하려면 서버에 연결하세요",
-    "startingSetup": "{{domain}} 에 대한 SSL 설정 시작..."
+    "startingSetup": "{{domain}} 에 대한 SSL 설정 시작...",
+    "infoNotice": "무료 인증서는 Let's Encrypt를 사용하며 certbot으로 관리 및 설치됩니다. 인증서 유효 기간은 3개월이며 certbot이 자동으로 무료 갱신합니다.",
+    "infoWarning": "무료 SSL 인증서를 설치하기 전에 도메인을 이 서버로 연결해야 합니다!"
   },
   "bbr": {
     "title": "BBR 가속",
@@ -798,6 +800,7 @@
     "addSourceSuccess": "소스가 성공적으로 추가되었습니다",
     "importantNotice": "중요: 소프트웨어 설치 성공 후, 활성화하려면 서버 연결을 끊었다가 다시 연결해야 합니다!",
     "viewFullOutput": " 전체 터미널 출력을 보려면 클릭하세요",
+    "pkgLockHint": "시스템이 자동 업데이트 중입니다. 설치를 완료할 때까지 기다려 주세요. 이것은 오류가 아니며 보통 5-10분 정도 소요됩니다.",
     "customCategory": "사용자 정의",
     "addCustomSoftware": "소프트웨어 추가",
     "addCustomSoftwareTitle": "사용자 정의 소프트웨어 추가",

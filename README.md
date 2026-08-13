@@ -7,6 +7,7 @@
   <a href="https://github.com/gna1280072/LeePanel/releases"><img src="https://img.shields.io/github/v/release/gna1280072/LeePanel?style=flat-square" alt="Release"></a>
   <a href="https://github.com/gna1280072/LeePanel/releases"><img src="https://img.shields.io/github/downloads/gna1280072/LeePanel/total?style=flat-square" alt="Downloads"></a>
   <a href="https://github.com/gna1280072/LeePanel/blob/main/LICENSE"><img src="https://img.shields.io/github/license/gna1280072/LeePanel?style=flat-square" alt="License"></a>
+  <a href="https://linux.do"><img src="https://img.shields.io/badge/Linux%20DO-Community-30363D?style=flat-square&logo=linux" alt="Linux DO"></a>
 </p>
 
 <p align="center">
@@ -21,6 +22,8 @@
 [中文文档](README.zh-CN.md) | [ Download](https://github.com/gna1280072/LeePanel/releases)
 
 LeePanel — Free and open-source, the next-generation Linux server management panel.
+
+LeePanel 是一款开源的Linux服务器管理面板桌面端软件，所有操作通过本地 SSH 完成、服务器上零安装零残留，从根本上消除了传统web面板的安全风险。
 
 Traditional Linux/VPS control panels frequently suffer from security vulnerabilities, causing endless headaches for server administrators.
 
@@ -68,6 +71,20 @@ If you have any suggestions or feedback, feel free to share them in [GitHub Disc
 | macOS | 6 MB +|
 | Linux | 6 MB + |
 
+## 📥 Download
+
+| Platform | Download |
+|----------|----------|
+| Windows  | [Download for Windows](https://github.com/gna1280072/LeePanel/releases) |
+| macOS    | [Download for macOS](https://github.com/gna1280072/LeePanel/releases) |
+| Linux    | [Download for Linux](https://github.com/gna1280072/LeePanel/releases) |
+
+<p align="center">
+  <a href="https://github.com/gna1280072/LeePanel/releases">
+    <img src="https://img.shields.io/badge/Download-Latest%20Version-2da44e?style=for-the-badge&logo=github" alt="Download Latest">
+  </a>
+</p>
+
 ## 🖥️ Supported Servers
 > 🖥️ All features are currently tested on **Ubuntu** / **Debian**. More distributions coming soon, stay tuned...
 
@@ -91,6 +108,7 @@ If you have any suggestions or feedback, feel free to share them in [GitHub Disc
 - 🔑 SSH password / key authentication with credential storage
 - ️ Full-featured xterm.js terminal with clipboard, web links, and search
 -  Auto-reconnect on connection loss
+- 🖥️ Multi-server quick switch — one-click switching in sidebar with independent session states
 -  Multi-server concurrent management — each session operates independently without blocking others
 
 ###  File Management

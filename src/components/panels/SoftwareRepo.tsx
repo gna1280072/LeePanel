@@ -622,6 +622,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
               const isSuccess = line.includes('ACTION_SUCCESS') || line.includes('completed successfully') || line.includes('✅')
               const isSeparator = line.includes('━━━')
               const isKeyError = line.trim().startsWith('🔍') || line.trim().startsWith('   ')
+              const isPkgLock = line.includes('Waiting for package manager lock')
               
               let lineClass = 'sw-log-line'
               if (isSeparator) lineClass += ' separator'
@@ -632,7 +633,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
               
               return (
                 <div key={i} className={lineClass}>
-                  {line}
+                  {line}{isPkgLock ? ` — ${t('software.pkgLockHint')}` : ''}
                 </div>
               )
             })}

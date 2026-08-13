@@ -308,7 +308,7 @@
     "addedToFavorites": "已新增到收藏夾: {{path}}",
     "alreadyInFavorites": "已在收藏夾中",
     "removedFromFavorites": "已從收藏夾移除: {{path}}",
-    "binaryOrLarge": "二進位或大檔案 — 請使用終端機",
+    "binaryOrLarge": "二進位或大檔案 — 請使用終端機\n或右鍵「儲存到本機電腦」開啟",
     "downloadComplete": "下載完成",
     "downloadFailed": "下載失敗: {{error}}",
     "movedItems": "已移動 {{count}} 項",
@@ -704,7 +704,9 @@
     "installing": "安裝中...",
     "freeInstall": "免費安裝 SSL",
     "connectToManage": "連線伺服器以管理 SSL 憑證",
-    "startingSetup": "開始為 {{domain}} 設定 SSL..."
+    "startingSetup": "開始為 {{domain}} 設定 SSL...",
+    "infoNotice": "免費憑證使用 Let's Encrypt，由 certbot 管理和安裝，憑證有效期 3 個月，到期後 certbot 會自動免費續期。",
+    "infoWarning": "安裝免費 SSL 憑證前，您需要先將域名解析到此伺服器！"
   },
   "bbr": {
     "title": "BBR 加速",
@@ -798,6 +800,7 @@
     "addSourceSuccess": "軟體源新增成功",
     "importantNotice": "重要：軟體安裝成功後，需要中斷重新連線伺服器，才能啟用使用！",
     "viewFullOutput": "點擊檢視完整終端機輸出",
+    "pkgLockHint": "系統正在自動升級，請等待升級完成再安裝，這不是錯誤，通常需要等待5-10分鐘。",
     "customCategory": "自訂",
     "addCustomSoftware": "新增軟體",
     "addCustomSoftwareTitle": "新增自訂軟體",

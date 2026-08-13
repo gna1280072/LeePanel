@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, emit } from '@tauri-apps/api/event'
+import { open } from '@tauri-apps/plugin-shell'
 import { useTranslation } from 'react-i18next'
 
 interface SiteInfo {
@@ -189,6 +190,11 @@ export default function SslPanel({ sessionId }: SslPanelProps) {
           </div>
         </div>
       )}
+
+      <div style={{ fontSize: 13, color: '#8b949e', lineHeight: 1.8 }}>
+        <div>{t('ssl.infoNotice')} <a href="#" onClick={(e) => { e.preventDefault(); open('https://letsencrypt.org/') }} style={{ color: '#58a6ff' }}>https://letsencrypt.org/</a></div>
+        <div style={{ color: '#d29922', fontWeight: 600 }}>{t('ssl.infoWarning')}</div>
+      </div>
     </div>
   )
 }

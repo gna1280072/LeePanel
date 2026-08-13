@@ -7,6 +7,7 @@
   <a href="https://github.com/gna1280072/LeePanel/releases"><img src="https://img.shields.io/github/v/release/gna1280072/LeePanel?style=flat-square" alt="Release"></a>
   <a href="https://github.com/gna1280072/LeePanel/releases"><img src="https://img.shields.io/github/downloads/gna1280072/LeePanel/total?style=flat-square" alt="Downloads"></a>
   <a href="https://github.com/gna1280072/LeePanel/blob/main/LICENSE"><img src="https://img.shields.io/github/license/gna1280072/LeePanel?style=flat-square" alt="License"></a>
+  <a href="https://linux.do"><img src="https://img.shields.io/badge/Linux%20DO-%E7%A4%BE%E5%8C%BA-30363D?style=flat-square&logo=linux" alt="Linux DO"></a>
 </p>
 
 <p align="center">
@@ -20,7 +21,7 @@
 
 [English](README.md) | [📥 下载软件](https://github.com/gna1280072/LeePanel/releases)
 
-LeePanel — 免费开源，下一代 Linux 服务器管理面板。
+LeePanel — 免费开源，下一代 Linux 服务器管理面板软件。
 
 传统 Linux/VPS 管理面板频繁曝出安全漏洞，令服务器管理员苦不堪言。
 
@@ -68,7 +69,20 @@ LeePanel — 免费开源，下一代 Linux 服务器管理面板。
 | macOS | ~6 MB |
 | Linux | ~6 MB |
 
- 
+## 📥 下载软件
+
+| 平台 | 下载 |
+|------|------|
+| Windows | [下载 Windows 版](https://github.com/gna1280072/LeePanel/releases) |
+| macOS | [下载 macOS 版](https://github.com/gna1280072/LeePanel/releases) |
+| Linux | [下载 Linux 版](https://github.com/gna1280072/LeePanel/releases) |
+
+<p align="center">
+  <a href="https://github.com/gna1280072/LeePanel/releases">
+    <img src="https://img.shields.io/badge/下载-最新版本-2da44e?style=for-the-badge&logo=github" alt="下载最新版">
+  </a>
+</p>
+
 ## 🖥️ 支持的服务器
 > 🖥️  当前各项功能在 **Ubuntu** / **Debian**测试通过，更多系统适配中，敬请期待...
 
@@ -92,6 +106,7 @@ LeePanel — 免费开源，下一代 Linux 服务器管理面板。
 - 🔑 SSH 密码 / 密钥认证，支持凭证存储
 - ️ 基于 xterm.js 的全功能终端，支持剪贴板、超链接和搜索
 -  断线自动重连
+- 🖥️ 多服务器快速切换管理 — 侧边栏一键切换，会话状态独立保持
 -  多服务器并发管理 — 每个会话独立运行，互不阻塞
 
 ###  文件管理

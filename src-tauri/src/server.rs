@@ -4652,12 +4652,12 @@ if [ -f /etc/os-release ]; then
 fi
 if [ "{}" = "install" ]; then
   echo "Installing {}..."
-  for i in $(seq 1 60); do
+  for i in $(seq 1 20); do
     if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1 && ! fuser /var/run/yum.pid >/dev/null 2>&1 && ! fuser /var/run/dnf.pid >/dev/null 2>&1; then
       break
     fi
-    echo "Waiting for package manager lock... ($i/60)"
-    sleep 1
+    echo "Waiting for package manager lock... ($i/20)"
+    sleep 5
   done
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
     apt-get update -q --allow-releaseinfo-change 2>&1 || true
@@ -5384,10 +5384,10 @@ OS_VER="${{VERSION_ID:-0}}"
 install_deps() {{
   echo "Installing build dependencies..."
   if [ "$OS_ID" = "ubuntu" ] || [ "$OS_ID" = "debian" ]; then
-    for i in $(seq 1 60); do
+    for i in $(seq 1 20); do
       if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then break; fi
-      echo "Waiting for package manager lock... ($i/60)"
-      sleep 1
+      echo "Waiting for package manager lock... ($i/20)"
+      sleep 5
     done
     apt-get update -q --allow-releaseinfo-change 2>&1 || true
     # Core build tools (always install)
@@ -5684,12 +5684,12 @@ if [ "{}" = "install" ]; then
   echo "Installing Redis..."
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
     # Wait for apt lock
-    for i in $(seq 1 60); do
+    for i in $(seq 1 20); do
       if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then
         break
       fi
-      echo "Waiting for package manager lock... ($i/60)"
-      sleep 1
+      echo "Waiting for package manager lock... ($i/20)"
+      sleep 5
     done
     apt-get update -q --allow-releaseinfo-change 2>&1 || true
     apt-get install -y redis-server
@@ -5733,12 +5733,12 @@ if [ "{}" = "install" ]; then
     . /etc/os-release
     if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
       # Wait for apt lock
-      for i in $(seq 1 60); do
+      for i in $(seq 1 20); do
         if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then
           break
         fi
-        echo "Waiting for package manager lock... ($i/60)"
-        sleep 1
+        echo "Waiting for package manager lock... ($i/20)"
+        sleep 5
       done
       apt-get update -q --allow-releaseinfo-change 2>&1 || true
       apt-get install -y nodejs npm
@@ -5763,10 +5763,10 @@ echo "ACTION_SUCCESS"
         }
         "docker" => {
             // ponytail: dpkg lock wait — must run before get-docker.sh calls apt-get internally
-            let lock_wait = r#"for _i in $(seq 1 60); do
+            let lock_wait = r#"for _i in $(seq 1 20); do
     if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then break; fi
-    echo "Waiting for package manager lock... ($_i/60)"
-    sleep 1
+    echo "Waiting for package manager lock... ($_i/20)"
+    sleep 5
   done"#;
             let install_cmd = if options == "aliyun" {
                 // ponytail: bypass get.docker.com (blocked by GFW) — use Aliyun Docker CE repo directly
@@ -5852,12 +5852,12 @@ if [ "__ACTION__" = "install" ]; then
   
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
     # Wait for apt lock
-    for i in $(seq 1 60); do
+    for i in $(seq 1 20); do
       if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then
         break
       fi
-      echo "Waiting for package manager lock... ($i/60)"
-      sleep 1
+      echo "Waiting for package manager lock... ($i/20)"
+      sleep 5
     done
     apt-get update -q --allow-releaseinfo-change 2>&1 || true
     
@@ -5988,12 +5988,12 @@ if [ "__ACTION__" = "install" ]; then
   echo "Installing PHP..."
   if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
     # Wait for apt lock
-    for i in $(seq 1 60); do
+    for i in $(seq 1 20); do
       if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then
         break
       fi
-      echo "Waiting for package manager lock... ($i/60)"
-      sleep 1
+      echo "Waiting for package manager lock... ($i/20)"
+      sleep 5
     done
     apt-get update -q 2>&1
     if [ -n "__VERSION__" ]; then
@@ -6098,12 +6098,12 @@ if [ \"__ACTION__\" = \"install\" ]; then\n\
   echo \"Installing PHP __VER__...\"\n\
   if [ \"$ID\" = \"ubuntu\" ] || [ \"$ID\" = \"debian\" ]; then\n\
     # Wait for apt lock\n\
-    for i in $(seq 1 60); do\n\
+    for i in $(seq 1 20); do\n\
       if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then\n\
         break\n\
       fi\n\
-      echo \"Waiting for package manager lock... ($i/60)\"\n\
-      sleep 1\n\
+      echo \"Waiting for package manager lock... ($i/20)\"\n\
+      sleep 5\n\
     done\n\
     apt-get update -q 2>&1\n\
     apt-get install -y software-properties-common\n\
@@ -6248,12 +6248,12 @@ if [ "{}" = "install" ]; then
   else
     echo "Installing {}..."
     # Wait for apt/yum/dnf/rpm lock to be released (max 60s)
-    for i in $(seq 1 60); do
+    for i in $(seq 1 20); do
       if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1 && ! fuser /var/run/yum.pid >/dev/null 2>&1 && ! fuser /var/run/dnf.pid >/dev/null 2>&1 && ! fuser /var/cache/yum >/dev/null 2>&1 && ! fuser /var/lib/rpm/.rpm.lock >/dev/null 2>&1; then
         break
       fi
-      echo "Waiting for package manager lock... ($i/60)"
-      sleep 1
+      echo "Waiting for package manager lock... ($i/20)"
+      sleep 5
     done
     {} update -y -q 2>&1 || true
     {} {} 2>&1

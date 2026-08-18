@@ -1662,7 +1662,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
           >
             {t('files.go')} ➜
           </button>
-          <div style={{ width: '1px', height: '20px', background: '#575b5cff', margin: '0 18px' }} />
+          <div style={{ width: '1px', height: '20px', background: 'var(--border)', margin: '0 18px' }} />
           <div style={{ position: 'relative' }} ref={favoritesDropdownRef}>
             <button
               className="fb-btn fb-btn-favorites"
@@ -2291,7 +2291,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               {compressDialog.names.length > 5 && <span className="fb-compress-more">{t('files.moreItems', { count: compressDialog.names.length - 5 })}</span>}
             </div>
             <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
-              <span style={{ fontSize: '12px', color: '#8b949e', alignSelf: 'center' }}>{t('files.compressFormat')}:</span>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)', alignSelf: 'center' }}>{t('files.compressFormat')}:</span>
               {(['zip', 'tar.gz', 'tar.bz2'] as const).map(fmt => (
                 <button
                   key={fmt}
@@ -2416,7 +2416,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
           <div className="fb-dialog" onClick={(e) => e.stopPropagation()} style={{ minWidth: 380 }}>
             <button className="modal-close-btn" onClick={() => setShowSaveStopConfirm(false)} title={t('common.close')}>×</button>
             <div className="fb-dialog-title" style={{ marginBottom: 12 }}>{t('upload.confirmStopTitle')}</div>
-            <p style={{ margin: '0 0 16px', fontSize: 13, color: '#8b949e', lineHeight: 1.6 }}>
+            <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
               {t('upload.confirmStopMsg')}
             </p>
             <input
@@ -2426,7 +2426,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
               onKeyDown={async (e) => { if (e.key === 'Enter' && saveStopInput.trim().toLowerCase() === 'stop') { await invoke('ssh_save_stop'); setSaveProgress(null); setShowSaveStopConfirm(false) } }}
               placeholder={t('upload.confirmStopPlaceholder')}
               autoFocus
-              style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #30363d', background: '#0d1117', color: '#c9d1d9', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
             />
             <div className="fb-dialog-actions">
               <button className="fb-dialog-btn" onClick={() => setShowSaveStopConfirm(false)}>{t('common.cancel')}</button>

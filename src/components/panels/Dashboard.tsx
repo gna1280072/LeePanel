@@ -56,9 +56,9 @@ function formatMb(mb: number): string {
 }
 
 function percentBar(used: number, total: number): { percent: number; color: string } {
-  if (total === 0) return { percent: 0, color: '#3fb950' }
+  if (total === 0) return { percent: 0, color: 'var(--green)' }
   const pct = Math.round((used / total) * 100)
-  const color = pct > 90 ? '#f85149' : pct > 70 ? '#d29922' : '#3fb950'
+  const color = pct > 90 ? 'var(--red)' : pct > 70 ? 'var(--yellow)' : 'var(--green)'
   return { percent: pct, color }
 }
 
@@ -164,7 +164,7 @@ export default function Dashboard({ sessionId, onNavigate }: DashboardProps) {
           {sysInfo && (
             <span className="sp-dash-host">{sysInfo.os.hostname}</span>
           )}
-          <p className="sp-dash-welcome">{t('dashboard.welcome')} {appVersion && <span style={{ fontSize: 13, color: '#8b949e' }}>v{appVersion}</span>}</p>
+          <p className="sp-dash-welcome">{t('dashboard.welcome')} {appVersion && <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>v{appVersion}</span>}</p>
         </div>
         <button className="sp-refresh-btn" onClick={fetchData} disabled={loading}>
           {loading ? t('common.refreshing') : t('common.refresh')}
@@ -265,7 +265,7 @@ export default function Dashboard({ sessionId, onNavigate }: DashboardProps) {
             {/* Disks */}
             {sysInfo.disks.map((d, i) => {
               const pct = parseInt(d.use_percent) || 0
-              const color = pct > 90 ? '#f85149' : pct > 70 ? '#d29922' : '#3fb950'
+              const color = pct > 90 ? 'var(--red)' : pct > 70 ? 'var(--yellow)' : 'var(--green)'
               return (
                 <div className="sp-resource-item" key={i}>
                   <div className="sp-resource-header">

@@ -205,7 +205,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       // Basic validation: check for empty lines or invalid characters
       const invalidLines = ips.filter(ip => !/^([0-9]{1,3}\.){3}[0-9]{1,3}(\/[0-9]{1,2})?$/.test(ip) && ip !== '%')
       if (invalidLines.length > 0) {
-        setMsg(`Invalid IP format: ${invalidLines.join(', ')}`)
+        setMsg(t('database.invalidIpFormat', { lines: invalidLines.join(', ') }))
         return
       }
     }
@@ -293,7 +293,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       setClearConfirmText('')
       await fetchDatabases()
     } catch (e) {
-      setMsg(`Clear failed: ${String(e)}`)
+      setMsg(t('database.clearFailed', { error: String(e) }))
     } finally {
       setClearing(false)
     }
@@ -312,7 +312,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       // Basic validation: check for empty lines or invalid characters
       const invalidLines = ips.filter(ip => !/^([0-9]{1,3}\.){3}[0-9]{1,3}(\/[0-9]{1,2})?$/.test(ip) && ip !== '%')
       if (invalidLines.length > 0) {
-        setMsg(`Invalid IP format: ${invalidLines.join(', ')}`)
+        setMsg(t('database.invalidIpFormat', { lines: invalidLines.join(', ') }))
         return
       }
     }
@@ -404,7 +404,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       setMsg(t('database.selectDatabases'))
       return
     }
-    setMsg(`Batch operation: ${selectedDbs.size} databases selected`)
+    setMsg(t('database.batchOpSelected', { count: selectedDbs.size }))
   }
   
   const handleChangeRootPassword = async () => {
@@ -457,7 +457,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
         remark: trimmed
       })
       if (trimmed) {
-        setMsg(`Updated remark for database "${dbName}"`)
+        setMsg(t('database.remarkUpdated', { name: dbName }))
       }
     } catch (e) {
       console.error('Failed to save remark:', e)
@@ -522,7 +522,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
     if (!backupTarget || !sessionId) return
     try {
       await invoke<string>('server_delete_db_backup', { sessionId, backupFilename: filename })
-      setMsg(`Backup deleted: ${filename}`)
+      setMsg(t('database.backupDeleted', { name: filename }))
       // Refresh backup list
       const list = await invoke<BackupInfo[]>('server_list_db_backups', { sessionId, dbName: backupTarget })
       setBackups(list)
@@ -540,10 +540,10 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
         backupFilename: filename 
       })
       
-      setMsg(`Backup downloaded to: ${localPath}`)
+      setMsg(t('database.backupDownloadedTo', { path: localPath }))
     } catch (e) {
       if (String(e) !== 'Save cancelled') {
-        setMsg('Failed to download backup: ' + String(e))
+        setMsg(t('database.downloadBackupFailed', { error: String(e) }))
       }
     }
   }
@@ -698,7 +698,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       {msg && (
         <div className={`alert ${msg.includes('failed') || msg.includes('Failed') ? 'alert-error' : 'alert-success'}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>{msg}</span>
-          <button onClick={() => setMsg('')} style={{ background: 'none', border: 'none', color: '#8b949e', fontSize: '18px', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }} title="Close">×</button>
+          <button onClick={() => setMsg('')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '18px', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }} title={t('common.close')}>×</button>
         </div>
       )}
       
@@ -723,7 +723,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       
       {/* ponytail: search results hint */}
       {searchQuery && (
-        <div style={{ color: '#ef4444', marginBottom: '12px', fontSize: '14px' }}>
+        <div style={{ color: 'var(--red)', marginBottom: '12px', fontSize: '14px' }}>
           {t('database.searchResultsHint')}
         </div>
       )}
@@ -789,7 +789,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                       disabled={!db.password}
                       style={{ opacity: db.password ? 1 : 0.3, cursor: db.password ? 'pointer' : 'not-allowed', fontSize: '14px', lineHeight: 1, padding: '2px 4px' }}
                     >
-                      <span style={visiblePasswords.has(db.name) ? {} : { textDecoration: 'line-through', textDecorationColor: '#f85149', textDecorationThickness: '2px' }}>👁️</span>
+                      <span style={visiblePasswords.has(db.name) ? {} : { textDecoration: 'line-through', textDecorationColor: 'var(--red)', textDecorationThickness: '2px' }}>👁️</span>
                     </button>
                     <button
                       className="icon-btn"
@@ -822,7 +822,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                       onClick={() => openImportDialog(db.name)}
                       style={{ cursor: 'pointer' }}
                     >
-                      Import
+                      {t('database.importAction')}
                     </span>
                   </td>
                   <td>{t('database.location')}</td>
@@ -866,17 +866,17 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                     <span className="separator">|</span>
                     <button 
                       className="action-link"
-                      style={{ color: '#f0883e' }}
+                      style={{ color: 'var(--yellow)' }}
                       onClick={() => { setClearTarget(db); setClearConfirmText(''); }}
                     >
-                      Clear
+                      {t('database.clearAction')}
                     </button>
                     <span className="separator">|</span>
                     <button 
                       className="action-link danger"
                       onClick={() => setDeleteTarget(db)}
                     >
-                      Delete
+                      {t('common.delete')}
                     </button>
                   </td>
                 </tr>
@@ -921,17 +921,17 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
             value={pageSize}
             onChange={(e) => setPageSize(Number(e.target.value))}
           >
-            <option value={10}>10/page</option>
-            <option value={20}>20/page</option>
-            <option value={50}>50/page</option>
+            <option value={10}>{t('database.perPage', { count: 10 })}</option>
+            <option value={20}>{t('database.perPage', { count: 20 })}</option>
+            <option value={50}>{t('database.perPage', { count: 50 })}</option>
           </select>
           
           <span className="total-info">
-            Total: {filteredDatabases.length}
+            {t('database.total', { count: filteredDatabases.length })}
           </span>
           
           <span className="goto-page">
-            Go to
+            {t('database.goTo')}
             <input 
               type="number" 
               min={1} 
@@ -957,8 +957,8 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
               <h3 style={{ margin: 0 }}>{t('database.createDatabase')}</h3>
               <button 
                 onClick={() => setShowCreateDialog(false)}
-                style={{ background: 'none', border: 'none', color: '#8b949e', fontSize: '24px', cursor: 'pointer', padding: '0', lineHeight: 1 }}
-                title="Close"
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '24px', cursor: 'pointer', padding: '0', lineHeight: 1 }}
+                title={t('common.close')}
               >
                 ×
               </button>
@@ -966,7 +966,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
             
             <div style={{ display: 'flex', gap: '12px' }}>
               <div className="form-group">
-                <label><span style={{ color: '#ff4d4f' }}>*</span> {t('database.databaseName')}:</label>
+                <label><span style={{ color: 'var(--red)' }}>*</span> {t('database.databaseName')}:</label>
                 <input
                   type="text"
                   value={newDbName}
@@ -976,19 +976,19 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                     // Auto-sync username with database name (always sync)
                     setNewDbUser(dbName)
                   }}
-                  placeholder="e.g.: mydb"
+                  placeholder={t('database.dbNamePlaceholder')}
                   className="form-input"
                   style={{ width: '160px' }}
                 />
               </div>
               
               <div className="form-group">
-                <label><span style={{ color: '#ff4d4f' }}>*</span> {t('database.userName')}:</label>
+                <label><span style={{ color: 'var(--red)' }}>*</span> {t('database.userName')}:</label>
                 <input
                   type="text"
                   value={newDbUser}
                   onChange={(e) => setNewDbUser(e.target.value)}
-                  placeholder="e.g.: myuser"
+                  placeholder={t('database.dbUserPlaceholder')}
                   className="form-input"
                   style={{ width: '160px' }}
                 />
@@ -997,13 +997,13 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
             
             <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
               <div className="form-group" style={{ flex: 3 }}>
-                <label><span style={{ color: '#ff4d4f' }}>*</span> {t('database.password')}:</label>
+                <label><span style={{ color: 'var(--red)' }}>*</span> {t('database.password')}:</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input
                     type="text"
                     value={newDbPass}
                     onChange={(e) => setNewDbPass(e.target.value)}
-                    placeholder="Enter password"
+                    placeholder={t('database.passwordPlaceholder')}
                     className="form-input"
                     style={{ flex: 1 }}
                   />
@@ -1027,7 +1027,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
               </div>
               
               <div className="form-group" style={{ flex: 1, maxWidth: '140px' }}>
-                <label>Charset:</label>
+                <label>{t('database.charset')}:</label>
                 <select
                   value={dbCharset}
                   onChange={(e) => setDbCharset(e.target.value)}
@@ -1065,20 +1065,17 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                     const val = e.target.value.replace(/[,，\s]+/g, '\n')
                     setAllowedIp(val)
                   }}
-                  placeholder={`One IP address or range per line, e.g.:
-192.168.1.100
-192.168.1.%
-10.0.0.0/8`}
+                  placeholder={t('database.ipPerLinePlaceholder')}
                   className="form-input"
                   style={{ minHeight: '100px', resize: 'vertical' as const, fontFamily: 'monospace', fontSize: '13px' }}
                 />
-                <small style={{ color: '#8b949e', fontSize: '12px' }}>
-                  One IP (192.168.1.100) or IP range (192.168.1.% or 10.0.0.0/8) per line
+                <small style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
+                  {t('database.ipPerLineHint')}
                 </small>
               </div>
             )}
             
-            <div style={{ marginBottom: '16px' }} title="Note: MySQL passwords are encrypted and cannot be read from config. We save them to the sqlite database in the software directory.">
+            <div style={{ marginBottom: '16px' }} title={t('database.savePasswordLocallyTitle')}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
@@ -1117,13 +1114,13 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
             <button 
               className="modal-close-btn"
               onClick={() => { setDeleteTarget(null); setDeleteConfirmName(''); }}
-              title="Close"
+              title={t('common.close')}
             >×</button>
             <h3>{t('database.deleteDatabase')}</h3>
-            <p style={{ color: '#f85149', fontSize: '13px', margin: '8px 0' }}>{t('database.deleteConfirm')} "<strong>{deleteTarget.name}</strong>". {t('common.warning')}!</p>
+            <p style={{ color: 'var(--red)', fontSize: '13px', margin: '8px 0' }}>{t('database.deleteConfirm')} "<strong>{deleteTarget.name}</strong>". {t('common.warning')}!</p>
             
             <div className="form-group">
-              <label style={{ fontSize: '13px' }}>{t('database.databaseName')}: <code style={{ background: '#21262d', padding: '2px 6px', borderRadius: '4px', color: '#f85149' }}>{deleteTarget.name}</code></label>
+              <label style={{ fontSize: '13px' }}>{t('database.databaseName')}: <code style={{ background: 'var(--bg-subtle)', padding: '2px 6px', borderRadius: '4px', color: 'var(--red)' }}>{deleteTarget.name}</code></label>
               <input
                 type="text"
                 value={deleteConfirmName}
@@ -1169,13 +1166,13 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
             <button 
               className="modal-close-btn"
               onClick={() => { setClearTarget(null); setClearConfirmText(''); }}
-              title="Close"
+              title={t('common.close')}
             >×</button>
-            <h3>Clear Database</h3>
-            <p style={{ color: '#f85149', fontSize: '13px', margin: '8px 0' }}>This will truncate ALL tables in database "<strong>{clearTarget.name}</strong>". The database and user will be preserved. Type <code style={{ background: '#21262d', padding: '2px 6px', borderRadius: '4px' }}>clear</code> to confirm.</p>
+            <h3>{t('database.clearDatabase')}</h3>
+            <p style={{ color: 'var(--red)', fontSize: '13px', margin: '8px 0' }}>{t('database.clearDatabaseMsg', { name: clearTarget.name })}</p>
             
             <div className="form-group">
-              <label style={{ fontSize: '13px' }}>Type "clear" to confirm:</label>
+              <label style={{ fontSize: '13px' }}>{t('database.typeClearToConfirm')}</label>
               <input
                 type="text"
                 value={clearConfirmText}
@@ -1207,7 +1204,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                 onClick={handleClearDatabase}
                 disabled={clearing || clearConfirmText.trim().toLowerCase() !== 'clear'}
               >
-                {clearing ? t('common.loading') : 'Clear'}
+                {clearing ? t('common.loading') : t('database.clearAction')}
               </button>
             </div>
           </div>
@@ -1221,7 +1218,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
             <button 
               className="modal-close-btn"
               onClick={() => setShowChangePwDialog(false)}
-              title="Close"
+              title={t('common.close')}
             >×</button>
             <h3>{t('database.changeRootPassword')}</h3>
                   
@@ -1232,7 +1229,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                   type={showRootPassword ? 'text' : 'password'}
                   value={newRootPassword}
                   onChange={(e) => setNewRootPassword(e.target.value)}
-                  placeholder="Enter new password (min 6 chars)"
+                  placeholder={t('database.enterNewPasswordPlaceholder')}
                   className="form-input"
                   style={{ flex: 1 }}
                 />
@@ -1247,8 +1244,8 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
               </div>
             </div>
                   
-            <div style={{ marginBottom: '12px', fontSize: '12px', color: '#888' }}>
-              ⚠️ Note: Please update all application configurations using this password after changing it.
+            <div style={{ marginBottom: '12px', fontSize: '12px', color: 'var(--text-muted)' }}>
+              {t('database.changePasswordNote')}
             </div>
                   
             <div className="modal-actions">
@@ -1279,8 +1276,8 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
               <h3 style={{ margin: 0 }}>{t('database.accessControl')} - {accessTarget.name}</h3>
               <button 
                 onClick={() => setShowAccessDialog(false)}
-                style={{ background: 'none', border: 'none', color: '#8b949e', fontSize: '24px', cursor: 'pointer', padding: '0', lineHeight: 1 }}
-                title="Close"
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '24px', cursor: 'pointer', padding: '0', lineHeight: 1 }}
+                title={t('common.close')}
               >
                 ×
               </button>
@@ -1309,21 +1306,18 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                     const val = e.target.value.replace(/[,，\s]+/g, '\n')
                     setNewAllowedIp(val)
                   }}
-                  placeholder={`One IP address or range per line, e.g.:
-192.168.1.100
-192.168.1.%
-10.0.0.0/8`}
+                  placeholder={t('database.ipPerLinePlaceholder')}
                   className="form-input"
                   style={{ minHeight: '100px', resize: 'vertical' as const, fontFamily: 'monospace', fontSize: '13px' }}
                 />
-                <small style={{ color: '#8b949e', fontSize: '12px' }}>
-                  One IP (192.168.1.100) or IP range (192.168.1.% or 10.0.0.0/8) per line
+                <small style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
+                  {t('database.ipPerLineHint')}
                 </small>
               </div>
             )}
                   
-            <div style={{ marginBottom: '12px', fontSize: '12px', color: '#888' }}>
-               Tip: Changing access permissions requires re-authorizing the database user.
+            <div style={{ marginBottom: '12px', fontSize: '12px', color: 'var(--text-muted)' }}>
+              {t('database.changeAccessTip')}
             </div>
                   
             <div className="modal-actions">
@@ -1353,7 +1347,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
             <button 
               className="modal-close-btn"
               onClick={() => setShowChangePwDbDialog(false)}
-              title="Close"
+              title={t('common.close')}
             >×</button>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ margin: 0 }}>{t('database.changePassword')} - {changePwTarget.name}</h3>
@@ -1366,7 +1360,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                   type="text"
                   value={newDbPassword}
                   onChange={(e) => setNewDbPassword(e.target.value)}
-                  placeholder="Enter new password (min 6 chars)"
+                  placeholder={t('database.enterNewPasswordPlaceholder')}
                   className="form-input"
                   style={{ flex: 1 }}
                   autoFocus
@@ -1463,22 +1457,22 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
             <button 
               className="modal-close-btn"
               onClick={() => setShowBackupDialog(false)}
-              title="Close"
+              title={t('common.close')}
             >×</button>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ margin: 0 }}>{t('database.backupDatabase')} - {backupTarget}</h3>
             </div>
             
-            <div style={{ marginBottom: '16px', fontSize: '13px', color: '#8b949e' }}>
-              Backup files are saved in /tmp/db_backups/ on the server (.tar.gz format)
+            <div style={{ marginBottom: '16px', fontSize: '13px', color: 'var(--text-muted)' }}>
+              {t('database.backupSaveLocation')}
             </div>
             
             {/* Backup list */}
-            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '16px', border: '1px solid #30363d', borderRadius: '6px' }}>
+            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '16px', border: '1px solid var(--border)', borderRadius: '6px' }}>
               {loadingBackups ? (
-                <div style={{ textAlign: 'center', padding: '20px', color: '#8b949e' }}>{t('common.loading')}</div>
+                <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>{t('common.loading')}</div>
               ) : backups.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '20px', color: '#8b949e' }}>{t('database.noBackups')}</div>
+                <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>{t('database.noBackups')}</div>
               ) : (
                 <table className="data-table" style={{ margin: 0 }}>
                   <thead>
@@ -1510,7 +1504,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                             disabled={importing}
                             style={{ fontSize: '12px' }}
                           >
-                            Import
+                            {t('database.importAction')}
                           </button>
                           <span className="separator">|</span>
                           <button 
@@ -1555,7 +1549,7 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
             <button 
               className="modal-close-btn"
               onClick={() => setShowImportDialog(false)}
-              title="Close"
+              title={t('common.close')}
             >×</button>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ margin: 0 }}>{t('database.importDatabase')} - {importTarget}</h3>
@@ -1589,8 +1583,8 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
                   style={{ padding: '8px' }}
                 />
                 {selectedFile && (
-                  <div style={{ marginTop: '8px', fontSize: '12px', color: '#8b949e' }}>
-                    Selected: {selectedFile.name} ({formatBytes(selectedFile.size)})
+                  <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
+                    {t('database.selectedFile', { name: selectedFile.name, size: formatBytes(selectedFile.size) })}
                   </div>
                 )}
               </div>
@@ -1598,9 +1592,9 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
               <div className="form-group">
                 <label>{t('database.selectBackup')}:</label>
                 {loadingImportBackups ? (
-                  <div style={{ padding: '12px', textAlign: 'center', color: '#8b949e' }}>{t('common.loading')}</div>
+                  <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)' }}>{t('common.loading')}</div>
                 ) : importBackups.length === 0 ? (
-                  <div style={{ padding: '12px', textAlign: 'center', color: '#8b949e', border: '1px solid #30363d', borderRadius: '6px' }}>
+                  <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: '6px' }}>
                     {t('database.noBackups')}
                   </div>
                 ) : (
@@ -1620,8 +1614,8 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
               </div>
             )}
             
-            <div style={{ marginBottom: '16px', padding: '10px', background: '#f8514922', borderRadius: '6px', fontSize: '12px', color: '#f85149' }}>
-              ⚠️ {t('common.warning')}: Importing will overwrite existing data.
+            <div style={{ marginBottom: '16px', padding: '10px', background: 'var(--red)22', borderRadius: '6px', fontSize: '12px', color: 'var(--red)' }}>
+              ⚠️ {t('common.warning')}: {t('database.importOverwriteWarn')}
             </div>
             
             <div className="modal-actions">
@@ -1648,9 +1642,9 @@ export default function DatabasePanel({ sessionId, onNavigateToSoftware }: Datab
       {missingToolModal && (
         <div className="modal-overlay" onClick={() => setMissingToolModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px', textAlign: 'center' }}>
-            <button className="modal-close-btn" onClick={() => setMissingToolModal(false)} title="Close">×</button>
+            <button className="modal-close-btn" onClick={() => setMissingToolModal(false)} title={t('common.close')}>×</button>
             <div style={{ marginBottom: '16px', fontSize: '16px', fontWeight: 600 }}>{t('files.missingToolTitle')}</div>
-            <div style={{ marginBottom: '20px', fontSize: '13px', color: '#8b949e' }}>
+            <div style={{ marginBottom: '20px', fontSize: '13px', color: 'var(--text-muted)' }}>
               {t('files.missingUnzipTool')}
             </div>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>

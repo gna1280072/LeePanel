@@ -431,7 +431,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
       <div className="panel-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <h2>{t('redis.title')}</h2>
-          <span style={{ fontSize: '12px', color: '#4CAF50', fontWeight: 'bold' }}>
+          <span style={{ fontSize: '12px', color: 'var(--green)', fontWeight: 'bold' }}>
             Redis {redisVersion} ▶
           </span>
         </div>
@@ -489,7 +489,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
           className="search-type-select"
           value={searchType}
           onChange={(e) => setSearchType(e.target.value as 'key' | 'value')}
-          style={{ marginRight: '8px', padding: '6px 12px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#2a2a2a', color: '#fff' }}
+          style={{ marginRight: '8px', padding: '6px 12px', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-subtle)', color: 'var(--text)' }}
         >
           <option value="key">{t('redis.key')}</option>
           <option value="value">{t('redis.value')}</option>
@@ -509,7 +509,7 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
       
       {/* ponytail: search results hint */}
       {searchQuery && (
-        <div style={{ color: '#ef4444', marginBottom: '12px', fontSize: '14px' }}>
+        <div style={{ color: 'var(--red)', marginBottom: '12px', fontSize: '14px' }}>
           {t('redis.searchResultsHint')}
         </div>
       )}
@@ -816,13 +816,13 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
               }}
               title="Close"
             >×</button>
-            <h3 style={{ color: '#ff7b72' }}>⚠️ {t('redis.flushDatabase')}</h3>
+            <h3 style={{ color: 'var(--red)' }}>⚠️ {t('redis.flushDatabase')}</h3>
             
-            <div style={{ marginBottom: '16px', padding: '12px', background: 'rgba(255, 123, 114, 0.1)', borderRadius: '6px', border: '1px solid #ff7b72' }}>
-              <p style={{ margin: '0 0 8px 0', color: '#c9d1d9', fontWeight: 'bold' }}>
+            <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--red-soft)', borderRadius: '6px', border: '1px solid var(--red)' }}>
+              <p style={{ margin: '0 0 8px 0', color: 'var(--text)', fontWeight: 'bold' }}>
                 {t('redis.flushConfirm', { db: currentDb })}
               </p>
-              <p style={{ margin: '0', color: '#8b949e', fontSize: '13px' }}>
+              <p style={{ margin: '0', color: 'var(--text-muted)', fontSize: '13px' }}>
                 This will permanently delete all data in this database and cannot be undone!
               </p>
             </div>

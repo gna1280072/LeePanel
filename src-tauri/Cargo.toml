@@ -1,6 +1,6 @@
 [package]
 name = "leepanel"
-version = "1.0.20"
+version = "1.0.21"
 description = "LeePanel - SSH Server Management Tool"
 authors = ["you"]
 license = ""

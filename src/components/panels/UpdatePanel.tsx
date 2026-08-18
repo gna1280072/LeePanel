@@ -72,14 +72,14 @@ export default function UpdatePanel() {
 
   return (
     <div className="sp-page" style={{ padding: '24px 32px', maxWidth: 600 }}>
-      <h2 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 600, color: '#e6edf3' }}>{t('settings.softwareUpdate')}</h2>
+      <h2 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 600, color: 'var(--text-strong)' }}>{t('settings.softwareUpdate')}</h2>
 
       <div className="settings-card">
         <div className="settings-card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Version info */}
           <div className="settings-row">
             <span className="settings-label">{t('settings.currentVersion')}</span>
-            <span className="settings-value" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: '#8b949e' }}>{appVersion || '—'}</span>
+            <span className="settings-value" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: 'var(--text-muted)' }}>{appVersion || '—'}</span>
           </div>
 
           {/* Check button */}
@@ -94,9 +94,9 @@ export default function UpdatePanel() {
 
           {/* Step log */}
           {steps.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 12px', background: '#161b22', borderRadius: 6, fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 12px', background: 'var(--bg-panel)', borderRadius: 6, fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>
               {steps.map((s, i) => (
-                <div key={i} style={{ color: s.status === 'ok' ? '#3fb950' : s.status === 'fail' ? '#f85149' : '#8b949e', wordBreak: 'break-all' }}>
+                <div key={i} style={{ color: s.status === 'ok' ? 'var(--green)' : s.status === 'fail' ? 'var(--red)' : 'var(--text-muted)', wordBreak: 'break-all' }}>
                   {s.status === 'ok' ? '✓' : s.status === 'fail' ? '✗' : '⏳'} {s.text}
                 </div>
               ))}
@@ -105,14 +105,14 @@ export default function UpdatePanel() {
 
           {/* Progress bar */}
           {progress && (
-            <div style={{ width: '100%', height: 6, background: '#21262d', borderRadius: 3, overflow: 'hidden' }}>
-              <div style={{ width: `${progress.pct}%`, height: '100%', background: '#2ea043', borderRadius: 3, transition: 'width 0.3s' }} />
+            <div style={{ width: '100%', height: 6, background: 'var(--bg-subtle)', borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{ width: `${progress.pct}%`, height: '100%', background: 'var(--green-strong)', borderRadius: 3, transition: 'width 0.3s' }} />
             </div>
           )}
 
           {/* Status message */}
           {message && (
-            <div style={{ padding: '8px 12px', background: message.includes('latest') || message.includes('最新') ? '#1f6feb22' : '#2ea04322', borderRadius: 6, fontSize: 13, color: message.includes('latest') || message.includes('最新') ? '#58a6ff' : '#3fb950', whiteSpace: 'pre-line', wordBreak: 'break-all' }}>
+            <div style={{ padding: '8px 12px', background: message.includes('latest') || message.includes('最新') ? 'var(--accent-strong)22' : 'var(--green-strong)22', borderRadius: 6, fontSize: 13, color: message.includes('latest') || message.includes('最新') ? 'var(--accent)' : 'var(--green)', whiteSpace: 'pre-line', wordBreak: 'break-all' }}>
               {message}
               {timedOut && (() => {
                 const text = t('settings.updateManualDownload')
@@ -120,7 +120,7 @@ export default function UpdatePanel() {
                 const idx = text.indexOf(url)
                 return (
                   <div style={{ marginTop: 4 }}>
-                    {idx >= 0 ? <>{text.slice(0, idx)}<a href="#" onClick={(e) => { e.preventDefault(); open(url) }} style={{ color: '#58a6ff' }}>{url}</a>{text.slice(idx + url.length)}</> : text}
+                    {idx >= 0 ? <>{text.slice(0, idx)}<a href="#" onClick={(e) => { e.preventDefault(); open(url) }} style={{ color: 'var(--accent)' }}>{url}</a>{text.slice(idx + url.length)}</> : text}
                   </div>
                 )
               })()}
@@ -129,10 +129,10 @@ export default function UpdatePanel() {
         </div>
       </div>
 
-      <div style={{ marginTop: 16, fontSize: 13, color: '#8b949e', lineHeight: 1.8 }}>
-        <div style={{ fontWeight: 600, color: '#e6edf3', marginBottom: 4 }}>{t('settings.updateFailedHint')}</div>
+      <div style={{ marginTop: 16, fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.8 }}>
+        <div style={{ fontWeight: 600, color: 'var(--text-strong)', marginBottom: 4 }}>{t('settings.updateFailedHint')}</div>
         <div>1、{t('settings.updateFailedProxyHint')}</div>
-        <div>2、{t('settings.updateFailedManualHint')} <a href="#" onClick={(e) => { e.preventDefault(); open('https://www.LeePanel.com') }} style={{ color: '#58a6ff' }}>https://www.LeePanel.com</a></div>
+        <div>2、{t('settings.updateFailedManualHint')} <a href="#" onClick={(e) => { e.preventDefault(); open('https://www.LeePanel.com') }} style={{ color: 'var(--accent)' }}>https://www.LeePanel.com</a></div>
       </div>
     </div>
   )

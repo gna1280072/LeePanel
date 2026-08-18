@@ -2,10 +2,12 @@ mod config;
 mod db;
 mod server;
 mod ssh;
+mod tunnel;
 mod commands;
 
 use rusqlite::Connection as SqliteConn;
 use ssh::SshManager;
+use tunnel::TunnelManager;
 use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::Mutex as AsyncMutex;
@@ -35,6 +37,9 @@ pub fn run() {
             let ssh_mgr = Arc::new(AsyncMutex::new(SshManager::new()));
             app.manage(ssh_mgr);
 
+            let tunnel_mgr = Arc::new(AsyncMutex::new(TunnelManager::new()));
+            app.manage(tunnel_mgr);
+
             // Initialize SQLite database
             let db = db::init_db().expect("Failed to initialize database");
             app.manage(db);
@@ -56,6 +61,8 @@ pub fn run() {
             commands::config::clear_proxy_env,
             // Settings
             commands::config::settings_load, commands::config::settings_save,
+            // Data Directory
+            commands::config::get_data_dir, commands::config::open_data_dir,
             // Favorites
             commands::config::favorites_list, commands::config::favorites_add, commands::config::favorites_remove,
             // Server
@@ -94,7 +101,8 @@ pub fn run() {
             commands::server_ops::server_reboot, commands::server_ops::server_get_uptime,
             commands::server_ops::server_deploy_pubkey, commands::server_ops::server_get_ssh_auth_mode,
             commands::server_ops::server_set_ssh_auth_mode, commands::server_ops::server_get_bbr_status,
-            commands::server_ops::server_set_bbr_status, commands::server_ops::server_get_site_logs,
+            commands::server_ops::server_set_bbr_status, commands::server_ops::server_get_gateway_ports_status,
+            commands::server_ops::server_set_gateway_ports, commands::server_ops::server_get_site_logs,
             commands::server_ops::server_read_site_log,
             // File Browser
             commands::fb::fb_favorites_list, commands::fb::fb_favorites_add, commands::fb::fb_favorites_remove,
@@ -103,7 +111,8 @@ pub fn run() {
             // Docker
             commands::server_ops::server_check_docker, commands::server_ops::server_install_docker, commands::server_ops::server_uninstall_docker,
             commands::server_ops::server_docker_container_list, commands::server_ops::server_docker_container_action,
-            commands::server_ops::server_docker_container_remove, commands::server_ops::server_docker_container_logs, commands::server_ops::server_docker_container_commit,
+            commands::server_ops::server_docker_container_remove, commands::server_ops::server_docker_container_batch_action, commands::server_ops::server_docker_container_batch_remove,
+            commands::server_ops::server_docker_container_logs, commands::server_ops::server_docker_container_commit,
             commands::server_ops::server_docker_image_list, commands::server_ops::server_docker_image_pull, commands::server_ops::server_docker_image_remove, commands::server_ops::server_docker_image_load, commands::server_ops::server_docker_image_run,
             commands::server_ops::server_docker_get_mirror_config, commands::server_ops::server_docker_set_mirror_config,
             // Cache
@@ -120,6 +129,14 @@ pub fn run() {
             // Custom Software
             commands::server_ops::custom_software_list, commands::server_ops::custom_software_add, commands::server_ops::custom_software_remove, commands::server_ops::custom_software_action,
             commands::server_ops::server_check_installation,
+            // Tunnels
+            commands::tunnel::tunnel_create, commands::tunnel::tunnel_close, commands::tunnel::tunnel_close_batch,
+            commands::tunnel::tunnel_delete, commands::tunnel::tunnel_restore,
+            commands::tunnel::tunnel_list, commands::tunnel::tunnel_get,
+            commands::tunnel::tunnel_update_note, commands::tunnel::tunnel_delete_batch,
+            commands::tunnel::tunnel_restore_batch,
+            // Port Management
+            commands::port::port_list, commands::port::port_query, commands::port::port_kill,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

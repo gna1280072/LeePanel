@@ -3,6 +3,7 @@ use tauri::Emitter;
 use tokio::sync::Mutex as AsyncMutex;
 use crate::ssh::{self, SshManager};
 use crate::server;
+use crate::tunnel::TunnelManager;
 
 #[tauri::command]
 pub async fn ssh_connect(
@@ -55,6 +56,7 @@ pub async fn ssh_resize(
 #[tauri::command]
 pub async fn ssh_disconnect(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    tunnel_mgr: tauri::State<'_, Arc<AsyncMutex<TunnelManager>>>,
     session_id: &str,
 ) -> Result<(), String> {
     // ponytail: timeout on lock acquisition — if another op holds the lock for 3s, force disconnect locally
@@ -69,6 +71,8 @@ pub async fn ssh_disconnect(
             let mgr = ssh_mgr.lock().await;
             mgr.remove_session(session_id);
             drop(mgr);
+            // Close all tunnels for this session
+            tunnel_mgr.lock().await.close_session_tunnels(session_id).await;
             Ok(())
         }
         Err(_) => {
@@ -327,7 +331,14 @@ pub async fn ssh_extract(ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
 }
 
 #[tauri::command]
-pub async fn ssh_reconnect(ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>, app: tauri::AppHandle, session_id: &str) -> Result<(), String> {
+pub async fn ssh_reconnect(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    tunnel_mgr: tauri::State<'_, Arc<AsyncMutex<TunnelManager>>>,
+    app: tauri::AppHandle,
+    session_id: &str,
+) -> Result<(), String> {
+    // Close all tunnels for this session (old connection is being dropped)
+    tunnel_mgr.lock().await.close_session_tunnels(session_id).await;
     // ponytail: reconnect modifies sessions map, needs mgr lock briefly for disconnect/connect
     let mgr = ssh_mgr.lock().await;
     mgr.reconnect(session_id, app).await

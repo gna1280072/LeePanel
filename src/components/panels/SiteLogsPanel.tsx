@@ -229,7 +229,7 @@ export default function SiteLogsPanel({ sessionId }: SiteLogsPanelProps) {
 
       {/* ponytail: search results hint */}
       {searchTerm && (
-        <div style={{ color: '#ef4444', marginBottom: '8px', fontSize: '14px' }}>
+        <div style={{ color: 'var(--red)', marginBottom: '8px', fontSize: '14px' }}>
           {t('logs.searchResultsHint')}
         </div>
       )}

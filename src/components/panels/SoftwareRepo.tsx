@@ -881,12 +881,12 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
             {versionsLoading ? (
               <div style={{ padding: '16px', textAlign: 'center' }}>{t('software.queryingVersions')}</div>
             ) : versionsError ? (
-              <div className="sw-confirm-warning" style={{ color: '#e74c3c' }}>{versionsError}</div>
+              <div className="sw-confirm-warning" style={{ color: 'var(--red)' }}>{versionsError}</div>
             ) : (
               <>
                 {/* Install method toggle — ponytail: source compile hidden, package only */}
                 <div style={{ marginBottom: '12px', display: 'flex', gap: '8px' }}>
-                  <label style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '6px', border: '1px solid #238636', background: 'rgba(35,134,54,0.1)', cursor: 'pointer' }}>
+                  <label style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--green-bg)', background: 'rgba(35,134,54,0.1)', cursor: 'pointer' }}>
                     <input type="radio" name="phpInstallMethod" checked readOnly />
                     <span style={{ fontSize: '13px' }}>{t('software.installMethodPackage')}</span>
                   </label>
@@ -902,10 +902,10 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                       width: '100%',
                       padding: '8px 12px',
                       borderRadius: '4px',
-                      border: '1px solid #ccc',
+                      border: '1px solid var(--border)',
                       fontSize: '14px',
-                      background: 'var(--bg-secondary, #fff)',
-                      color: 'var(--text-primary, #000)',
+                      background: 'var(--bg-panel)',
+                      color: 'var(--text)',
                     }}
                   >
                     {availableVersions.map(ver => (
@@ -946,7 +946,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
             {mysqlVersionsLoading ? (
               <div style={{ padding: '16px', textAlign: 'center' }}>{t('software.queryingVersions')}</div>
             ) : mysqlVersionsError ? (
-              <div className="sw-confirm-warning" style={{ color: '#e74c3c' }}>{mysqlVersionsError}</div>
+              <div className="sw-confirm-warning" style={{ color: 'var(--red)' }}>{mysqlVersionsError}</div>
             ) : (
               <>
                 <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -956,7 +956,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                       style={{
                         display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer',
                         padding: '12px 14px', borderRadius: '8px',
-                        border: `1px solid ${selectedMysqlVersion === v.variant ? '#238636' : '#30363d'}`,
+                        border: `1px solid ${selectedMysqlVersion === v.variant ? 'var(--green-bg)' : 'var(--border)'}`,
                         background: selectedMysqlVersion === v.variant ? 'rgba(35,134,54,0.1)' : 'transparent',
                       }}
                     >
@@ -971,11 +971,11 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                         <div style={{ fontWeight: 500, marginBottom: '4px' }}>
                           {v.variant === 'mysql' ? t('software.mysqlLabel') : t('software.mariadbLabel')}
                         </div>
-                        <div style={{ fontSize: '12px', color: '#8b949e', marginBottom: '4px' }}>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px' }}>
                           {v.variant === 'mysql' ? t('software.mysqlDesc') : t('software.mariadbDesc')}
                         </div>
                         {v.version && (
-                          <div style={{ fontSize: '12px', color: '#58a6ff' }}>
+                          <div style={{ fontSize: '12px', color: 'var(--accent)' }}>
                             {t('software.mysqlVersionInfo', { version: v.version })}
                           </div>
                         )}
@@ -1011,11 +1011,11 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
           <div className="sw-confirm-dialog" onClick={e => e.stopPropagation()}>
             <div className="sw-confirm-title">{t('software.dockerSourceTitle')}</div>
             <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${dockerSourceSelected === 'official' ? '#238636' : '#30363d'}`, background: dockerSourceSelected === 'official' ? 'rgba(35,134,54,0.1)' : 'transparent' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${dockerSourceSelected === 'official' ? 'var(--green-bg)' : 'var(--border)'}`, background: dockerSourceSelected === 'official' ? 'rgba(35,134,54,0.1)' : 'transparent' }}>
                 <input type="radio" name="dockerSource" checked={dockerSourceSelected === 'official'} onChange={() => setDockerSourceSelected('official')} />
                 {t('software.dockerSourceOfficial')}
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${dockerSourceSelected === 'aliyun' ? '#238636' : '#30363d'}`, background: dockerSourceSelected === 'aliyun' ? 'rgba(35,134,54,0.1)' : 'transparent' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${dockerSourceSelected === 'aliyun' ? 'var(--green-bg)' : 'var(--border)'}`, background: dockerSourceSelected === 'aliyun' ? 'rgba(35,134,54,0.1)' : 'transparent' }}>
                 <input type="radio" name="dockerSource" checked={dockerSourceSelected === 'aliyun'} onChange={() => setDockerSourceSelected('aliyun')} />
                 {t('software.dockerSourceAliyun')}
               </label>
@@ -1045,7 +1045,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
             {sourcesLoading ? (
               <div style={{ padding: '16px', textAlign: 'center' }}>{t('software.loadingSources')}</div>
             ) : sourcesError ? (
-              <div className="sw-confirm-warning" style={{ color: '#e74c3c' }}>{sourcesError}</div>
+              <div className="sw-confirm-warning" style={{ color: 'var(--red)' }}>{sourcesError}</div>
             ) : removableSources.length === 0 ? (
               <div style={{ padding: '16px', textAlign: 'center' }}>{t('software.noOldSources')}</div>
             ) : (
@@ -1058,7 +1058,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                         display: 'flex',
                         alignItems: 'center',
                         padding: '8px',
-                        borderBottom: '1px solid #eee',
+                        borderBottom: '1px solid var(--border)',
                         cursor: 'pointer',
                       }}
                     >
@@ -1121,8 +1121,8 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                   placeholder={t('software.sourceNamePlaceholder')}
                   style={{
                     width: '100%', padding: '8px 12px', borderRadius: '4px',
-                    border: '1px solid #ccc', fontSize: '14px',
-                    background: 'var(--bg-secondary, #fff)', color: 'var(--text-primary, #000)',
+                    border: '1px solid var(--border)', fontSize: '14px',
+                    background: 'var(--bg-panel)', color: 'var(--text)',
                   }}
                 />
               </div>
@@ -1135,8 +1135,8 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                   placeholder={t('software.sourceUrlPlaceholder')}
                   style={{
                     width: '100%', padding: '8px 12px', borderRadius: '4px',
-                    border: '1px solid #ccc', fontSize: '14px',
-                    background: 'var(--bg-secondary, #fff)', color: 'var(--text-primary, #000)',
+                    border: '1px solid var(--border)', fontSize: '14px',
+                    background: 'var(--bg-panel)', color: 'var(--text)',
                   }}
                 />
               </div>
@@ -1149,15 +1149,15 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                   placeholder={t('software.sourceGpgKeyPlaceholder')}
                   style={{
                     width: '100%', padding: '8px 12px', borderRadius: '4px',
-                    border: '1px solid #ccc', fontSize: '14px',
-                    background: 'var(--bg-secondary, #fff)', color: 'var(--text-primary, #000)',
+                    border: '1px solid var(--border)', fontSize: '14px',
+                    background: 'var(--bg-panel)', color: 'var(--text)',
                   }}
                 />
               </div>
             </div>
 
             {addSourceError && (
-              <div className="sw-confirm-warning" style={{ color: '#e74c3c' }}>{addSourceError}</div>
+              <div className="sw-confirm-warning" style={{ color: 'var(--red)' }}>{addSourceError}</div>
             )}
 
             <div className="sw-confirm-actions">
@@ -1235,8 +1235,8 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                   placeholder={t('software.packageNamePlaceholder')}
                   style={{
                     width: '100%', padding: '8px 12px', borderRadius: '4px',
-                    border: '1px solid #ccc', fontSize: '14px',
-                    background: 'var(--bg-secondary, #fff)', color: 'var(--text-primary, #000)',
+                    border: '1px solid var(--border)', fontSize: '14px',
+                    background: 'var(--bg-panel)', color: 'var(--text)',
                   }}
                 />
               </div>
@@ -1249,8 +1249,8 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                   placeholder={t('software.displayNamePlaceholder')}
                   style={{
                     width: '100%', padding: '8px 12px', borderRadius: '4px',
-                    border: '1px solid #ccc', fontSize: '14px',
-                    background: 'var(--bg-secondary, #fff)', color: 'var(--text-primary, #000)',
+                    border: '1px solid var(--border)', fontSize: '14px',
+                    background: 'var(--bg-panel)', color: 'var(--text)',
                   }}
                 />
               </div>
@@ -1261,8 +1261,8 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                   onChange={e => setAddCustomCategory(e.target.value)}
                   style={{
                     width: '100%', padding: '8px 12px', borderRadius: '4px',
-                    border: '1px solid #ccc', fontSize: '14px',
-                    background: 'var(--bg-secondary, #fff)', color: 'var(--text-primary, #000)',
+                    border: '1px solid var(--border)', fontSize: '14px',
+                    background: 'var(--bg-panel)', color: 'var(--text)',
                   }}
                 >
                   <option value="other">{t('software.catOther')}</option>
@@ -1276,7 +1276,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
             </div>
 
             {addCustomError && (
-              <div className="sw-confirm-warning" style={{ color: '#e74c3c' }}>{addCustomError}</div>
+              <div className="sw-confirm-warning" style={{ color: 'var(--red)' }}>{addCustomError}</div>
             )}
 
             <div className="sw-confirm-actions">

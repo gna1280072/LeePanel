@@ -272,12 +272,13 @@ pub async fn server_firewall_add(
     port: &str,
     protocol: &str,
     action: &str,
+    source: Option<&str>,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
     drop(mgr);
-    let result = server::add_firewall_rule(&session, &cache, session_id, port, protocol, action).await;
+    let result = server::add_firewall_rule(&session, &cache, session_id, port, protocol, action, source.unwrap_or("")).await;
     cache.invalidate(session_id, &["firewall"]);
     result
 }
@@ -289,12 +290,13 @@ pub async fn server_firewall_remove(
     port: &str,
     protocol: &str,
     action: &str,
+    source: Option<&str>,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
     drop(mgr);
-    let result = server::remove_firewall_rule(&session, &cache, session_id, port, protocol, action).await;
+    let result = server::remove_firewall_rule(&session, &cache, session_id, port, protocol, action, source.unwrap_or("")).await;
     cache.invalidate(session_id, &["firewall"]);
     result
 }
@@ -528,6 +530,33 @@ pub async fn server_set_bbr_status(
 }
 
 #[tauri::command]
+pub async fn server_get_gateway_ports_status(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+) -> Result<GatewayPortsStatus, String> {
+    let mgr = ssh_mgr.lock().await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::get_gateway_ports_status(&session, &cache, session_id).await
+}
+
+#[tauri::command]
+pub async fn server_set_gateway_ports(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+    enable: bool,
+) -> Result<String, String> {
+    let mgr = ssh_mgr.lock().await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    let result = server::set_gateway_ports(&session, &cache, session_id, enable).await;
+    cache.invalidate(session_id, &["gateway_ports"]);
+    result
+}
+
+#[tauri::command]
 pub async fn server_get_site_logs(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
     session_id: &str,
@@ -639,6 +668,34 @@ pub async fn server_docker_container_remove(
     let cache = mgr.cache.clone();
     drop(mgr);
     server::docker_container_remove(&session, &cache, session_id, container_id, force).await
+}
+
+#[tauri::command]
+pub async fn server_docker_container_batch_action(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+    container_ids: Vec<String>,
+    action: &str,
+) -> Result<Vec<server::DockerBatchResult>, String> {
+    let mgr = ssh_mgr.lock().await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::docker_container_batch_action(&session, &cache, session_id, container_ids, action).await
+}
+
+#[tauri::command]
+pub async fn server_docker_container_batch_remove(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: &str,
+    container_ids: Vec<String>,
+    force: bool,
+) -> Result<Vec<server::DockerBatchResult>, String> {
+    let mgr = ssh_mgr.lock().await;
+    let session = mgr.get_session(session_id)?;
+    let cache = mgr.cache.clone();
+    drop(mgr);
+    server::docker_container_batch_remove(&session, &cache, session_id, container_ids, force).await
 }
 
 #[tauri::command]

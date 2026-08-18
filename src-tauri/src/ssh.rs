@@ -5,8 +5,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use async_trait::async_trait;
 use russh::client::{self, Handler};
 use russh::ChannelMsg;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{mpsc, Mutex};
+
+use crate::tunnel::TunnelManager;
 
 // ===== SSH Response Cache =====
 
@@ -66,7 +68,17 @@ fn parse_curl_progress(line: &str) -> Option<f64> {
     None
 }
 
-pub struct SshHandler;
+/// A connection the server forwarded to us (remote forwarding, ssh -R).
+/// Handed to the matching remote tunnel via the forwarded_reg channel.
+pub struct ForwardedTcpip {
+    pub channel: russh::Channel<russh::client::Msg>,
+}
+
+pub struct SshHandler {
+    /// Remote-forward registrations: server listen port -> tunnel receiver.
+    /// The server names the port in server_channel_open_forwarded_tcpip.
+    pub forwarded_reg: Arc<std::sync::Mutex<HashMap<u32, mpsc::UnboundedSender<ForwardedTcpip>>>>,
+}
 
 #[async_trait]
 impl Handler for SshHandler {
@@ -77,6 +89,23 @@ impl Handler for SshHandler {
         _server_public_key: &russh_keys::key::PublicKey,
     ) -> Result<bool, Self::Error> {
         Ok(true)
+    }
+
+    /// Remote forwarding: the server opens a channel for a new incoming connection.
+    /// Route it to the tunnel registered for this port; drop it if none.
+    async fn server_channel_open_forwarded_tcpip(
+        &mut self,
+        channel: russh::Channel<russh::client::Msg>,
+        _connected_address: &str,
+        connected_port: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        _session: &mut russh::client::Session,
+    ) -> Result<(), Self::Error> {
+        if let Some(tx) = self.forwarded_reg.lock().unwrap().get(&connected_port) {
+            let _ = tx.send(ForwardedTcpip { channel });
+        }
+        Ok(())
     }
 }
 
@@ -103,6 +132,7 @@ pub struct SshSession {
     pub channel_open_tx: mpsc::Sender<ChannelOpen>,
     pub connect_info: ConnectInfo,
     pub sftp_cache: Arc<tokio::sync::Mutex<Option<(Arc<russh_sftp::client::SftpSession>, tokio::time::Instant)>>>,
+    pub forwarded_reg: Arc<std::sync::Mutex<HashMap<u32, mpsc::UnboundedSender<ForwardedTcpip>>>>,
 }
 
 /// Controls pause/stop for active file transfers (save-to-local).
@@ -179,7 +209,10 @@ impl SshManager {
         cols: u32,
         rows: u32,
     ) -> Result<SshSession, String> {
-        let handler = SshHandler;
+        let handler = SshHandler {
+            forwarded_reg: Arc::new(std::sync::Mutex::new(HashMap::new())),
+        };
+        let forwarded_reg = handler.forwarded_reg.clone();
         let mut ssh_config = client::Config::default();
         // Detect dead connections via keepalive + inactivity timeout
         ssh_config.keepalive_interval = Some(std::time::Duration::from_secs(10));
@@ -257,6 +290,10 @@ impl SshManager {
                                     "sessionId": sid,
                                     "reason": "Connection lost",
                                 }));
+                                // Close all tunnels for this session
+                                if let Some(tm) = ah.try_state::<Arc<tokio::sync::Mutex<TunnelManager>>>() {
+                                    tm.lock().await.close_session_tunnels(&sid).await;
+                                }
                                 break;
                             }
                             _ => {}
@@ -268,6 +305,9 @@ impl SshManager {
                                 "sessionId": sid,
                                 "reason": "Send failed",
                             }));
+                            if let Some(tm) = ah.try_state::<Arc<tokio::sync::Mutex<TunnelManager>>>() {
+                                tm.lock().await.close_session_tunnels(&sid).await;
+                            }
                             break;
                         }
                     }
@@ -303,6 +343,7 @@ impl SshManager {
             channel_open_tx,
             connect_info,
             sftp_cache: Arc::new(tokio::sync::Mutex::new(None)),
+            forwarded_reg,
         };
         Ok(session)
     }

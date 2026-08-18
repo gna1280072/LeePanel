@@ -12,6 +12,7 @@ import SitesPanel from './panels/SitesPanel'
 import SslPanel from './panels/SslPanel'
 import MonitorPanel from './panels/MonitorPanel'
 import FirewallPanel from './panels/FirewallPanel'
+import PortPanel from './panels/PortPanel'
 import SoftwareRepo from './panels/SoftwareRepo'
 import ServerSettingsPanel from './panels/ServerSettingsPanel'
 import UpdatePanel from './panels/UpdatePanel'
@@ -20,11 +21,12 @@ import BbrPanel from './panels/BbrPanel'
 import DatabasePanel from './panels/DatabasePanel'
 import RedisPanel from './panels/RedisPanel'
 import DockerPanel from './panels/DockerPanel'
+import TunnelPanel from './panels/TunnelPanel'
 import Terminal from './Terminal'
 import type { TerminalHandle } from './Terminal'
 import FileBrowser, { type FileBrowserHandle } from './FileBrowser'
 
-type PanelSection = 'dashboard' | 'terminal' | 'files' | 'software' | 'nginx' | 'php' | 'sites' | 'logs' | 'ssl' | 'monitor' | 'firewall' | 'bbr' | 'docker' | 'database' | 'redis' | 'update' | 'settings' | 'discussions'
+type PanelSection = 'dashboard' | 'terminal' | 'files' | 'software' | 'nginx' | 'php' | 'sites' | 'logs' | 'ssl' | 'monitor' | 'firewall' | 'port' | 'tunnel' | 'bbr' | 'docker' | 'database' | 'redis' | 'update' | 'settings' | 'discussions'
 
 interface AppSettings {
   auto_reconnect: boolean
@@ -36,6 +38,7 @@ interface AppSettings {
   cache_enabled: boolean
   command_timeout_minutes: number
   upload_workers: number
+  theme: string
 }
 
 interface ServerPanelProps {
@@ -70,6 +73,8 @@ const NAV_ITEMS: { key: PanelSection; labelKey: string; icon: string }[] = [
   { key: 'logs', labelKey: 'nav.logs', icon: '📋' },
   { key: 'monitor', labelKey: 'nav.monitor', icon: '📈' },
   { key: 'firewall', labelKey: 'nav.firewall', icon: '🧱' },
+  { key: 'port', labelKey: 'nav.port', icon: '🔌' },
+  { key: 'tunnel', labelKey: 'nav.tunnel', icon: '🔗' },
   { key: 'bbr', labelKey: 'nav.bbr', icon: '🚀' },
   { key: 'update', labelKey: 'nav.update', icon: '🔄' },
   { key: 'settings', labelKey: 'nav.settings', icon: '⚙' },
@@ -166,6 +171,8 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
         return <MonitorPanel sessionId={sessionId} />
       case 'firewall':
         return <FirewallPanel sessionId={sessionId} />
+      case 'port':
+        return <PortPanel sessionId={sessionId} />
       // case 'software': removed - always mounted below
       case 'bbr':
         return <BbrPanel sessionId={sessionId} />
@@ -175,6 +182,12 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
         return <RedisPanel sessionId={sessionId} onNavigateToSoftware={() => setActiveSection('software')} />
       case 'docker':
         return <DockerPanel sessionId={sessionId} onNavigateToSoftware={() => setActiveSection('software')} />
+      case 'tunnel':
+        return <TunnelPanel
+          sessionId={sessionId}
+          serverHost={connHost ? (connHost.includes('_') ? connHost.slice(0, connHost.lastIndexOf('_')) : connHost) : undefined}
+          connUsername={connUsername}
+        />
       case 'settings':
         return <ServerSettingsPanel sessionId={sessionId} appSettings={appSettings} onToggleAutoReconnect={onToggleAutoReconnect} onUpdateSettings={onUpdateSettings} />
       default:
@@ -204,7 +217,7 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
       <div className="sp-content">
         {/* Terminal always mounted to preserve SSH session */}
         <div style={{ display: activeSection === 'terminal' ? 'block' : 'none', height: '100%' }}>
-          <Terminal ref={termRef} sessionId={sessionId} isActive={activeSection === 'terminal'} />
+          <Terminal ref={termRef} sessionId={sessionId} isActive={activeSection === 'terminal'} theme={appSettings?.theme || 'dark'} />
         </div>
         {/* Files always mounted to preserve state and avoid reload flash */}
         <div style={{ display: activeSection === 'files' ? 'block' : 'none', height: '100%' }}>

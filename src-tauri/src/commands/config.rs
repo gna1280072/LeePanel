@@ -77,3 +77,18 @@ pub fn favorites_remove(db: tauri::State<'_, DbPool>, path: &str) -> Result<(), 
     let conn = db.lock().unwrap();
     FavoritesManager::remove(&conn, path)
 }
+
+// ===== Data Directory Commands =====
+
+/// Get the local SQLite data directory (stores connections, settings, cache, etc.)
+#[tauri::command]
+pub fn get_data_dir() -> String {
+    crate::db::db_dir().to_string_lossy().to_string()
+}
+
+/// Open the local SQLite data directory in the system file explorer
+#[tauri::command]
+pub fn open_data_dir() -> Result<(), String> {
+    let dir = crate::db::db_dir();
+    open::that(&dir).map_err(|e| format!("Failed to open directory: {}", e))
+}

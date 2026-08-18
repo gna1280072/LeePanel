@@ -167,9 +167,9 @@ export default function MonitorPanel({ sessionId }: MonitorPanelProps) {
 }
 
 function gaugeColor(percent: number): string {
-  if (percent > 90) return '#f85149'
-  if (percent > 70) return '#d29922'
-  return '#3fb950'
+  if (percent > 90) return 'var(--red)'
+  if (percent > 70) return 'var(--yellow)'
+  return 'var(--green)'
 }
 
 function formatMb(mb: number): string {
@@ -217,12 +217,12 @@ function MiniChart({ data }: { data: { cpu: number; mem: number; ts: number }[] 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="monitor-chart-svg">
       {/* Grid lines */}
-      <line x1={padding} y1={height / 2} x2={width - padding} y2={height / 2} stroke="#21262d" strokeWidth="0.5" />
-      <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="#21262d" strokeWidth="0.5" />
+      <line x1={padding} y1={height / 2} x2={width - padding} y2={height / 2} stroke="var(--bg-subtle)" strokeWidth="0.5" />
+      <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="var(--bg-subtle)" strokeWidth="0.5" />
       {/* CPU line */}
-      <path d={cpuPath} fill="none" stroke="#58a6ff" strokeWidth="1.5" />
+      <path d={cpuPath} fill="none" stroke="var(--accent)" strokeWidth="1.5" />
       {/* Memory line */}
-      <path d={memPath} fill="none" stroke="#3fb950" strokeWidth="1.5" />
+      <path d={memPath} fill="none" stroke="var(--green)" strokeWidth="1.5" />
     </svg>
   )
 }

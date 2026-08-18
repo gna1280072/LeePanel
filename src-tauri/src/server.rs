@@ -3906,6 +3906,21 @@ fn parse_iptables_output(stdout: &str) -> Result<FirewallInfo, String> {
     Ok(FirewallInfo { firewall_type: "iptables".to_string(), enabled: enabled || !rules.is_empty(), rules })
 }
 
+/// Normalize a source address from the UI: empty/"anywhere"/"*" -> None (i.e. any source),
+/// otherwise validate the charset (IPv4/IPv6/CIDR/hostname-safe) and return the value.
+fn normalize_firewall_source(source: &str) -> Result<Option<String>, String> {
+    let s = source.trim();
+    if s.is_empty() || s.eq_ignore_ascii_case("anywhere") || s == "*" || s == "0.0.0.0/0" || s == "::/0" {
+        return Ok(None);
+    }
+    if !s.chars().all(|c| {
+        c.is_ascii_alphanumeric() || matches!(c, '.' | ':' | '/' | '-' | '_' | '*')
+    }) {
+        return Err("Invalid source address: only IP/CIDR/hostname characters are allowed".to_string());
+    }
+    Ok(Some(s.to_string()))
+}
+
 pub async fn add_firewall_rule(
     session: &SshSession,
     _cache: &SshCache,
@@ -3913,22 +3928,40 @@ pub async fn add_firewall_rule(
     port: &str,
     protocol: &str,
     action: &str,
+    source: &str,
 ) -> Result<String, String> {
     // Detect firewall type
     let (stdout, _, _) = crate::ssh::session_exec_with_output(session, "command -v ufw && echo HAS_UFW; command -v firewall-cmd && echo HAS_FIREWALLD", 10)
         .await?;
+    let source = normalize_firewall_source(source)?;
 
     let cmd = if stdout.contains("HAS_UFW") {
         let proto = if protocol == "both" || protocol == "any" { "" } else { protocol };
         let action_ufw = if action == "allow" { "allow" } else { "deny" };
-        if proto.is_empty() {
-            format!("ufw {} {}", action_ufw, port)
-        } else {
-            format!("ufw {} {}/{}", action_ufw, port, proto)
+        match source {
+            Some(src) => match proto.is_empty() {
+                true => format!("ufw {} from {} to any port {}", action_ufw, src, port),
+                false => format!("ufw {} from {} to any port {} proto {}", action_ufw, src, port, proto),
+            },
+            None => match proto.is_empty() {
+                true => format!("ufw {} {}", action_ufw, port),
+                false => format!("ufw {} {}/{}", action_ufw, port, proto),
+            },
         }
     } else if stdout.contains("HAS_FIREWALLD") {
         let proto = if protocol == "both" || protocol == "any" { "tcp" } else { protocol };
-        format!("firewall-cmd --permanent --add-port={}/{}", port, proto)
+        let fw_action = match action {
+            "allow" => "accept",
+            "deny" => "drop",
+            _ => "reject",
+        };
+        match source {
+            Some(src) => format!(
+                "firewall-cmd --permanent --add-rich-rule='rule family=\"ipv4\" source address=\"{}\" port port=\"{}\" protocol=\"{}\" {}'",
+                src, port, proto, fw_action
+            ),
+            None => format!("firewall-cmd --permanent --add-port={}/{}", port, proto),
+        }
     } else {
         let target = match action {
             "allow" => "ACCEPT",
@@ -3936,7 +3969,10 @@ pub async fn add_firewall_rule(
             _ => "REJECT",
         };
         let proto = if protocol == "both" || protocol == "any" { "tcp" } else { protocol };
-        format!("iptables -I INPUT -p {} --dport {} -j {}", proto, port, target)
+        match source {
+            Some(src) => format!("iptables -I INPUT -s {} -p {} --dport {} -j {}", src, proto, port, target),
+            None => format!("iptables -I INPUT -p {} --dport {} -j {}", proto, port, target),
+        }
     };
 
     let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 15).await?;
@@ -3963,21 +3999,39 @@ pub async fn remove_firewall_rule(
     port: &str,
     protocol: &str,
     action: &str,
+    source: &str,
 ) -> Result<String, String> {
     let (stdout, _, _) = crate::ssh::session_exec_with_output(session, "command -v ufw && echo HAS_UFW; command -v firewall-cmd && echo HAS_FIREWALLD", 10)
         .await?;
+    let source = normalize_firewall_source(source)?;
 
     let cmd = if stdout.contains("HAS_UFW") {
         let proto = if protocol == "both" || protocol == "any" { "" } else { protocol };
         let action_ufw = if action == "allow" { "allow" } else { "deny" };
-        if proto.is_empty() {
-            format!("ufw delete {} {}", action_ufw, port)
-        } else {
-            format!("ufw delete {} {}/{}", action_ufw, port, proto)
+        match source {
+            Some(src) => match proto.is_empty() {
+                true => format!("ufw delete {} from {} to any port {}", action_ufw, src, port),
+                false => format!("ufw delete {} from {} to any port {} proto {}", action_ufw, src, port, proto),
+            },
+            None => match proto.is_empty() {
+                true => format!("ufw delete {} {}", action_ufw, port),
+                false => format!("ufw delete {} {}/{}", action_ufw, port, proto),
+            },
         }
     } else if stdout.contains("HAS_FIREWALLD") {
         let proto = if protocol == "both" || protocol == "any" { "tcp" } else { protocol };
-        format!("firewall-cmd --permanent --remove-port={}/{}", port, proto)
+        let fw_action = match action {
+            "allow" => "accept",
+            "deny" => "drop",
+            _ => "reject",
+        };
+        match source {
+            Some(src) => format!(
+                "firewall-cmd --permanent --remove-rich-rule='rule family=\"ipv4\" source address=\"{}\" port port=\"{}\" protocol=\"{}\" {}'",
+                src, port, proto, fw_action
+            ),
+            None => format!("firewall-cmd --permanent --remove-port={}/{}", port, proto),
+        }
     } else {
         let target = match action {
             "allow" => "ACCEPT",
@@ -3985,7 +4039,10 @@ pub async fn remove_firewall_rule(
             _ => "REJECT",
         };
         let proto = if protocol == "both" || protocol == "any" { "tcp" } else { protocol };
-        format!("iptables -D INPUT -p {} --dport {} -j {}", proto, port, target)
+        match source {
+            Some(src) => format!("iptables -D INPUT -s {} -p {} --dport {} -j {}", src, proto, port, target),
+            None => format!("iptables -D INPUT -p {} --dport {} -j {}", proto, port, target),
+        }
     };
 
     let (stdout_out, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 15).await?;
@@ -6636,6 +6693,113 @@ echo "BBR_DISABLED"
     Ok(if enable { "BBR enabled successfully." } else { "BBR disabled successfully." }.to_string())
 }
 
+// ===== SSH GatewayPorts (public access for remote forwarding) =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct GatewayPortsStatus {
+    pub enabled: bool,
+    pub value: String,
+}
+
+/// Read the effective GatewayPorts setting for remote forwarding.
+/// `sshd -T` prints the effective config (needs root); falls back to parsing
+/// sshd_config when `sshd -T` is unavailable.
+pub async fn get_gateway_ports_status(
+    session: &SshSession,
+    cache: &SshCache,
+    session_id: &str,
+) -> Result<GatewayPortsStatus, String> {
+    // ponytail: cache status for connection lifetime
+    if let Some(cached) = cache.get(session_id, "gateway_ports", 0) {
+        if let Ok(status) = serde_json::from_str::<GatewayPortsStatus>(&cached) {
+            return Ok(status);
+        }
+    }
+    let cmd = r#"
+SUDO=""
+if [ "$(id -u)" != "0" ]; then SUDO="sudo -n "; fi
+GP=$($SUDO sshd -T 2>/dev/null | grep -i '^gatewayports' | awk '{print $2; exit}')
+if [ -z "$GP" ]; then
+  GP=$(grep -iE '^[[:space:]]*[^#]*gatewayports' /etc/ssh/sshd_config 2>/dev/null | tail -1 | awk '{print $2}' | tr 'A-Z' 'a-z')
+fi
+echo "GP=${GP:-unknown}"
+"#;
+    let (stdout, _stderr, _code) = crate::ssh::session_exec_with_output(session, cmd, 10).await?;
+    let mut value = "unknown".to_string();
+    for line in stdout.lines() {
+        if let Some(v) = line.strip_prefix("GP=") {
+            value = v.trim().to_string();
+        }
+    }
+    let result = GatewayPortsStatus {
+        enabled: value == "yes",
+        value,
+    };
+    // ponytail: cache status
+    if let Ok(json) = serde_json::to_string(&result) {
+        cache.put(session_id, "gateway_ports", json);
+    }
+    Ok(result)
+}
+
+/// Enable or disable GatewayPorts in sshd_config, validate with `sshd -t`,
+/// then restart sshd. Backs up sshd_config first and restores it if the
+/// config test fails. Works for root or passwordless-sudo users.
+pub async fn set_gateway_ports(
+    session: &SshSession,
+    _cache: &SshCache,
+    _session_id: &str,
+    enable: bool,
+) -> Result<String, String> {
+    let setting = if enable { "yes" } else { "no" };
+    let cmd = format!(r#"
+SUDO=""
+if [ "$(id -u)" != "0" ]; then SUDO="sudo -n "; fi
+CFG=/etc/ssh/sshd_config
+BK="$CFG.gw.$(date +%Y%m%d%H%M%S)"
+if ! $SUDO cp "$CFG" "$BK" 2>/dev/null; then
+  echo "GATEWAY_ERROR:need_root: cannot write $CFG — login as root or configure passwordless sudo"
+  exit 1
+fi
+if $SUDO grep -qE '^[[:space:]]*#?[[:space:]]*GatewayPorts' "$CFG"; then
+  $SUDO sed -i -E 's/^[[:space:]]*#?[[:space:]]*GatewayPorts.*/GatewayPorts {setting}/' "$CFG"
+else
+  echo 'GatewayPorts {setting}' | $SUDO tee -a "$CFG" > /dev/null
+fi
+if ! $SUDO sshd -t; then
+  echo "GATEWAY_ERROR:config_test_failed: sshd config test failed — original config restored"
+  $SUDO cp "$BK" "$CFG"
+  exit 1
+fi
+if ! ($SUDO systemctl restart sshd 2>/dev/null || $SUDO systemctl restart ssh 2>/dev/null || $SUDO service sshd restart 2>/dev/null || $SUDO service ssh restart 2>/dev/null); then
+  echo "GATEWAY_ERROR:restart_failed: failed to restart sshd — config changed but not applied"
+  exit 1
+fi
+echo "GATEWAY_OK"
+"#);
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 30).await?;
+    if stdout.contains("GATEWAY_ERROR") {
+        let msg = stdout
+            .lines()
+            .find(|l| l.contains("GATEWAY_ERROR"))
+            .unwrap_or("GATEWAY_ERROR:unknown")
+            .replace("GATEWAY_ERROR:", "");
+        return Err(msg);
+    }
+    if code != 0 {
+        return Err(format!("Failed to set GatewayPorts: {}", stderr.trim()));
+    }
+    if !stdout.contains("GATEWAY_OK") {
+        return Err("Failed to set GatewayPorts".to_string());
+    }
+    Ok(if enable {
+        "GatewayPorts enabled successfully."
+    } else {
+        "GatewayPorts disabled successfully."
+    }
+    .to_string())
+}
+
 // ===== Site Logs =====
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -6769,6 +6933,14 @@ pub struct DockerContainer {
     pub state: String,
     pub ports: String,
     pub created: String,
+}
+
+/// Per-container outcome of a batch operation, so the UI can list success/failure details.
+#[derive(Serialize, Clone, Debug)]
+pub struct DockerBatchResult {
+    pub id: String,
+    pub ok: bool,
+    pub message: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -7181,6 +7353,83 @@ pub async fn docker_container_remove(
         return Err(format!("Failed to remove container: {}", err));
     }
     Ok(format!("Container {} removed successfully", safe_id))
+}
+
+/// Batch action on multiple containers (start/stop/restart/pause/unpause).
+/// Executes per-container so each result is reported individually instead of
+/// docker's fail-fast multi-arg behavior aborting the whole batch.
+pub async fn docker_container_batch_action(
+    session: &SshSession,
+    _cache: &SshCache,
+    _session_id: &str,
+    container_ids: Vec<String>,
+    action: &str,
+) -> Result<Vec<DockerBatchResult>, String> {
+    let valid_actions = ["start", "stop", "restart", "pause", "unpause"];
+    if !valid_actions.contains(&action) {
+        return Err(format!("Invalid action: {}", action));
+    }
+
+    let mut results = Vec::with_capacity(container_ids.len());
+    for id in container_ids {
+        let safe_id = id.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect::<String>();
+        if safe_id.is_empty() {
+            results.push(DockerBatchResult { id, ok: false, message: "Invalid container id".into() });
+            continue;
+        }
+        let cmd = format!("docker {} {}", action, safe_id);
+        let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 30).await?;
+        if code > 0 {
+            let err = if !stderr.trim().is_empty() {
+                stderr.trim().to_string()
+            } else if !stdout.trim().is_empty() {
+                stdout.trim().to_string()
+            } else {
+                format!("Command failed with exit code {}", code)
+            };
+            results.push(DockerBatchResult { id: safe_id.clone(), ok: false, message: err });
+        } else {
+            results.push(DockerBatchResult { id: safe_id, ok: true, message: format!("{}ed", action) });
+        }
+    }
+    Ok(results)
+}
+
+/// Batch remove multiple containers (docker rm [-f]).
+pub async fn docker_container_batch_remove(
+    session: &SshSession,
+    _cache: &SshCache,
+    _session_id: &str,
+    container_ids: Vec<String>,
+    force: bool,
+) -> Result<Vec<DockerBatchResult>, String> {
+    let mut results = Vec::with_capacity(container_ids.len());
+    for id in container_ids {
+        let safe_id = id.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect::<String>();
+        if safe_id.is_empty() {
+            results.push(DockerBatchResult { id, ok: false, message: "Invalid container id".into() });
+            continue;
+        }
+        let cmd = if force {
+            format!("docker rm -f {}", safe_id)
+        } else {
+            format!("docker rm {}", safe_id)
+        };
+        let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 30).await?;
+        if code > 0 {
+            let err = if !stderr.trim().is_empty() {
+                stderr.trim().to_string()
+            } else if !stdout.trim().is_empty() {
+                stdout.trim().to_string()
+            } else {
+                format!("Command failed with exit code {}", code)
+            };
+            results.push(DockerBatchResult { id: safe_id.clone(), ok: false, message: err });
+        } else {
+            results.push(DockerBatchResult { id: safe_id, ok: true, message: "removed".into() });
+        }
+    }
+    Ok(results)
 }
 
 /// Commit a container to a new image
@@ -9210,4 +9459,297 @@ pub async fn import_database_from_backup(
     }
     
     Ok(format!("Database {} imported from backup {} successfully", db_name, backup_filename))
+}
+
+// ===== Port Management =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PortInfo {
+    pub port: u16,            // numeric port
+    pub protocol: String,     // "tcp" / "udp"
+    pub address: String,      // listening address, e.g. "0.0.0.0" / "*" / "[::]"
+    pub pid: Option<i32>,     // process pid (None if unavailable)
+    pub process: Option<String>, // process name (None if unavailable)
+    pub user: Option<String>, // owning user (None if unavailable)
+}
+
+/// List all listening (or unconnected) ports on the remote server.
+/// Auto-detects the best available tool: ss → lsof → netstat.
+pub async fn list_listening_ports(
+    session: &SshSession,
+    cache: &SshCache,
+    session_id: &str,
+) -> Result<Vec<PortInfo>, String> {
+    // short TTL — port usage changes dynamically
+    if let Some(cached) = cache.get(session_id, "ports", 5) {
+        if let Ok(list) = serde_json::from_str::<Vec<PortInfo>>(&cached) {
+            return Ok(list);
+        }
+    }
+
+    let (stdout, _, _) = crate::ssh::session_exec_with_output(session,
+        r#"
+if command -v ss >/dev/null 2>&1; then
+  echo "TOOL=ss"
+  ss -tulnp 2>/dev/null
+elif command -v lsof >/dev/null 2>&1; then
+  echo "TOOL=lsof"
+  lsof -i -P -n 2>/dev/null
+elif command -v netstat >/dev/null 2>&1; then
+  echo "TOOL=netstat"
+  netstat -tulnp 2>/dev/null
+else
+  echo "TOOL=none"
+fi
+echo "PS_MAP_START"
+ps -eo pid=,user=,comm= 2>/dev/null
+echo "PS_MAP_END"
+"#,
+        20,
+    ).await?;
+
+    let mut tool = "none";
+    let mut out = String::new();
+    let mut ps_map: std::collections::HashMap<String, (String, String)> = std::collections::HashMap::new(); // pid -> (user, comm)
+    let mut in_ps = false;
+
+    for line in stdout.lines() {
+        if line.starts_with("TOOL=") {
+            tool = &line[5..];
+            continue;
+        }
+        if line == "PS_MAP_START" { in_ps = true; continue; }
+        if line == "PS_MAP_END" { in_ps = false; continue; }
+        if in_ps {
+            let mut parts = line.splitn(3, ' ');
+            let pid = parts.next().unwrap_or("").trim();
+            let user = parts.next().unwrap_or("").trim();
+            let comm = parts.next().unwrap_or("").trim();
+            if !pid.is_empty() && !user.is_empty() {
+                ps_map.insert(pid.to_string(), (user.to_string(), comm.to_string()));
+            }
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+
+    if tool == "none" {
+        return Err("No supported tool (ss/lsof/netstat) found on the server".to_string());
+    }
+
+    let mut ports = match tool {
+        "ss" => parse_ss_ports(&out),
+        "lsof" => parse_lsof_ports(&out),
+        "netstat" => parse_netstat_ports(&out),
+        _ => vec![],
+    };
+
+    // enrich with user info from ps map (ss/netstat don't expose the owner)
+    for p in &mut ports {
+        if let Some(pid_str) = p.pid.as_ref().map(|v| v.to_string()) {
+            if let Some((user, comm)) = ps_map.get(&pid_str) {
+                if p.user.is_none() {
+                    p.user = Some(user.clone());
+                }
+                if p.process.is_none() || p.process.as_deref() == Some("") {
+                    p.process = Some(comm.clone());
+                }
+            }
+        }
+    }
+
+    ports.sort_by(|a, b| b.port.cmp(&a.port));
+    cache.put(session_id, "ports", serde_json::to_string(&ports).unwrap_or_default());
+    Ok(ports)
+}
+
+/// Parse `ss -tulnp` output.
+fn parse_ss_ports(stdout: &str) -> Vec<PortInfo> {
+    let mut out = Vec::new();
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with("Netid") || line.starts_with("State") { continue; }
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.len() < 6 { continue; }
+        // Netid State Recv-Q Send-Q Local Address:Port Peer Address:Port [Process]
+        let proto_raw = fields[0];
+        let state = fields[1];
+        let local = fields[4];
+        if state != "LISTEN" && state != "UNCONN" { continue; }
+        let protocol = normalize_proto(proto_raw);
+        let (addr, port) = split_addr_port(local);
+        let Some(port_num) = port else { continue };
+        let mut pid = None;
+        let mut process = None;
+        if fields.len() >= 7 {
+            let proc_field = fields[6];
+            if proc_field.starts_with("users:") {
+                // users:(("sshd",pid=1234,fd=3)) or users:(("nginx",pid=100,fd=6),("nginx",pid=101,fd=7))
+                let mut first_name: Option<String> = None;
+                let mut first_pid: Option<i32> = None;
+                let mut rest = &proc_field[7..]; // skip "users:("
+                // trim trailing ')' possibly multiple
+                while let Some(start) = rest.find('"') {
+                    let after = &rest[start + 1..];
+                    let end = match after.find('"') { Some(e) => e, None => break };
+                    let name = &after[..end];
+                    if first_name.is_none() && !name.is_empty() {
+                        first_name = Some(name.to_string());
+                    }
+                    let after_name = &after[end + 1..];
+                    if let Some(p) = after_name.find("pid=") {
+                        let pid_part = &after_name[p + 4..];
+                        let num: String = pid_part.chars().take_while(|c| c.is_ascii_digit()).collect();
+                        if let Ok(v) = num.parse::<i32>() {
+                            if first_pid.is_none() {
+                                first_pid = Some(v);
+                            }
+                        }
+                    }
+                    rest = &after_name[..];
+                    // advance past "fd=N" to next entry
+                    if let Some(fd) = rest.find("fd=") {
+                        let mut idx = fd + 3;
+                        while idx < rest.len() && rest.as_bytes()[idx].is_ascii_digit() { idx += 1; }
+                        rest = &rest[idx..];
+                    } else {
+                        break;
+                    }
+                }
+                pid = first_pid;
+                process = first_name.filter(|s| !s.is_empty());
+            }
+        }
+        out.push(PortInfo { port: port_num, protocol, address: addr, pid, process, user: None });
+    }
+    out
+}
+
+/// Parse `lsof -i -P -n` output.
+fn parse_lsof_ports(stdout: &str) -> Vec<PortInfo> {
+    let mut out = Vec::new();
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with("COMMAND") { continue; }
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.len() < 9 { continue; }
+        // COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+        let process = fields[0].to_string();
+        let pid = fields[1].parse::<i32>().ok();
+        let user = Some(fields[2].to_string());
+        let name = fields[8..].join(" ");
+        if !name.contains("(LISTEN)") { continue; }
+        let proto_raw = fields[7]; // "TCP", "UDP", "TCP6"...
+        let protocol = normalize_proto(proto_raw);
+        // NAME like "TCP *:22 (LISTEN)" — extract host:port from the second token
+        let second = fields[8].to_string();
+        let (addr, port) = split_addr_port(&second);
+        let Some(port_num) = port else { continue };
+        out.push(PortInfo { port: port_num, protocol, address: addr, pid, process: Some(process), user });
+    }
+    out
+}
+
+/// Parse `netstat -tulnp` output.
+fn parse_netstat_ports(stdout: &str) -> Vec<PortInfo> {
+    let mut out = Vec::new();
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with("Proto") { continue; }
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.len() < 7 { continue; }
+        // Proto Recv-Q Send-Q Local Address Foreign Address State PID/Program name
+        let proto_raw = fields[0];
+        let state = fields[5];
+        if state != "LISTEN" { continue; }
+        let local = fields[3];
+        let protocol = normalize_proto(proto_raw);
+        let (addr, port) = split_addr_port(local);
+        let Some(port_num) = port else { continue };
+        let mut pid = None;
+        let mut process = None;
+        let pid_prog = fields[6].trim();
+        if pid_prog != "-" && !pid_prog.is_empty() {
+            if let Some((p, name)) = pid_prog.split_once('/') {
+                pid = p.parse::<i32>().ok();
+                process = Some(name.to_string());
+            } else {
+                pid = pid_prog.parse::<i32>().ok();
+            }
+        }
+        out.push(PortInfo { port: port_num, protocol, address: addr, pid, process, user: None });
+    }
+    out
+}
+
+/// Normalize protocol token ("TCP6" → "tcp", "tcp6" → "tcp", ...).
+fn normalize_proto(raw: &str) -> String {
+    let r = raw.to_ascii_lowercase();
+    if r.starts_with("tcp") { "tcp".to_string() }
+    else if r.starts_with("udp") { "udp".to_string() }
+    else { r }
+}
+
+/// Split "0.0.0.0:22" / "*:80" / "[::]:443" into (address, port).
+fn split_addr_port(s: &str) -> (String, Option<u16>) {
+    let s = s.trim();
+    // IPv6 bracket form: [::]:443
+    if let Some(close) = s.rfind(']') {
+        if let Some(colon) = s[close..].find(':') {
+            let addr = s[..close + 1].to_string();
+            let port = s[close + 1 + colon + 1..].parse::<u16>().ok();
+            return (addr, port);
+        }
+    }
+    match s.rsplit_once(':') {
+        Some((addr, port)) => {
+            let port = port.parse::<u16>().ok();
+            let addr = if addr.is_empty() { "*".to_string() } else { addr.to_string() };
+            (addr, port)
+        }
+        None => (s.to_string(), None),
+    }
+}
+
+/// Query whether a specific port is in use.
+pub async fn query_port(
+    session: &SshSession,
+    cache: &SshCache,
+    session_id: &str,
+    port: u16,
+) -> Result<Vec<PortInfo>, String> {
+    let all = list_listening_ports(session, cache, session_id).await?;
+    Ok(all.into_iter().filter(|p| p.port == port).collect())
+}
+
+/// Terminate a process by PID. Returns a human-readable message.
+/// `force = true` uses SIGKILL (-9), otherwise SIGTERM (-15).
+pub async fn kill_pid(
+    session: &SshSession,
+    pid: i32,
+    force: bool,
+) -> Result<String, String> {
+    if pid <= 1 {
+        return Err(format!("Refusing to kill PID {} (system process)", pid));
+    }
+    let sig = if force { "-9" } else { "-15" };
+    let cmd = format!(
+        "kill {sig} {pid} 2>/dev/null || sudo -n kill {sig} {pid} 2>/dev/null; echo \"RC=$?\""
+    );
+    let (stdout, stderr, _) = crate::ssh::session_exec_with_output(session, &cmd, 15).await?;
+    let rc = stdout
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("RC="))
+        .and_then(|v| v.trim().parse::<i32>().ok())
+        .unwrap_or(-1);
+    if rc != 0 {
+        let detail = stderr.trim();
+        return Err(if detail.is_empty() {
+            format!("Failed to kill PID {} (exit {})", pid, rc)
+        } else {
+            format!("Failed to kill PID {}: {}", pid, detail)
+        });
+    }
+    Ok(format!("Process {} killed with {}", pid, if force { "SIGKILL" } else { "SIGTERM" }))
 }

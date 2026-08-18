@@ -2,11 +2,17 @@ use rusqlite::Connection as SqliteConn;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-/// Get the SQLite database path: <config_dir>/leepanel/data.db
-pub fn db_path() -> PathBuf {
+/// Get the SQLite data directory: <config_dir>/leepanel
+pub fn db_dir() -> PathBuf {
     let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
     path.push("leepanel");
     std::fs::create_dir_all(&path).ok();
+    path
+}
+
+/// Get the SQLite database path: <config_dir>/leepanel/data.db
+pub fn db_path() -> PathBuf {
+    let mut path = db_dir();
     path.push("data.db");
     path
 }
@@ -87,7 +93,21 @@ pub fn init_db() -> Result<Mutex<SqliteConn>, String> {
             display_name TEXT NOT NULL,
             category TEXT NOT NULL DEFAULT 'other',
             PRIMARY KEY(server_host, package_name)
-        );"
+        );
+
+        CREATE TABLE IF NOT EXISTS tunnels (
+            id TEXT PRIMARY KEY,
+            server_key TEXT NOT NULL,
+            tunnel_type TEXT NOT NULL,
+            local_host TEXT NOT NULL,
+            local_port INTEGER NOT NULL,
+            remote_host TEXT NOT NULL,
+            remote_port INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            note TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_tunnels_server_key ON tunnels(server_key);"
     ).map_err(|e| format!("Failed to create tables: {}", e))?;
 
     // ponytail: versioned schema migrations — add new versions at the bottom
@@ -131,9 +151,23 @@ pub fn init_db() -> Result<Mutex<SqliteConn>, String> {
         let _ = conn.execute_batch("ALTER TABLE db_credentials ADD COLUMN db_user TEXT NOT NULL DEFAULT '';");
     }
 
+    // v4: add note column to tunnels (idempotent ALTER TABLE)
+    let has_tunnel_note: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('tunnels') WHERE name='note'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+    if !has_tunnel_note {
+        let _ = conn.execute_batch("ALTER TABLE tunnels ADD COLUMN note TEXT NOT NULL DEFAULT '';");
+    }
+
     // Update schema version to latest
     conn.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', '3')",
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', '4')",
         [],
     ).map_err(|e| format!("Failed to update schema_version: {}", e))?;
 
@@ -490,6 +524,104 @@ impl SiteMetadataManager {
             rusqlite::params![server_host, domain],
         ).map_err(|e| format!("Failed to delete site metadata: {}", e))?;
         Ok(())
+    }
+}
+
+// ===== Tunnel Persistence =====
+
+/// A persisted tunnel configuration. Lives across disconnects/reconnects;
+/// only removed when the user explicitly deletes the tunnel.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SavedTunnel {
+    pub id: String,
+    pub server_key: String,
+    pub tunnel_type: String,
+    pub local_host: String,
+    pub local_port: u16,
+    pub remote_host: String,
+    pub remote_port: u16,
+    pub created_at: i64,
+    pub note: String,
+}
+
+pub struct TunnelStore;
+
+impl TunnelStore {
+    pub fn save(conn: &SqliteConn, t: &SavedTunnel) -> Result<(), String> {
+        conn.execute(
+            "INSERT OR REPLACE INTO tunnels (id, server_key, tunnel_type, local_host, local_port, remote_host, remote_port, created_at, note)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![
+                t.id, t.server_key, t.tunnel_type, t.local_host,
+                t.local_port, t.remote_host, t.remote_port, t.created_at, t.note
+            ],
+        ).map_err(|e| format!("Failed to save tunnel: {}", e))?;
+        Ok(())
+    }
+
+    pub fn delete(conn: &SqliteConn, id: &str) -> Result<(), String> {
+        conn.execute("DELETE FROM tunnels WHERE id = ?1", rusqlite::params![id])
+            .map_err(|e| format!("Failed to delete tunnel: {}", e))?;
+        Ok(())
+    }
+
+    /// Update only the note of a persisted tunnel config.
+    pub fn update_note(conn: &SqliteConn, id: &str, note: &str) -> Result<(), String> {
+        conn.execute(
+            "UPDATE tunnels SET note = ?1 WHERE id = ?2",
+            rusqlite::params![note, id],
+        ).map_err(|e| format!("Failed to update tunnel note: {}", e))?;
+        Ok(())
+    }
+
+    pub fn get(conn: &SqliteConn, id: &str) -> Result<Option<SavedTunnel>, String> {
+        let mut stmt = conn.prepare(
+            "SELECT id, server_key, tunnel_type, local_host, local_port, remote_host, remote_port, created_at, COALESCE(note, '')
+             FROM tunnels WHERE id = ?1"
+        ).map_err(|e| format!("Failed to prepare tunnel query: {}", e))?;
+        let row = stmt.query_row(rusqlite::params![id], |r| {
+            Ok(SavedTunnel {
+                id: r.get(0)?,
+                server_key: r.get(1)?,
+                tunnel_type: r.get(2)?,
+                local_host: r.get(3)?,
+                local_port: r.get(4)?,
+                remote_host: r.get(5)?,
+                remote_port: r.get(6)?,
+                created_at: r.get(7)?,
+                note: r.get(8)?,
+            })
+        });
+        match row {
+            Ok(t) => Ok(Some(t)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(format!("Failed to get tunnel: {}", e)),
+        }
+    }
+
+    pub fn list_for_server(conn: &SqliteConn, server_key: &str) -> Result<Vec<SavedTunnel>, String> {
+        let mut stmt = conn.prepare(
+            "SELECT id, server_key, tunnel_type, local_host, local_port, remote_host, remote_port, created_at, COALESCE(note, '')
+             FROM tunnels WHERE server_key = ?1 ORDER BY created_at ASC"
+        ).map_err(|e| format!("Failed to prepare tunnel list: {}", e))?;
+        let rows = stmt.query_map(rusqlite::params![server_key], |r| {
+            Ok(SavedTunnel {
+                id: r.get(0)?,
+                server_key: r.get(1)?,
+                tunnel_type: r.get(2)?,
+                local_host: r.get(3)?,
+                local_port: r.get(4)?,
+                remote_host: r.get(5)?,
+                remote_port: r.get(6)?,
+                created_at: r.get(7)?,
+                note: r.get(8)?,
+            })
+        }).map_err(|e| format!("Failed to query tunnels: {}", e))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| format!("Tunnel row error: {}", e))?);
+        }
+        Ok(out)
     }
 }
 

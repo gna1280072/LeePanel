@@ -263,7 +263,7 @@ export default function SitesPanel({ sessionId, onOpenFolder, visible, onNavigat
           ) : (
             <>
               {searchQuery && (
-                <div style={{ color: '#ef4444', marginBottom: '12px', fontSize: '14px' }}>
+                <div style={{ color: 'var(--red)', marginBottom: '12px', fontSize: '14px' }}>
                   {t('sites.searchResultsHint')}
                 </div>
               )}
@@ -302,12 +302,12 @@ export default function SitesPanel({ sessionId, onOpenFolder, visible, onNavigat
                   <div className="site-card-actions">
                     <button
                       className="svc-cfg-btn"
-                      style={!site.enabled ? { background: '#16a34a', color: '#fff', border: '1px solid #15803d' } : {}}
+                      style={!site.enabled ? { background: 'var(--green-bg)', color: '#fff', border: '1px solid var(--green-strong)' } : {}}
                       onClick={() => handleToggle(site, !site.enabled)}
                     >
                       {site.enabled ? t('common.stop') : t('common.start')}
                     </button>
-                    <button className="svc-cfg-btn" style={{ background: '#16a34a', color: '#fff', border: '1px solid #15803d' }} onClick={() => openEdit(site)}>
+                    <button className="svc-cfg-btn" style={{ background: 'var(--green-bg)', color: '#fff', border: '1px solid var(--green-strong)' }} onClick={() => openEdit(site)}>
                       {t('common.edit')}
                     </button>
                   </div>

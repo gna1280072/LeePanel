@@ -49,6 +49,7 @@ interface Settings {
   cache_enabled: boolean
   command_timeout_minutes: number
   upload_workers: number
+  theme: string
 }
 
 interface ActiveSession {
@@ -78,8 +79,13 @@ function App() {
 
   // Settings
   const [settings, setSettings] = useState<Settings>({
-    auto_reconnect: true, reconnect_interval: 5, max_reconnect_attempts: 10, close_tab_on_disconnect: false, cache_ttl_hours: 24, cache_max_files: 500, cache_enabled: true, command_timeout_minutes: 30, upload_workers: 3
+    auto_reconnect: true, reconnect_interval: 5, max_reconnect_attempts: 10, close_tab_on_disconnect: false, cache_ttl_hours: 24, cache_max_files: 500, cache_enabled: true, command_timeout_minutes: 30, upload_workers: 3, theme: 'dark'
   })
+
+  // Apply theme to <html data-theme> whenever it changes (also covers initial load)
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', settings.theme || 'dark')
+  }, [settings.theme])
   // ponytail: per-session reconnect state — each server reconnects independently
   // ponytail: Map value stores { name, attempt } so the reconnect bar renders without toast flicker
   const [reconnectingSessions, setReconnectingSessions] = useState<Map<string, { name: string; attempt: number }>>(new Map())
@@ -1038,7 +1044,7 @@ function UploadPanel({ upload, onPause, onResume, onStop, onDismiss, onRetry }: 
           <div className="fb-dialog" onClick={(e) => e.stopPropagation()} style={{ minWidth: 380 }}>
             <button className="modal-close-btn" onClick={() => setShowStopConfirm(false)} title={t('common.close')}>×</button>
             <div className="fb-dialog-title" style={{ marginBottom: 12 }}>{t('upload.confirmStopTitle')}</div>
-            <p style={{ margin: '0 0 16px', fontSize: 13, color: '#8b949e', lineHeight: 1.6 }}>
+            <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
               {t('upload.confirmStopMsg')}
             </p>
             <input
@@ -1049,7 +1055,7 @@ function UploadPanel({ upload, onPause, onResume, onStop, onDismiss, onRetry }: 
               onKeyDown={e => { if (e.key === 'Enter' && stopConfirmed) { onStop(); setShowStopConfirm(false) } }}
               placeholder={t('upload.confirmStopPlaceholder')}
               autoFocus
-              style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #30363d', background: '#0d1117', color: '#c9d1d9', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
             />
             <div className="fb-dialog-actions">
               <button className="fb-dialog-btn" onClick={() => setShowStopConfirm(false)}>{t('common.cancel')}</button>

@@ -26,6 +26,10 @@ const DEFAULT_COMMANDS: { name: string; command: string; group: string }[] = [
   { name: 'Disk usage', command: 'df -h', group: 'System' },
   { name: 'Memory', command: 'free -m', group: 'System' },
   { name: 'Uptime', command: 'uptime', group: 'System' },
+  { name: 'Clear screen', command: 'clear', group: 'System' },
+  { name: 'List directory', command: 'dir', group: 'System' },
+  { name: 'List files', command: 'ls', group: 'System' },
+  { name: 'Parent directory', command: 'cd ..', group: 'System' },
 ]
 
 const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`

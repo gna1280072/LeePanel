@@ -151,6 +151,24 @@
     "settings": "设置",
     "discussions": "讨论"
   },
+  "quickCommands": {
+    "manage": "管理",
+    "add": "添加命令",
+    "name": "名称",
+    "namePlaceholder": "例如：查看磁盘",
+    "command": "命令",
+    "commandPlaceholder": "例如：df -h",
+    "group": "分组（可选）",
+    "groupPlaceholder": "例如：系统",
+    "deleteConfirm": "确定删除这条命令？",
+    "empty": "暂无自定义命令，点击添加",
+    "emptyList": "还没有自定义命令",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "nameRequired": "请输入名称",
+    "commandRequired": "请输入命令内容",
+    "maxReached": "最多支持 {{max}} 条命令"
+  },
   "tunnel": {
     "title": "SSH 隧道(内网穿透) New~",
     "create": "创建隧道",

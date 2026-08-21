@@ -151,6 +151,24 @@
     "settings": "設定",
     "discussions": "ディスカッション"
   },
+  "quickCommands": {
+    "manage": "管理",
+    "add": "コマンドを追加",
+    "name": "名前",
+    "namePlaceholder": "例：ディスク使用量",
+    "command": "コマンド",
+    "commandPlaceholder": "例：df -h",
+    "group": "グループ（任意）",
+    "groupPlaceholder": "例：システム",
+    "deleteConfirm": "このコマンドを削除しますか？",
+    "empty": "カスタムコマンドがありません。追加してください",
+    "emptyList": "カスタムコマンドはまだありません",
+    "moveUp": "上へ",
+    "moveDown": "下へ",
+    "nameRequired": "名前を入力してください",
+    "commandRequired": "コマンドを入力してください",
+    "maxReached": "最大 {{max}} 件まで登録できます"
+  },
   "tunnel": {
     "title": "SSH トンネル (イントラネット越え) New~",
     "create": "トンネルを作成",

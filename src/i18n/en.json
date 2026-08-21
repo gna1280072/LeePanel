@@ -151,6 +151,24 @@
     "settings": "Settings",
     "discussions": "Discussions"
   },
+  "quickCommands": {
+    "manage": "Manage",
+    "add": "Add command",
+    "name": "Name",
+    "namePlaceholder": "e.g. Disk usage",
+    "command": "Command",
+    "commandPlaceholder": "e.g. df -h",
+    "group": "Group (optional)",
+    "groupPlaceholder": "e.g. System",
+    "deleteConfirm": "Delete this command?",
+    "empty": "No custom commands. Add some!",
+    "emptyList": "No custom commands yet",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "nameRequired": "Name is required",
+    "commandRequired": "Command is required",
+    "maxReached": "Up to {{max}} commands allowed"
+  },
   "tunnel": {
     "title": "SSH Tunnels (Intranet Penetration) New~",
     "create": "Create Tunnel",

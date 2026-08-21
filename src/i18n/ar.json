@@ -151,6 +151,24 @@
     "settings": "الإعدادات",
     "discussions": "المناقشات"
   },
+  "quickCommands": {
+    "manage": "إدارة",
+    "add": "إضافة أمر",
+    "name": "الاسم",
+    "namePlaceholder": "مثال: استخدام القرص",
+    "command": "الأمر",
+    "commandPlaceholder": "مثال: df -h",
+    "group": "المجموعة (اختياري)",
+    "groupPlaceholder": "مثال: النظام",
+    "deleteConfirm": "حذف هذا الأمر؟",
+    "empty": "لا توجد أوامر مخصصة. أضف بعضها!",
+    "emptyList": "لا توجد أوامر مخصصة بعد",
+    "moveUp": "تحريك لأعلى",
+    "moveDown": "تحريك لأسفل",
+    "nameRequired": "الاسم مطلوب",
+    "commandRequired": "الأمر مطلوب",
+    "maxReached": "الحد الأقصى {{max}} أوامر"
+  },
   "tunnel": {
     "title": "أنفاق SSH (اختراق الشبكة الداخلية) New~",
     "create": "إنشاء نفق",

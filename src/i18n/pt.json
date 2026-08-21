@@ -151,6 +151,24 @@
     "settings": "Configurações",
     "discussions": "Discussões"
   },
+  "quickCommands": {
+    "manage": "Gerenciar",
+    "add": "Adicionar comando",
+    "name": "Nome",
+    "namePlaceholder": "ex. Uso do disco",
+    "command": "Comando",
+    "commandPlaceholder": "ex. df -h",
+    "group": "Grupo (opcional)",
+    "groupPlaceholder": "ex. Sistema",
+    "deleteConfirm": "Excluir este comando?",
+    "empty": "Nenhum comando personalizado. Adicione alguns!",
+    "emptyList": "Nenhum comando personalizado ainda",
+    "moveUp": "Mover para cima",
+    "moveDown": "Mover para baixo",
+    "nameRequired": "O nome é obrigatório",
+    "commandRequired": "O comando é obrigatório",
+    "maxReached": "Máximo de {{max}} comandos"
+  },
   "tunnel": {
     "title": "Túneis SSH (penetração de intranet) New~",
     "create": "Criar Túnel",

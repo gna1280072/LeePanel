@@ -151,6 +151,24 @@
     "settings": "Настройки",
     "discussions": "Обсуждения"
   },
+  "quickCommands": {
+    "manage": "Управление",
+    "add": "Добавить команду",
+    "name": "Название",
+    "namePlaceholder": "напр. Использование диска",
+    "command": "Команда",
+    "commandPlaceholder": "напр. df -h",
+    "group": "Группа (необязательно)",
+    "groupPlaceholder": "напр. Система",
+    "deleteConfirm": "Удалить эту команду?",
+    "empty": "Нет пользовательских команд. Добавьте их!",
+    "emptyList": "Пока нет пользовательских команд",
+    "moveUp": "Вверх",
+    "moveDown": "Вниз",
+    "nameRequired": "Требуется название",
+    "commandRequired": "Требуется команда",
+    "maxReached": "Максимум {{max}} команд"
+  },
   "tunnel": {
     "title": "SSH-туннели (проникновение в интранет) New~",
     "create": "Создать туннель",

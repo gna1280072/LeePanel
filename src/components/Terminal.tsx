@@ -15,6 +15,8 @@ interface TerminalProps {
 
 export interface TerminalHandle {
   sendCommand: (cmd: string) => void
+  /** Fill the command into the terminal WITHOUT pressing enter (for quick commands bar) */
+  typeCommand: (cmd: string) => void
   clear: () => void
 }
 
@@ -203,6 +205,13 @@ export default forwardRef<TerminalHandle, TerminalProps>(function Terminal({ ses
       const sid = sidRef.current
       if (sid && termRef.current) {
         invoke('ssh_input', { sessionId: sid, data: cmd + '\r' })
+      }
+    },
+    // ponytail: fill without enter so the user can review/confirm before running
+    typeCommand: (cmd: string) => {
+      const sid = sidRef.current
+      if (sid && termRef.current) {
+        invoke('ssh_input', { sessionId: sid, data: cmd })
       }
     },
     clear: () => {

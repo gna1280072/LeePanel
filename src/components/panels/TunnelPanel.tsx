@@ -45,15 +45,32 @@ interface GatewayPortsStatus {
 
 type TunnelType = 'local' | 'remote' | 'dynamic'
 
+interface TunnelFormFields {
+  localHost: string
+  localPort: string
+  remoteHost: string
+  remotePort: string
+}
+
+// 每种隧道类型各自保存一份表单值，互不串扰
+const createEmptyForm = (): Record<TunnelType, TunnelFormFields> => ({
+  local: { localHost: '127.0.0.1', localPort: '', remoteHost: '127.0.0.1', remotePort: '' },
+  remote: { localHost: '127.0.0.1', localPort: '', remoteHost: '127.0.0.1', remotePort: '' },
+  dynamic: { localHost: '127.0.0.1', localPort: '', remoteHost: '127.0.0.1', remotePort: '' },
+})
+
 export default function TunnelPanel({ sessionId, serverHost, connUsername: _connUsername }: TunnelPanelProps) {
   const { t } = useTranslation()
   const [tunnels, setTunnels] = useState<TunnelInfo[]>([])
   const [showCreate, setShowCreate] = useState(false)
   const [tunnelType, setTunnelType] = useState<TunnelType>('local')
-  const [localHost, setLocalHost] = useState('127.0.0.1')
-  const [localPort, setLocalPort] = useState('')
-  const [remoteHost, setRemoteHost] = useState('127.0.0.1')
-  const [remotePort, setRemotePort] = useState('')
+  const [formValues, setFormValues] = useState<Record<TunnelType, TunnelFormFields>>(createEmptyForm)
+  // 当前类型对应的表单值
+  const currentForm = formValues[tunnelType]
+  // 只更新当前类型下的指定字段
+  const updateFormField = (field: keyof TunnelFormFields, value: string) => {
+    setFormValues(prev => ({ ...prev, [tunnelType]: { ...prev[tunnelType], [field]: value } }))
+  }
   const [creating, setCreating] = useState(false)
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState('')
@@ -226,11 +243,12 @@ export default function TunnelPanel({ sessionId, serverHost, connUsername: _conn
     if (tunnelType === 'remote') return false
     return tunnels.some(t => t.status === 'active' &&
       (t.tunnel_type === 'local' || t.tunnel_type === 'dynamic') &&
-      t.local_port === port && t.local_host === localHost)
+      t.local_port === port && t.local_host === formValues[tunnelType].localHost)
   }
 
   const handleCreate = async () => {
     if (!sessionId) return
+    const { localHost, localPort, remoteHost, remotePort } = formValues[tunnelType]
 
     if (!localPort || !isValidPort(localPort)) {
       setError(t('tunnel.invalidPort'))
@@ -381,10 +399,7 @@ export default function TunnelPanel({ sessionId, serverHost, connUsername: _conn
 
   const resetForm = () => {
     setTunnelType('local')
-    setLocalHost('127.0.0.1')
-    setLocalPort('')
-    setRemoteHost('127.0.0.1')
-    setRemotePort('')
+    setFormValues(createEmptyForm())
     setNote('')
     setError('')
     setDlgGpMsg('')
@@ -449,10 +464,11 @@ export default function TunnelPanel({ sessionId, serverHost, connUsername: _conn
 
   const handleQuickAction = (port: number) => {
     setTunnelType('local')
-    setLocalHost('127.0.0.1')
-    setLocalPort(String(port))
-    setRemoteHost('127.0.0.1')
-    setRemotePort(String(port))
+    // 一键模板只填充 local 类型，其他类型已填内容不受影响
+    setFormValues(prev => ({
+      ...prev,
+      local: { localHost: '127.0.0.1', localPort: String(port), remoteHost: '127.0.0.1', remotePort: String(port) },
+    }))
     setShowCreate(true)
   }
 
@@ -476,8 +492,9 @@ export default function TunnelPanel({ sessionId, serverHost, connUsername: _conn
     )
   }
 
-  const canSubmit = localPort !== '' && isValidPort(localPort) && !isPortInUse(parseInt(localPort)) &&
-    (tunnelType === 'dynamic' || (remotePort !== '' && isValidPort(remotePort)))
+  const { localPort: curLocalPort, remotePort: curRemotePort } = currentForm
+  const canSubmit = curLocalPort !== '' && isValidPort(curLocalPort) && !isPortInUse(parseInt(curLocalPort)) &&
+    (tunnelType === 'dynamic' || (curRemotePort !== '' && isValidPort(curRemotePort)))
 
   const restorableCount = tunnels.filter(t => selectedIds.includes(t.id) && t.status === 'stopped').length
   const closableCount = tunnels.filter(t => selectedIds.includes(t.id) && t.status === 'active').length
@@ -809,9 +826,19 @@ export default function TunnelPanel({ sessionId, serverHost, connUsername: _conn
                     style={{ padding: '6px 12px', fontSize: '12px' }}
                     onClick={() => {
                       setTunnelType(type)
-                      // 服务器转发：GatewayPorts 开启 → 服务器地址为当前服务器IP，否则 127.0.0.1
+                      // 服务器转发：仅当 remote 条目未被改动过（仍为默认值）时，
+                      // 按 GatewayPorts 智能填充服务器地址；用户改过则尊重其输入
                       if (type === 'remote') {
-                        setRemoteHost(gpStatus?.enabled ? (serverHost || '127.0.0.1') : '127.0.0.1')
+                        setFormValues(prev => {
+                          const remote = prev.remote
+                          if (remote.remoteHost === '127.0.0.1' && remote.remotePort === '') {
+                            return {
+                              ...prev,
+                              remote: { ...remote, remoteHost: gpStatus?.enabled ? (serverHost || '127.0.0.1') : '127.0.0.1' },
+                            }
+                          }
+                          return prev
+                        })
                       }
                     }}
                   >
@@ -827,8 +854,8 @@ export default function TunnelPanel({ sessionId, serverHost, connUsername: _conn
                 <label>{t('tunnel.localHost')}:</label>
                 <input
                   type="text"
-                  value={localHost}
-                  onChange={e => setLocalHost(e.target.value)}
+                  value={currentForm.localHost}
+                  onChange={e => updateFormField('localHost', e.target.value)}
                   className="form-input"
                   placeholder="127.0.0.1"
                 />
@@ -837,8 +864,8 @@ export default function TunnelPanel({ sessionId, serverHost, connUsername: _conn
                 <label>{t('tunnel.localPort')}:</label>
                 <input
                   type="number"
-                  value={localPort}
-                  onChange={e => setLocalPort(e.target.value)}
+                  value={currentForm.localPort}
+                  onChange={e => updateFormField('localPort', e.target.value)}
                   min="1"
                   max="65535"
                   className="form-input"
@@ -854,8 +881,8 @@ export default function TunnelPanel({ sessionId, serverHost, connUsername: _conn
                   <label>{t('tunnel.remoteHost')}:</label>
                   <input
                     type="text"
-                    value={remoteHost}
-                    onChange={e => setRemoteHost(e.target.value)}
+                    value={currentForm.remoteHost}
+                    onChange={e => updateFormField('remoteHost', e.target.value)}
                     className="form-input"
                     placeholder="127.0.0.1"
                   />
@@ -864,8 +891,8 @@ export default function TunnelPanel({ sessionId, serverHost, connUsername: _conn
                   <label>{t('tunnel.remotePort')}:</label>
                   <input
                     type="number"
-                    value={remotePort}
-                    onChange={e => setRemotePort(e.target.value)}
+                    value={currentForm.remotePort}
+                    onChange={e => updateFormField('remotePort', e.target.value)}
                     min="1"
                     max="65535"
                     className="form-input"
@@ -960,10 +987,10 @@ export default function TunnelPanel({ sessionId, serverHost, connUsername: _conn
             )}
 
             {/* Inline validation hints */}
-            {localPort && !isValidPort(localPort) && (
+            {currentForm.localPort && !isValidPort(currentForm.localPort) && (
               <div style={{ color: 'var(--red)', fontSize: '12px' }}>{t('tunnel.invalidPort')}</div>
             )}
-            {localPort && isValidPort(localPort) && isPortInUse(parseInt(localPort)) && (
+            {currentForm.localPort && isValidPort(currentForm.localPort) && isPortInUse(parseInt(currentForm.localPort)) && (
               <div style={{ color: 'var(--yellow)', fontSize: '12px' }}>{t('tunnel.portInUse')}</div>
             )}
 

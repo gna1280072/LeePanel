@@ -15,6 +15,10 @@ interface TerminalProps {
 
 export interface TerminalHandle {
   sendCommand: (cmd: string) => void
+  /** Fill the command into the terminal WITHOUT pressing enter (for quick commands bar) */
+  typeCommand: (cmd: string) => void
+  /** Move keyboard focus into the terminal so Enter executes the typed command */
+  focus: () => void
   clear: () => void
 }
 
@@ -89,6 +93,9 @@ export default forwardRef<TerminalHandle, TerminalProps>(function Terminal({ ses
       allowProposedApi: true,
       theme: theme === 'light' ? XTERM_LIGHT_THEME : XTERM_DARK_THEME,
       allowTransparency: true,
+      // Alt+click forces local selection on macOS (Shift does it on Win/Linux),
+      // so text stays copyable even while tmux/vim mouse mode is active
+      macOptionClickForcesSelection: true,
     })
 
     const fitAddon = new FitAddon()
@@ -96,14 +103,22 @@ export default forwardRef<TerminalHandle, TerminalProps>(function Terminal({ ses
     term.loadAddon(fitAddon)
     term.loadAddon(webLinksAddon)
     term.open(containerRef.current)
-    // ponytail: block all DECSET/DECRST mouse-tracking sequences so local text selection works
-    // Remote shells (bash/tmux/vim) send \e[?1000h etc. which capture mouse events
-    const MOUSE_MODES = new Set([9, 1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1015])
+    // Let mouse-tracking sequences through for apps that need them (tmux, vim).
+    // 1000/1002/1003 (normal/button/any-motion) + 1006 (SGR) activate xterm's mouse
+    // reporting, so tmux panes become clickable and scrollable; xterm.js then encodes
+    // clicks/wheel into SGR sequences sent to the pty automatically. When mouse mode
+    // is inactive (plain bash), clicks still select text locally as before.
+    // Local selection inside mouse-mode apps still works: xterm's SelectionService
+    // forces a local selection when a modifier is held (Shift on Win/Linux, Alt on
+    // macOS via macOptionClickForcesSelection) and suppresses the mouse report.
+    // Keep blocking only the rarely-used / disruptive modes:
+    // 1001 (highlight), 1004 (focus report), 1005 (UTF-8 mouse), 1007 (alternate
+    // scroll), 1015 (urxvt mouse)
+    const BLOCKED_MOUSE_MODES = new Set([1001, 1004, 1005, 1007, 1015])
     for (const final of ['h', 'l']) {
       term.parser.registerCsiHandler({ final, prefix: '?' }, (params) => {
         const p = Array.isArray(params[0]) ? params[0][0] : params[0]
-        if (MOUSE_MODES.has(p)) return true // block mouse tracking
-        return false
+        return BLOCKED_MOUSE_MODES.has(p)
       })
     }
 
@@ -193,6 +208,16 @@ export default forwardRef<TerminalHandle, TerminalProps>(function Terminal({ ses
       if (sid && termRef.current) {
         invoke('ssh_input', { sessionId: sid, data: cmd + '\r' })
       }
+    },
+    // ponytail: fill without enter so the user can review/confirm before running
+    typeCommand: (cmd: string) => {
+      const sid = sidRef.current
+      if (sid && termRef.current) {
+        invoke('ssh_input', { sessionId: sid, data: cmd })
+      }
+    },
+    focus: () => {
+      termRef.current?.focus()
     },
     clear: () => {
       termRef.current?.clear()

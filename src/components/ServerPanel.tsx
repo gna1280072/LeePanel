@@ -24,6 +24,7 @@ import DockerPanel from './panels/DockerPanel'
 import TunnelPanel from './panels/TunnelPanel'
 import Terminal from './Terminal'
 import type { TerminalHandle } from './Terminal'
+import QuickCommandsBar from './QuickCommandsBar'
 import FileBrowser, { type FileBrowserHandle } from './FileBrowser'
 
 type PanelSection = 'dashboard' | 'terminal' | 'files' | 'software' | 'nginx' | 'php' | 'sites' | 'logs' | 'ssl' | 'monitor' | 'firewall' | 'port' | 'tunnel' | 'bbr' | 'docker' | 'database' | 'redis' | 'update' | 'settings' | 'discussions'
@@ -216,8 +217,22 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
       </nav>
       <div className="sp-content">
         {/* Terminal always mounted to preserve SSH session */}
-        <div style={{ display: activeSection === 'terminal' ? 'block' : 'none', height: '100%' }}>
-          <Terminal ref={termRef} sessionId={sessionId} isActive={activeSection === 'terminal'} theme={appSettings?.theme || 'dark'} />
+        <div style={{ display: activeSection === 'terminal' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <Terminal ref={termRef} sessionId={sessionId} isActive={activeSection === 'terminal'} theme={appSettings?.theme || 'dark'} />
+          </div>
+          {/* Quick commands bar: click a chip to fill the command into the terminal */}
+          <QuickCommandsBar
+            sessionId={sessionId}
+            onSendCommand={(cmd, autoEnter) => {
+              if (autoEnter) termRef?.current?.sendCommand(cmd)
+              else termRef?.current?.typeCommand(cmd)
+              // ponytail: refocus the terminal so the next Enter runs the command once —
+              // otherwise the chip button keeps focus and Enter re-triggers the click
+              termRef?.current?.focus()
+            }}
+            onShowToast={onShowToast}
+          />
         </div>
         {/* Files always mounted to preserve state and avoid reload flash */}
         <div style={{ display: activeSection === 'files' ? 'block' : 'none', height: '100%' }}>

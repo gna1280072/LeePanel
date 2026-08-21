@@ -224,7 +224,12 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
           {/* Quick commands bar: click a chip to fill the command into the terminal */}
           <QuickCommandsBar
             sessionId={sessionId}
-            onTypeCommand={(cmd) => termRef?.current?.typeCommand(cmd)}
+            onTypeCommand={(cmd) => {
+              termRef?.current?.typeCommand(cmd)
+              // ponytail: refocus the terminal so the next Enter runs the command once —
+              // otherwise the chip button keeps focus and Enter re-triggers the click
+              termRef?.current?.focus()
+            }}
             onShowToast={onShowToast}
           />
         </div>

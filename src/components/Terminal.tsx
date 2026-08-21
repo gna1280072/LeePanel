@@ -17,6 +17,8 @@ export interface TerminalHandle {
   sendCommand: (cmd: string) => void
   /** Fill the command into the terminal WITHOUT pressing enter (for quick commands bar) */
   typeCommand: (cmd: string) => void
+  /** Move keyboard focus into the terminal so Enter executes the typed command */
+  focus: () => void
   clear: () => void
 }
 
@@ -213,6 +215,9 @@ export default forwardRef<TerminalHandle, TerminalProps>(function Terminal({ ses
       if (sid && termRef.current) {
         invoke('ssh_input', { sessionId: sid, data: cmd })
       }
+    },
+    focus: () => {
+      termRef.current?.focus()
     },
     clear: () => {
       termRef.current?.clear()

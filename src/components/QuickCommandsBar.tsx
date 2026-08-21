@@ -26,10 +26,6 @@ const DEFAULT_COMMANDS: { name: string; command: string; group: string }[] = [
   { name: 'Disk usage', command: 'df -h', group: 'System' },
   { name: 'Memory', command: 'free -m', group: 'System' },
   { name: 'Uptime', command: 'uptime', group: 'System' },
-  { name: 'Nginx config test', command: 'nginx -t', group: 'Services' },
-  { name: 'Nginx status', command: 'systemctl status nginx', group: 'Services' },
-  { name: 'Listening ports', command: 'ss -tlnp', group: 'Network' },
-  { name: 'Docker containers', command: 'docker ps', group: 'Docker' },
 ]
 
 const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`

@@ -167,7 +167,13 @@
     "moveDown": "下へ",
     "nameRequired": "名前を入力してください",
     "commandRequired": "コマンドを入力してください",
-    "maxReached": "最大 {{max}} 件まで登録できます"
+    "maxReached": "最大 {{max}} 件まで登録できます",
+    "autoEnter": "クリック後に自動実行",
+    "autoEnterHint": "オンにするとクリックで即実行。オフでは入力のみ行い、確認後に実行します。",
+    "autoEnter": "クリック後に自動実行",
+    "autoEnterHint": "オンにするとクリックで即実行。オフでは入力のみ行い、確認後に実行します。",
+    "autoEnter": "クリック後に自動実行",
+    "autoEnterHint": "オンにするとクリックで即実行。オフでは入力のみ行い、確認後に実行します。"
   },
   "tunnel": {
     "title": "SSH トンネル (イントラネット越え) New~",

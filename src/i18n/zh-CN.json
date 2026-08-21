@@ -167,7 +167,13 @@
     "moveDown": "下移",
     "nameRequired": "请输入名称",
     "commandRequired": "请输入命令内容",
-    "maxReached": "最多支持 {{max}} 条命令"
+    "maxReached": "最多支持 {{max}} 条命令",
+    "autoEnter": "点击后自动回车",
+    "autoEnterHint": "开启后点击命令立即执行；关闭则只填入命令，确认后再回车执行。",
+    "autoEnter": "点击后自动回车",
+    "autoEnterHint": "开启后点击命令立即执行；关闭则只填入命令，确认后再回车执行。",
+    "autoEnter": "点击后自动回车",
+    "autoEnterHint": "开启后点击命令立即执行；关闭则只填入命令，确认后再回车执行。"
   },
   "tunnel": {
     "title": "SSH 隧道(内网穿透) New~",

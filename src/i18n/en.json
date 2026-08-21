@@ -167,7 +167,13 @@
     "moveDown": "Move down",
     "nameRequired": "Name is required",
     "commandRequired": "Command is required",
-    "maxReached": "Up to {{max}} commands allowed"
+    "maxReached": "Up to {{max}} commands allowed",
+    "autoEnter": "Auto-enter after click",
+    "autoEnterHint": "Run the command immediately when a chip is clicked. Off: fill it in for review.",
+    "autoEnter": "Auto-enter after click",
+    "autoEnterHint": "Run the command immediately when a chip is clicked. Off: fill it in for review.",
+    "autoEnter": "Auto-enter after click",
+    "autoEnterHint": "Run the command immediately when a chip is clicked. Off: fill it in for review."
   },
   "tunnel": {
     "title": "SSH Tunnels (Intranet Penetration) New~",

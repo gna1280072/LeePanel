@@ -167,7 +167,13 @@
     "moveDown": "Nach unten",
     "nameRequired": "Name ist erforderlich",
     "commandRequired": "Befehl ist erforderlich",
-    "maxReached": "Maximal {{max}} Befehle erlaubt"
+    "maxReached": "Maximal {{max}} Befehle erlaubt",
+    "autoEnter": "Nach Klick automatisch ausführen",
+    "autoEnterHint": "Führt den Befehl beim Klick sofort aus. Aus: nur eingeben, dann selbst bestätigen.",
+    "autoEnter": "Nach Klick automatisch ausführen",
+    "autoEnterHint": "Führt den Befehl beim Klick sofort aus. Aus: nur eingeben, dann selbst bestätigen.",
+    "autoEnter": "Nach Klick automatisch ausführen",
+    "autoEnterHint": "Führt den Befehl beim Klick sofort aus. Aus: nur eingeben, dann selbst bestätigen."
   },
   "tunnel": {
     "title": "SSH-Tunnel (Intranet-Penetration) New~",

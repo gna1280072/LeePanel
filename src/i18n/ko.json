@@ -167,7 +167,13 @@
     "moveDown": "아래로",
     "nameRequired": "이름을 입력하세요",
     "commandRequired": "명령을 입력하세요",
-    "maxReached": "최대 {{max}}개 명령"
+    "maxReached": "최대 {{max}}개 명령",
+    "autoEnter": "클릭 후 자동 실행",
+    "autoEnterHint": "켜면 칩 클릭 시 즉시 실행. 끄면 명령만 입력되고 확인 후 실행됩니다.",
+    "autoEnter": "클릭 후 자동 실행",
+    "autoEnterHint": "켜면 칩 클릭 시 즉시 실행. 끄면 명령만 입력되고 확인 후 실행됩니다.",
+    "autoEnter": "클릭 후 자동 실행",
+    "autoEnterHint": "켜면 칩 클릭 시 즉시 실행. 끄면 명령만 입력되고 확인 후 실행됩니다."
   },
   "tunnel": {
     "title": "SSH 터널 (인트라넷 침투) New~",

@@ -167,7 +167,13 @@
     "moveDown": "Descendre",
     "nameRequired": "Le nom est requis",
     "commandRequired": "La commande est requise",
-    "maxReached": "Maximum {{max}} commandes autorisées"
+    "maxReached": "Maximum {{max}} commandes autorisées",
+    "autoEnter": "Exécution auto après clic",
+    "autoEnterHint": "Exécute la commande dès qu'un chip est cliqué. Désactivé : la saisit pour confirmation.",
+    "autoEnter": "Exécution auto après clic",
+    "autoEnterHint": "Exécute la commande dès qu'un chip est cliqué. Désactivé : la saisit pour confirmation.",
+    "autoEnter": "Exécution auto après clic",
+    "autoEnterHint": "Exécute la commande dès qu'un chip est cliqué. Désactivé : la saisit pour confirmation."
   },
   "tunnel": {
     "title": "Tunnels SSH (pénétration d'intranet) New~",

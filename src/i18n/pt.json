@@ -167,7 +167,13 @@
     "moveDown": "Mover para baixo",
     "nameRequired": "O nome é obrigatório",
     "commandRequired": "O comando é obrigatório",
-    "maxReached": "Máximo de {{max}} comandos"
+    "maxReached": "Máximo de {{max}} comandos",
+    "autoEnter": "Executar automaticamente",
+    "autoEnterHint": "Executa o comando ao clicar. Desativado: apenas insere para confirmação.",
+    "autoEnter": "Executar automaticamente",
+    "autoEnterHint": "Executa o comando ao clicar. Desativado: apenas insere para confirmação.",
+    "autoEnter": "Executar automaticamente",
+    "autoEnterHint": "Executa o comando ao clicar. Desativado: apenas insere para confirmação."
   },
   "tunnel": {
     "title": "Túneis SSH (penetração de intranet) New~",

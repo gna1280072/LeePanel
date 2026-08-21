@@ -11,12 +11,13 @@ interface QuickCommand {
 
 interface QuickCommandsBarProps {
   sessionId: string | null
-  /** Fill command into terminal WITHOUT pressing enter (user reviews then hits enter) */
-  onTypeCommand: (cmd: string) => void
+  /** Send a command into the terminal; autoEnter=true runs it, false fills it for review */
+  onSendCommand: (cmd: string, autoEnter: boolean) => void
   onShowToast?: (msg: string) => void
 }
 
 const STORAGE_KEY = 'leepanel.quickCommands'
+const AUTO_ENTER_KEY = 'leepanel.quickCommandsAutoEnter'
 const MAX_COMMANDS = 20
 
 // Seed templates merged in on first run; user can freely edit/delete them
@@ -54,9 +55,13 @@ function loadCommands(): QuickCommand[] {
   }
 }
 
-export default function QuickCommandsBar({ sessionId, onTypeCommand, onShowToast }: QuickCommandsBarProps) {
+export default function QuickCommandsBar({ sessionId, onSendCommand, onShowToast }: QuickCommandsBarProps) {
   const { t } = useTranslation()
   const [commands, setCommands] = useState<QuickCommand[]>(loadCommands)
+  // ponytail: default to fill-only (no auto-enter); user opts in via the manage modal
+  const [autoEnter, setAutoEnter] = useState(() => {
+    try { return localStorage.getItem(AUTO_ENTER_KEY) === '1' } catch { return false }
+  })
   const [showManage, setShowManage] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -69,6 +74,10 @@ export default function QuickCommandsBar({ sessionId, onTypeCommand, onShowToast
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(commands)) } catch { /* storage full - ignore */ }
   }, [commands])
 
+  useEffect(() => {
+    try { localStorage.setItem(AUTO_ENTER_KEY, autoEnter ? '1' : '0') } catch { /* ignore */ }
+  }, [autoEnter])
+
   const sorted = [...commands].sort((a, b) => a.sort - b.sort)
 
   const handleChipClick = (cmd: QuickCommand) => {
@@ -76,7 +85,7 @@ export default function QuickCommandsBar({ sessionId, onTypeCommand, onShowToast
       onShowToast?.(`⚠ ${t('common.connectFirst')}`)
       return
     }
-    onTypeCommand(cmd.command)
+    onSendCommand(cmd.command, autoEnter)
   }
 
   const openAdd = () => {
@@ -209,6 +218,22 @@ export default function QuickCommandsBar({ sessionId, onTypeCommand, onShowToast
               </>
             ) : (
               <>
+                <div className="quick-cmds-setting">
+                  <div className="quick-cmds-setting-label">
+                    {t('quickCommands.autoEnter')}
+                    <div className="quick-cmds-setting-hint">{t('quickCommands.autoEnterHint')}</div>
+                  </div>
+                  <button
+                    type="button"
+                    className={`quick-cmds-toggle ${autoEnter ? 'on' : 'off'}`}
+                    role="switch"
+                    aria-checked={autoEnter}
+                    onClick={() => setAutoEnter(v => !v)}
+                    title={t('quickCommands.autoEnter')}
+                  >
+                    <span className="toggle-track"><span className="toggle-thumb" /></span>
+                  </button>
+                </div>
                 <div className="quick-cmds-list">
                   {sorted.length === 0 && <div className="quick-cmds-list-empty">{t('quickCommands.emptyList')}</div>}
                   {sorted.map(c => (

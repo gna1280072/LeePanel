@@ -173,7 +173,9 @@
     "autoEnter": "Exécution auto après clic",
     "autoEnterHint": "Exécute la commande dès qu'un chip est cliqué. Désactivé : la saisit pour confirmation.",
     "autoEnter": "Exécution auto après clic",
-    "autoEnterHint": "Exécute la commande dès qu'un chip est cliqué. Désactivé : la saisit pour confirmation."
+    "autoEnterHint": "Exécute la commande dès qu'un chip est cliqué. Désactivé : la saisit pour confirmation.",
+    "manageTitle": "Commandes rapides personnalisées",
+    "manageTitle": "Commandes rapides personnalisées"
   },
   "tunnel": {
     "title": "Tunnels SSH (pénétration d'intranet) New~",

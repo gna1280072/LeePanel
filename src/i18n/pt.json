@@ -173,7 +173,9 @@
     "autoEnter": "Executar automaticamente",
     "autoEnterHint": "Executa o comando ao clicar. Desativado: apenas insere para confirmação.",
     "autoEnter": "Executar automaticamente",
-    "autoEnterHint": "Executa o comando ao clicar. Desativado: apenas insere para confirmação."
+    "autoEnterHint": "Executa o comando ao clicar. Desativado: apenas insere para confirmação.",
+    "manageTitle": "Comandos rápidos personalizados",
+    "manageTitle": "Comandos rápidos personalizados"
   },
   "tunnel": {
     "title": "Túneis SSH (penetração de intranet) New~",

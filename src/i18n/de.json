@@ -173,7 +173,9 @@
     "autoEnter": "Nach Klick automatisch ausführen",
     "autoEnterHint": "Führt den Befehl beim Klick sofort aus. Aus: nur eingeben, dann selbst bestätigen.",
     "autoEnter": "Nach Klick automatisch ausführen",
-    "autoEnterHint": "Führt den Befehl beim Klick sofort aus. Aus: nur eingeben, dann selbst bestätigen."
+    "autoEnterHint": "Führt den Befehl beim Klick sofort aus. Aus: nur eingeben, dann selbst bestätigen.",
+    "manageTitle": "Benutzerdefinierte Schnellbefehle",
+    "manageTitle": "Benutzerdefinierte Schnellbefehle"
   },
   "tunnel": {
     "title": "SSH-Tunnel (Intranet-Penetration) New~",

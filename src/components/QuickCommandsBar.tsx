@@ -177,7 +177,7 @@ export default function QuickCommandsBar({ sessionId, onSendCommand, onShowToast
       {showManage && (
         <div className="modal-overlay" onClick={() => { if (!formOpen) setShowManage(false) }}>
           <div className="modal-content quick-cmds-modal" onClick={e => e.stopPropagation()}>
-            <h3>{t('quickCommands.manage')}</h3>
+            <h3>{t('quickCommands.manageTitle')}</h3>
 
             {formOpen ? (
               <>

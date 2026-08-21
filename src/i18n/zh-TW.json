@@ -173,7 +173,9 @@
     "autoEnter": "點擊後自動換行",
     "autoEnterHint": "開啟後點擊命令立即執行；關閉則只填入命令，確認後再按 Enter 執行。",
     "autoEnter": "點擊後自動換行",
-    "autoEnterHint": "開啟後點擊命令立即執行；關閉則只填入命令，確認後再按 Enter 執行。"
+    "autoEnterHint": "開啟後點擊命令立即執行；關閉則只填入命令，確認後再按 Enter 執行。",
+    "manageTitle": "自訂快捷命令",
+    "manageTitle": "自訂快捷命令"
   },
   "tunnel": {
     "title": "SSH 隧道(內網穿透) New~",

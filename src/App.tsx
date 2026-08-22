@@ -38,6 +38,9 @@ interface SidebarConnection {
   password?: string
   passphrase?: string
   remember_me?: boolean
+  // 标记：凭据是否已保存到系统钥匙串（config_list 返回，不返回明文）
+  has_password?: boolean
+  has_passphrase?: boolean
 }
 
 interface Settings {
@@ -537,6 +540,10 @@ function App() {
       closeTabOnDisconnectRef.current = s.close_tab_on_disconnect ?? false
       closeTabOnDisconnectRef.current = s.close_tab_on_disconnect ?? false
     }).catch(() => {})
+    // 探测系统钥匙串可用性：不可用时降级提示（凭据仅存本次会话）
+    invoke<boolean>('credential_available').then(ok => {
+      if (!ok) showToast(t('common.keyringUnavailable'))
+    }).catch(() => {})
     // ponytail: auto-check for updates on startup, ask user before downloading
     Promise.race([
       check(),
@@ -712,7 +719,7 @@ function App() {
       return
     }
 
-    const doConnect = (username: string, password?: string, keyPath?: string, passphrase?: string) => {
+    const doConnect = (username: string, password?: string, keyPath?: string, passphrase?: string, configId?: string) => {
       setConnectingServerId(conn.id)
       setError('')
       const hostKey = `${conn.host}_${conn.port}`
@@ -721,10 +728,18 @@ function App() {
       const estCols = Math.max(80, Math.floor((window.innerWidth - (sidebarVisible ? sidebarWidth + 10 : 40) - 20) / 8.4))
       const estRows = Math.max(24, Math.floor((window.innerHeight - 100) / 17))
       // ponytail: parallel SSH + DB read → no flash, correct page rendered immediately
+      // 凭据策略：前端显式传入的 password/passphrase 为会话级覆盖（优先）；
+      // 未传入时 Rust 端按 configId 从系统钥匙串读取（已保存凭据不进前端）
       Promise.all([
         Promise.race([
           invoke<string>('ssh_connect', {
-            config: { host: conn.host, port: conn.port, username, password, keyPath, passphrase: passphrase || undefined, cols: estCols, rows: estRows },
+            config: {
+              host: conn.host, port: conn.port, username,
+              password: password || undefined, keyPath,
+              passphrase: passphrase || undefined,
+              configId: configId || undefined,
+              cols: estCols, rows: estRows,
+            },
           }),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 20000)),
         ]),
@@ -765,24 +780,26 @@ function App() {
     let password: string | undefined
     let keyPath: string | undefined
     let passphrase: string | undefined
-    
+    let configId: string | undefined
+
     // Only use stored credentials if remember_me is true
     if (conn.remember_me) {
-      if (conn.auth_type === 'password' && !conn.password) {
+      // 已保存密码由 Rust 端从系统钥匙串读取；这里仅校验"已保存"标记
+      if (conn.auth_type === 'password' && !conn.has_password) {
         setErrorDialog({ visible: true, type: 'auth', messageKey: 'errorDialog.noPasswordSaved' })
         return
       }
-      if (conn.auth_type === 'password') password = conn.password
-      // Fall back to session-memory cache (freshly created/edited connections aren't persisted)
       if (conn.auth_type === 'key') keyPath = conn.key_path
+      // Fall back to session-memory cache (freshly created/edited connections aren't persisted)
       // '' (blank input) means "no passphrase" — fall through || so empty string isn't sent as Some("")
-      if (conn.auth_type === 'key') passphrase = conn.passphrase || passphraseCacheRef.current.get(conn.id)
+      if (conn.auth_type === 'key') passphrase = passphraseCacheRef.current.get(conn.id)
+      configId = conn.id
     } else {
       setErrorDialog({ visible: true, type: 'auth', messageKey: 'errorDialog.editToConfigure' })
       return
     }
 
-    doConnect(conn.username, password, keyPath, passphrase)
+    doConnect(conn.username, password, keyPath, passphrase, configId)
   }, [sessions, connectedConfigIds])
 
   // Listen for reconnect-after-edit from Sidebar (Connect button)

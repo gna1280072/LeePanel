@@ -15,11 +15,22 @@ pub async fn ssh_connect(
     let host = config["host"].as_str().unwrap_or("").to_string();
     let port = config["port"].as_u64().unwrap_or(22) as u16;
     let username = config["username"].as_str().unwrap_or("").to_string();
-    let password = config["password"].as_str().map(|s| s.to_string());
+    // 会话级凭据：前端显式传入时优先（新建/编辑后未落钥匙串的临时凭据）
+    let mut password = config["password"].as_str().map(|s| s.to_string())
+        .filter(|p| !p.is_empty());
     let key_path = config["keyPath"].as_str().map(|s| s.to_string());
     // ponytail: empty passphrase means "no passphrase" — must be None, not Some("")
-    let passphrase = config["passphrase"].as_str().map(|s| s.to_string())
+    let mut passphrase = config["passphrase"].as_str().map(|s| s.to_string())
         .filter(|p| !p.is_empty());
+    // 已保存凭据：会话级未提供时，按 configId 从系统钥匙串读取（明文不进前端）
+    if let Some(cid) = config["configId"].as_str() {
+        if password.is_none() {
+            password = crate::credentials::store_get(cid, crate::credentials::CredKind::Password)?;
+        }
+        if passphrase.is_none() {
+            passphrase = crate::credentials::store_get(cid, crate::credentials::CredKind::Passphrase)?;
+        }
+    }
     let cols = config["cols"].as_u64().unwrap_or(80) as u32;
     let rows = config["rows"].as_u64().unwrap_or(24) as u32;
     // ponytail: network operations without lock — only acquire briefly to insert session

@@ -14,6 +14,9 @@ interface Connection {
   password?: string
   passphrase?: string
   remember_me?: boolean
+  // 标记：凭据是否已保存到系统钥匙串（config_list 返回，不返回明文）
+  has_password?: boolean
+  has_passphrase?: boolean
 }
 
 interface NewConnectionData {
@@ -26,6 +29,8 @@ interface NewConnectionData {
   password?: string
   passphrase?: string
   remember_me?: boolean
+  has_password?: boolean
+  has_passphrase?: boolean
 }
 
 interface SidebarProps {
@@ -118,6 +123,8 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
 
   const handleDelete = async (id: string) => {
     await invoke('config_delete', { id })
+    // 级联清理系统钥匙串中的凭据（失败不阻塞删除，静默处理）
+    await invoke('credential_delete', { configId: id }).catch(() => {})
     setConfirmDelete(null)
     loadConnections()
   }
@@ -369,8 +376,22 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
                 <div className="form-group">
                   <label>{t('sidebar.password')}</label>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <input className="sidebar-edit-input" style={{ flex: 1 }} type={showEditPassword ? 'text' : 'password'} value={editing.password || ''} onChange={(e) => setEditing({ ...editing, password: e.target.value })} />
-                    <button className="sidebar-edit-action-btn" onClick={() => setShowEditPassword(!showEditPassword)} title={showEditPassword ? t('sidebar.hidePassword') : t('sidebar.showPassword')}>{showEditPassword ? '🙈' : '👁'}</button>
+                    <input className="sidebar-edit-input" style={{ flex: 1 }} type={showEditPassword ? 'text' : 'password'} value={editing.password || ''} onChange={(e) => setEditing({ ...editing, password: e.target.value })} placeholder={editing.has_password ? t('sidebar.passwordSavedPlaceholder') : t('sidebar.enterPassword')} />
+                    <button className="sidebar-edit-action-btn" onClick={() => {
+                      // 按需读取：输入框为空且已保存时，从系统钥匙串拉取明文显示
+                      if (!showEditPassword && (!editing.password || editing.password === '') && editing.has_password) {
+                        invoke<string>('credential_get', { configId: editing.id, kind: 'password' })
+                          .then(pw => { if (pw) setEditing(prev => prev && { ...prev, password: pw }) })
+                          .catch(() => {})
+                      }
+                      setShowEditPassword(!showEditPassword)
+                    }} title={showEditPassword ? t('sidebar.hidePassword') : t('sidebar.showPassword')}>{showEditPassword ? '🙈' : '👁'}</button>
+                    {editing.has_password && (
+                      <button className="sidebar-edit-action-btn" title={t('sidebar.clearSavedCredential')} onClick={async () => {
+                        await invoke('credential_delete', { configId: editing.id }).catch(() => {})
+                        setEditing({ ...editing, password: '', has_password: false })
+                      }}>🗑</button>
+                    )}
                   </div>
                 </div>
               )}
@@ -383,8 +404,22 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
                   </div>
                   <label style={{ marginTop: 8 }}>{t('sidebar.passphrase')}</label>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <input className="sidebar-edit-input" style={{ flex: 1 }} type={showEditPassphrase ? 'text' : 'password'} value={editing.passphrase || ''} onChange={(e) => setEditing({ ...editing, passphrase: e.target.value })} placeholder={t('sidebar.passphrasePlaceholder')} />
-                    <button className="sidebar-edit-action-btn" onClick={() => setShowEditPassphrase(!showEditPassphrase)} title={showEditPassphrase ? t('sidebar.hidePassword') : t('sidebar.showPassword')}>{showEditPassphrase ? '🙈' : '👁'}</button>
+                    <input className="sidebar-edit-input" style={{ flex: 1 }} type={showEditPassphrase ? 'text' : 'password'} value={editing.passphrase || ''} onChange={(e) => setEditing({ ...editing, passphrase: e.target.value })} placeholder={editing.has_passphrase ? t('sidebar.passwordSavedPlaceholder') : t('sidebar.passphrasePlaceholder')} />
+                    <button className="sidebar-edit-action-btn" onClick={() => {
+                      // 按需读取：口令框为空且已保存时，从系统钥匙串拉取明文显示
+                      if (!showEditPassphrase && (!editing.passphrase || editing.passphrase === '') && editing.has_passphrase) {
+                        invoke<string>('credential_get', { configId: editing.id, kind: 'passphrase' })
+                          .then(pp => { if (pp) setEditing(prev => prev && { ...prev, passphrase: pp }) })
+                          .catch(() => {})
+                      }
+                      setShowEditPassphrase(!showEditPassphrase)
+                    }} title={showEditPassphrase ? t('sidebar.hidePassword') : t('sidebar.showPassword')}>{showEditPassphrase ? '🙈' : '👁'}</button>
+                    {editing.has_passphrase && (
+                      <button className="sidebar-edit-action-btn" title={t('sidebar.clearSavedCredential')} onClick={async () => {
+                        await invoke('credential_delete', { configId: editing.id }).catch(() => {})
+                        setEditing({ ...editing, passphrase: '', has_passphrase: false })
+                      }}>🗑</button>
+                    )}
                   </div>
                 </div>
               )}

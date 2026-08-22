@@ -1,4 +1,5 @@
 mod config;
+mod credentials;
 mod db;
 mod server;
 mod ssh;
@@ -42,6 +43,10 @@ pub fn run() {
 
             // Initialize SQLite database
             let db = db::init_db().expect("Failed to initialize database");
+            // 凭据安全迁移：历史明文凭据 → 系统钥匙串（幂等；失败仅告警，不阻断启动）
+            if let Err(e) = db::migrate_credentials(&db) {
+                log::warn!("Credential migration failed: {}", e);
+            }
             app.manage(db);
 
             Ok(())
@@ -59,6 +64,9 @@ pub fn run() {
             // Config
             commands::config::config_list, commands::config::config_save, commands::config::config_delete, commands::config::config_save_credentials,
             commands::config::clear_proxy_env,
+            // Credentials (system keyring)
+            commands::credentials::credential_set, commands::credentials::credential_get,
+            commands::credentials::credential_delete, commands::credentials::credential_available,
             // Settings
             commands::config::settings_load, commands::config::settings_save,
             // Data Directory

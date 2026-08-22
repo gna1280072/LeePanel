@@ -36,3 +36,17 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 tauri-plugin-updater = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-process = "2"
+keyring = "3"
+# keyring 3.6.3 传递依赖 zeroize 1.9.0 要求 zeroize_derive ^1.5（crates.io 无此版本），
+# pin 到 1.8.x 规避解析失败
+zeroize = "=1.8.1"
+
+# keyring 3.x 必须显式启用平台 backend feature，否则静默回退到 mock store（不持久化！）
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service"] }

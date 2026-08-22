@@ -151,6 +151,33 @@ pub fn init_db() -> Result<Mutex<SqliteConn>, String> {
         let _ = conn.execute_batch("ALTER TABLE connections ADD COLUMN passphrase TEXT;");
     }
 
+    // v6: add has_password/has_passphrase marker columns to connections
+    // (keyring migration — marks whether a credential exists in the system keyring;
+    //  legacy plaintext rows are synced to the markers during migrate_credentials)
+    let has_marker_password: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('connections') WHERE name='has_password'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_marker_password {
+        let _ = conn.execute_batch("ALTER TABLE connections ADD COLUMN has_password INTEGER DEFAULT 0;");
+    }
+
+    let has_marker_passphrase: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('connections') WHERE name='has_passphrase'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_marker_passphrase {
+        let _ = conn.execute_batch("ALTER TABLE connections ADD COLUMN has_passphrase INTEGER DEFAULT 0;");
+    }
+
     // v3: add db_user column to db_credentials (ponytail: idempotent ALTER TABLE)
     let has_db_user: bool = conn
         .query_row(
@@ -181,11 +208,94 @@ pub fn init_db() -> Result<Mutex<SqliteConn>, String> {
 
     // Update schema version to latest
     conn.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', '5')",
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', '6')",
         [],
     ).map_err(|e| format!("Failed to update schema_version: {}", e))?;
 
     Ok(Mutex::new(conn))
+}
+
+/// 凭据安全迁移（一次性，幂等）：把 connections 表中的历史明文 password/passphrase
+/// 搬入系统钥匙串，成功后清空明文列并写入标记。
+///
+/// 策略：钥匙串不可用 → 跳过并记录 `credential_migration=unavailable`（下次启动重试）；
+/// 写入失败 → 中止并返回 Err（保留明文，不破坏数据）；迁移前自动备份 DB 文件。
+pub fn migrate_credentials(db: &Mutex<SqliteConn>) -> Result<(), String> {
+    use crate::credentials::{self, CredKind};
+    use rusqlite::params;
+
+    let conn = db.lock().unwrap();
+
+    // 幂等：已成功迁移或正在 unavailable 状态（避免每启动都全表扫描；unavailable 也跳过，
+    // 由"钥匙串恢复"场景手动重试——见下）
+    let state: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'credential_migration'",
+            [],
+            |r| r.get(0),
+        )
+        .ok();
+    if state.as_deref() == Some("done") || state.as_deref() == Some("unavailable") {
+        return Ok(());
+    }
+
+    if !credentials::store_available() {
+        let _ = conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('credential_migration', 'unavailable')",
+            [],
+        );
+        return Ok(());
+    }
+
+    // 扫描仍有明文的连接
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, password, passphrase FROM connections \
+             WHERE (password IS NOT NULL AND password != '') OR (passphrase IS NOT NULL AND passphrase != '')",
+        )
+        .map_err(|e| format!("Failed to scan credentials: {}", e))?;
+    let rows: Vec<(String, Option<String>, Option<String>)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .map_err(|e| format!("Failed to scan credentials: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if rows.is_empty() {
+        // 无明文可迁移，直接标记完成
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('credential_migration', 'done')",
+            [],
+        )
+        .map_err(|e| format!("Failed to record migration state: {}", e))?;
+        return Ok(());
+    }
+
+    // 有明文待迁移 → 先备份 DB（WAL 模式已开启，复制文件安全）
+    let bak = db_path().with_extension("db.bak");
+    std::fs::copy(db_path(), &bak).map_err(|e| format!("Failed to back up database: {}", e))?;
+
+    for (id, pw, pp) in rows {
+        if let Some(p) = pw.as_deref().filter(|p| !p.is_empty()) {
+            credentials::store_set(&id, CredKind::Password, p)?; // 失败即中止，保留明文可回滚
+        }
+        if let Some(p) = pp.as_deref().filter(|p| !p.is_empty()) {
+            credentials::store_set(&id, CredKind::Passphrase, p)?;
+        }
+        let has_password = pw.as_deref().is_some_and(|p| !p.is_empty());
+        let has_passphrase = pp.as_deref().is_some_and(|p| !p.is_empty());
+        conn.execute(
+            "UPDATE connections SET has_password = ?1, has_passphrase = ?2, password = NULL, passphrase = NULL WHERE id = ?3",
+            params![has_password, has_passphrase, id],
+        )
+        .map_err(|e| format!("Failed to clear migrated credentials: {}", e))?;
+    }
+
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('credential_migration', 'done')",
+        [],
+    )
+    .map_err(|e| format!("Failed to record migration state: {}", e))?;
+    Ok(())
 }
 
 // ===== File Browser Favorites =====

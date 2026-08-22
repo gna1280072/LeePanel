@@ -14,12 +14,19 @@ pub struct Connection {
     pub auth_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_path: Option<String>,
+    /// 明文密码 —— 仅作为"新建/编辑表单提交"的输入；list() 永不返回明文。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
+    /// 明文密钥口令 —— 同上，仅作输入。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub passphrase: Option<String>,
     #[serde(default)]
     pub remember_me: bool,
+    /// 标记：钥匙串中是否已保存对应凭据（list() 返回，供 UI 显示"已保存"状态）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub has_password: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub has_passphrase: Option<bool>,
 }
 
 pub struct ConfigManager;
@@ -27,9 +34,18 @@ pub struct ConfigManager;
 impl ConfigManager {
     pub fn list(conn: &SqliteConn) -> Vec<Connection> {
         let mut stmt = conn
-            .prepare("SELECT id, name, host, port, username, auth_type, key_path, password, passphrase, remember_me FROM connections ORDER BY name")
+            .prepare("SELECT id, name, host, port, username, auth_type, key_path, password, passphrase, remember_me, has_password, has_passphrase FROM connections ORDER BY name")
             .expect("prepare connections list");
         stmt.query_map([], |row| {
+            // 标记列优先（新数据）；明文列仅作迁移前旧数据兼容推导，永不返回明文
+            let db_password: Option<String> = row.get(7)?;
+            let db_passphrase: Option<String> = row.get(8)?;
+            let marker_password: Option<i64> = row.get(10)?;
+            let marker_passphrase: Option<i64> = row.get(11)?;
+            let has_password = marker_password.map(|v| v == 1).unwrap_or(false)
+                || db_password.as_deref().is_some_and(|p| !p.is_empty());
+            let has_passphrase = marker_passphrase.map(|v| v == 1).unwrap_or(false)
+                || db_passphrase.as_deref().is_some_and(|p| !p.is_empty());
             Ok(Connection {
                 id: row.get(0)?,
                 name: row.get(1)?,
@@ -38,9 +54,11 @@ impl ConfigManager {
                 username: row.get(4)?,
                 auth_type: row.get(5)?,
                 key_path: row.get(6)?,
-                password: row.get(7)?,
-                passphrase: row.get(8)?,
+                password: None,
+                passphrase: None,
                 remember_me: row.get::<_, Option<i64>>(9)?.map(|v| v == 1).unwrap_or(false),
+                has_password: Some(has_password),
+                has_passphrase: Some(has_passphrase),
             })
         })
         .expect("query connections")
@@ -49,12 +67,14 @@ impl ConfigManager {
     }
 
     pub fn save(conn: &SqliteConn, c: &Connection) -> Result<(), String> {
-        // ponytail: empty passphrase means "no passphrase" — never persist "" (it would
-        // resurface as Some("") and break unencrypted-key loading)
-        let passphrase = c.passphrase.as_deref().filter(|p| !p.is_empty());
+        // 凭据明文字段仅作表单输入，绝不落库；落库的只有钥匙串存在性标记。
+        // INSERT OR REPLACE 同时把历史明文列清空为 NULL（配合 migrate_credentials 完成去明文）。
+        let remember_me = if c.remember_me { 1 } else { 0 };
+        let has_password = if c.has_password.unwrap_or(false) { 1 } else { 0 };
+        let has_passphrase = if c.has_passphrase.unwrap_or(false) { 1 } else { 0 };
         conn.execute(
-            "INSERT OR REPLACE INTO connections (id, name, host, port, username, auth_type, key_path, password, passphrase, remember_me) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            params![c.id, c.name, c.host, c.port as i64, c.username, c.auth_type, c.key_path, c.password, passphrase, if c.remember_me { 1 } else { 0 }],
+            "INSERT OR REPLACE INTO connections (id, name, host, port, username, auth_type, key_path, password, passphrase, remember_me, has_password, has_passphrase) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![c.id, c.name, c.host, c.port as i64, c.username, c.auth_type, c.key_path, None::<String>, None::<String>, remember_me, has_password, has_passphrase],
         ).map_err(|e| format!("Save connection failed: {}", e))?;
         Ok(())
     }
@@ -75,59 +95,15 @@ impl ConfigManager {
         passphrase: Option<&str>,
         remember_me: bool,
     ) -> Result<(), String> {
-        println!("=== DEBUG save_credentials ===");
-        println!("id: {}", id);
-        println!("username: {}", username);
-        println!("auth_type: {}", auth_type);
-        println!("key_path: {:?}", key_path);
-        println!("password: {:?}", password.as_ref().map(|_| "***"));
-        println!("passphrase: {:?}", passphrase.as_ref().map(|_| "***"));
-        println!("remember_me: {}", remember_me);
-        
-        let sql = "UPDATE connections SET username = ?1, auth_type = ?2, key_path = ?3, password = ?4, passphrase = ?5, remember_me = ?6 WHERE id = ?7";
-        println!("SQL: {}", sql);
-        
-        let result = conn.execute(
-            sql,
-            params![username, auth_type, key_path, password, passphrase, if remember_me { 1 } else { 0 }, id],
-        );
-        
-        match result {
-            Ok(rows_affected) => {
-                println!("Rows affected: {}", rows_affected);
-                
-                // Verify the update by reading back
-                let mut stmt = conn.prepare("SELECT username, auth_type, key_path, password, passphrase, remember_me FROM connections WHERE id = ?1")
-                    .map_err(|e| format!("Prepare select failed: {}", e))?;
-                
-                let row_result = stmt.query_row(params![id], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, Option<String>>(2)?,
-                        row.get::<_, Option<String>>(3)?,
-                        row.get::<_, Option<String>>(4)?,
-                        row.get::<_, i64>(5)? == 1,
-                    ))
-                });
-                
-                match row_result {
-                    Ok((db_username, db_auth_type, db_key_path, db_password, db_passphrase, db_remember)) => {
-                        println!("After update - username: {}, auth_type: {}, key_path: {:?}, password: {:?}, passphrase: {:?}, remember_me: {}",
-                            db_username, db_auth_type, db_key_path, db_password.as_ref().map(|_| "***"), db_passphrase.as_ref().map(|_| "***"), db_remember);
-                    }
-                    Err(e) => {
-                        println!("Failed to verify update: {}", e);
-                    }
-                }
-                
-                Ok(())
-            }
-            Err(e) => {
-                println!("Error executing UPDATE: {}", e);
-                Err(format!("Save credentials failed: {}", e))
-            }
-        }
+        // 明文参数仅用于推导钥匙串存在性标记；实际明文写入由 command 层（config_save_credentials）负责
+        let has_password = password.as_deref().is_some_and(|p| !p.is_empty());
+        let has_passphrase = passphrase.as_deref().is_some_and(|p| !p.is_empty());
+        let remember = if remember_me { 1 } else { 0 };
+        conn.execute(
+            "UPDATE connections SET username = ?1, auth_type = ?2, key_path = ?3, password = NULL, passphrase = NULL, remember_me = ?4, has_password = ?5, has_passphrase = ?6 WHERE id = ?7",
+            params![username, auth_type, key_path, remember, has_password, has_passphrase, id],
+        ).map_err(|e| format!("Save credentials failed: {}", e))?;
+        Ok(())
     }
 }
 
@@ -305,7 +281,8 @@ mod tests {
                 id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', host TEXT NOT NULL,
                 port INTEGER NOT NULL DEFAULT 22, username TEXT NOT NULL DEFAULT 'root',
                 auth_type TEXT NOT NULL DEFAULT 'password', key_path TEXT, password TEXT,
-                passphrase TEXT, remember_me INTEGER DEFAULT 0
+                passphrase TEXT, remember_me INTEGER DEFAULT 0,
+                has_password INTEGER DEFAULT 0, has_passphrase INTEGER DEFAULT 0
             );
             CREATE TABLE favorites (path TEXT PRIMARY KEY, name TEXT NOT NULL);
             CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
@@ -322,6 +299,7 @@ mod tests {
             id: "1".into(), name: "My Server".into(), host: "1.2.3.4".into(),
             port: 22, username: "root".into(), auth_type: "password".into(),
             key_path: None, password: Some("pass".into()), passphrase: None, remember_me: false,
+            has_password: None, has_passphrase: None,
         };
         ConfigManager::save(&conn, &c).unwrap();
         let list = ConfigManager::list(&conn);
@@ -337,6 +315,7 @@ mod tests {
             id: "1".into(), name: "S".into(), host: "1.2.3.4".into(),
             port: 22, username: "root".into(), auth_type: "password".into(),
             key_path: None, password: None, passphrase: None, remember_me: false,
+            has_password: None, has_passphrase: None,
         };
         ConfigManager::save(&conn, &c).unwrap();
         ConfigManager::delete(&conn, "1").unwrap();
@@ -350,12 +329,15 @@ mod tests {
             id: "1".into(), name: "S".into(), host: "1.2.3.4".into(),
             port: 22, username: "root".into(), auth_type: "key".into(),
             key_path: Some("/root/.ssh/id_rsa".into()), password: None, passphrase: Some("pp".into()), remember_me: true,
+            has_password: None, has_passphrase: None,
         };
         ConfigManager::save(&conn, &c).unwrap();
         let list = ConfigManager::list(&conn);
         assert!(list[0].remember_me);
         assert_eq!(list[0].key_path, Some("/root/.ssh/id_rsa".to_string()));
-        assert_eq!(list[0].passphrase, Some("pp".to_string()));
+        // list() 不返回明文，改用标记断言
+        assert_eq!(list[0].has_passphrase, Some(true));
+        assert_eq!(list[0].passphrase, None);
     }
 
     #[test]
@@ -365,6 +347,7 @@ mod tests {
             id: "1".into(), name: "S".into(), host: "1.2.3.4".into(),
             port: 22, username: "root".into(), auth_type: "password".into(),
             key_path: None, password: None, passphrase: None, remember_me: false,
+            has_password: None, has_passphrase: None,
         };
         ConfigManager::save(&conn, &c).unwrap();
         ConfigManager::save_credentials(&conn, "1", "admin", "key", Some("/key"), None, Some("pp"), true).unwrap();
@@ -372,7 +355,9 @@ mod tests {
         assert_eq!(list[0].username, "admin");
         assert_eq!(list[0].auth_type, "key");
         assert!(list[0].remember_me);
-        assert_eq!(list[0].passphrase, Some("pp".to_string()));
+        // list() 不返回明文，改用标记断言
+        assert_eq!(list[0].has_passphrase, Some(true));
+        assert_eq!(list[0].passphrase, None);
     }
 
     // ===== FavoritesManager =====

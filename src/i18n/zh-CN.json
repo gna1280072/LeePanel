@@ -105,7 +105,9 @@
     "connectionRefused": "连接被拒绝，服务器可能离线或端口不正确。",
     "keyNotFound": "SSH 密钥文件未找到或无效。",
     "noPasswordSaved": "未保存密码，请编辑连接添加凭据。",
-    "editToConfigure": "请编辑连接以配置认证信息。"
+    "editToConfigure": "请编辑连接以配置认证信息。",
+    "keyEncrypted": "SSH 密钥已加密，请在连接设置中输入密钥密码（Passphrase）。",
+    "wrongPassphrase": "密钥密码（Passphrase）不正确，请检查后重试。"
   },
   "sidebar": {
     "servers": "服务器",
@@ -125,6 +127,8 @@
     "serverName": "服务器名称",
     "enterPassword": "输入密码",
     "browseKeyFile": "浏览密钥文件",
+    "passphrase": "密钥密码（Passphrase）",
+    "passphrasePlaceholder": "如果密钥已加密，请输入创建密钥时的密码",
     "showPassword": "显示密码",
     "hidePassword": "隐藏密码",
     "deleteConfirmMsg": "删除 {{name}}？",
@@ -799,6 +803,10 @@
     "loadingAuth": "加载认证方式中...",
     "sshKeyManagement": "SSH 密钥管理",
     "generateKey": "生成密钥",
+    "keyPassphraseDialogTitle": "设置密钥密码",
+    "keyPassphraseHint": "可以为密钥设置密码保护（Passphrase），留空则生成未加密密钥。若设置密码，之后使用该密钥连接服务器时需要输入。",
+    "keyPassphrasePlaceholder": "输入密钥密码（可留空）",
+    "keyPassphraseSet": "私钥已加密，请务必牢记密码；连接时需输入。",
     "generating": "生成中...",
     "publicKey": "公钥（OpenSSH 格式）",
     "downloadPrivateKey": "下载私钥",

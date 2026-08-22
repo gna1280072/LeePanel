@@ -17,10 +17,13 @@ pub async fn ssh_connect(
     let username = config["username"].as_str().unwrap_or("").to_string();
     let password = config["password"].as_str().map(|s| s.to_string());
     let key_path = config["keyPath"].as_str().map(|s| s.to_string());
+    // ponytail: empty passphrase means "no passphrase" — must be None, not Some("")
+    let passphrase = config["passphrase"].as_str().map(|s| s.to_string())
+        .filter(|p| !p.is_empty());
     let cols = config["cols"].as_u64().unwrap_or(80) as u32;
     let rows = config["rows"].as_u64().unwrap_or(24) as u32;
     // ponytail: network operations without lock — only acquire briefly to insert session
-    let session = SshManager::do_connect(session_id.clone(), host, port, username, password, key_path, app.clone(), cols, rows).await?;
+    let session = SshManager::do_connect(session_id.clone(), host, port, username, password, key_path, passphrase, app.clone(), cols, rows).await?;
     let mgr = ssh_mgr.lock().await;
     mgr.insert_session(session_id.clone(), session, app);
     drop(mgr);
@@ -345,8 +348,10 @@ pub async fn ssh_reconnect(
 }
 
 #[tauri::command]
-pub async fn ssh_generate_keypair(algorithm: String) -> Result<server::SshKeyPair, String> {
-    tokio::task::spawn_blocking(move || server::generate_ssh_keypair(&algorithm))
+pub async fn ssh_generate_keypair(algorithm: String, passphrase: Option<String>) -> Result<server::SshKeyPair, String> {
+    let alg = algorithm;
+    let pp = passphrase;
+    tokio::task::spawn_blocking(move || server::generate_ssh_keypair(&alg, pp.as_deref()))
         .await
         .map_err(|e| format!("Task join error: {}", e))?
 }

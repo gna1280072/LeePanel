@@ -105,7 +105,9 @@
     "connectionRefused": "連線被拒絕，伺服器可能離線或連接埠不正確。",
     "keyNotFound": "SSH 金鑰檔案未找到或無效。",
     "noPasswordSaved": "未儲存密碼，請編輯連線新增憑證。",
-    "editToConfigure": "請編輯連線以設定認證資訊。"
+    "editToConfigure": "請編輯連線以設定認證資訊。",
+    "keyEncrypted": "SSH 金鑰已加密，請在連線設定中輸入金鑰密碼（Passphrase）。",
+    "wrongPassphrase": "金鑰密碼（Passphrase）不正確，請檢查後重試。"
   },
   "sidebar": {
     "servers": "伺服器",
@@ -125,6 +127,8 @@
     "serverName": "伺服器名稱",
     "enterPassword": "輸入密碼",
     "browseKeyFile": "瀏覽金鑰檔案",
+    "passphrase": "金鑰密碼（Passphrase）",
+    "passphrasePlaceholder": "如果金鑰已加密，請輸入建立金鑰時的密碼",
     "showPassword": "顯示密碼",
     "hidePassword": "隱藏密碼",
     "deleteConfirmMsg": "刪除 {{name}}？",
@@ -799,6 +803,10 @@
     "loadingAuth": "載入認證方式中...",
     "sshKeyManagement": "SSH 金鑰管理",
     "generateKey": "產生金鑰",
+    "keyPassphraseDialogTitle": "設定金鑰密碼",
+    "keyPassphraseHint": "可以為金鑰設定密碼保護（Passphrase），留空則產生未加密金鑰。若設定密碼，之後使用該金鑰連線伺服器時需要輸入。",
+    "keyPassphrasePlaceholder": "輸入金鑰密碼（可留空）",
+    "keyPassphraseSet": "私鑰已加密，請務必牢記密碼；連線時需輸入。",
     "generating": "產生中...",
     "publicKey": "公鑰（OpenSSH 格式）",
     "downloadPrivateKey": "下載私鑰",

@@ -36,12 +36,16 @@ pub fn config_save_credentials(
     auth_type: String,
     key_path: Option<String>,
     password: Option<String>,
+    passphrase: Option<String>,
     remember_me: bool,
 ) -> Result<(), String> {
-    println!("Saving credentials: id={}, username={}, auth_type={}, key_path={:?}, password={:?}, remember_me={}", 
-             id, username, auth_type, key_path, password.as_ref().map(|_| "***"), remember_me);
+    println!("Saving credentials: id={}, username={}, auth_type={}, key_path={:?}, password={:?}, passphrase={:?}, remember_me={}", 
+             id, username, auth_type, key_path, password.as_ref().map(|_| "***"), passphrase.as_ref().map(|_| "***"), remember_me);
+    // ponytail: empty passphrase means "no passphrase" — store None, not "" (empty string would
+    // later surface as Some("") and break unencrypted-key loading)
+    let passphrase = passphrase.filter(|p| !p.is_empty());
     let conn = db.lock().unwrap();
-    ConfigManager::save_credentials(&conn, &id, &username, &auth_type, key_path.as_deref(), password.as_deref(), remember_me)
+    ConfigManager::save_credentials(&conn, &id, &username, &auth_type, key_path.as_deref(), password.as_deref(), passphrase.as_deref(), remember_me)
 }
 
 // ===== Settings Commands =====

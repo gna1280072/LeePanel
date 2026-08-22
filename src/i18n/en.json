@@ -105,7 +105,9 @@
     "connectionRefused": "Connection refused. Server may be offline or port is incorrect.",
     "keyNotFound": "SSH key file not found or invalid.",
     "noPasswordSaved": "No password saved. Please edit the connection to add credentials.",
-    "editToConfigure": "Please edit the connection to configure authentication."
+    "editToConfigure": "Please edit the connection to configure authentication.",
+    "keyEncrypted": "SSH key is encrypted. Please enter the key passphrase in the connection settings.",
+    "wrongPassphrase": "Incorrect key passphrase. Please check it and try again."
   },
   "sidebar": {
     "servers": "Servers",
@@ -125,6 +127,8 @@
     "serverName": "Server name",
     "enterPassword": "Enter password",
     "browseKeyFile": "Browse key file",
+    "passphrase": "Passphrase",
+    "passphrasePlaceholder": "Passphrase for the key (if encrypted)",
     "showPassword": "Show password",
     "hidePassword": "Hide password",
     "deleteConfirmMsg": "Delete {{name}}?",
@@ -799,6 +803,10 @@
     "loadingAuth": "Loading auth mode...",
     "sshKeyManagement": "SSH Key Management",
     "generateKey": "Generate Key",
+    "keyPassphraseDialogTitle": "Set Key Passphrase",
+    "keyPassphraseHint": "Optionally protect the key with a passphrase. Leave empty to generate an unencrypted key. If set, you will need to enter it when connecting with this key.",
+    "keyPassphrasePlaceholder": "Key passphrase (optional)",
+    "keyPassphraseSet": "Private key encrypted. Remember the passphrase — you'll need it when connecting.",
     "generating": "Generating...",
     "publicKey": "Public Key (OpenSSH format)",
     "downloadPrivateKey": "Download Private Key",

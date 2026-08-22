@@ -36,6 +36,7 @@ interface SidebarConnection {
   auth_type: string
   key_path?: string
   password?: string
+  passphrase?: string
   remember_me?: boolean
 }
 
@@ -74,7 +75,7 @@ function App() {
   const [showWelcome, setShowWelcome] = useState(false)
   const termRefMap = useRef(new Map<string, TerminalHandle | null>())
   const activeTermRef = useRef<TerminalHandle | null>(null)
-  const [errorDialog, setErrorDialog] = useState<{ visible: boolean; message: string; type: 'auth' | 'network' | 'connection' | 'other' } | null>(null)
+  const [errorDialog, setErrorDialog] = useState<{ visible: boolean; type: 'auth' | 'network' | 'connection' | 'key' | 'other'; messageKey?: string; params?: Record<string, string>; message?: string } | null>(null)
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null)
 
   // Settings
@@ -95,6 +96,10 @@ function App() {
   // ponytail: ref for close_tab_on_disconnect to avoid stale closures in useEffect handlers
   const closeTabOnDisconnectRef = useRef(false)
   const manualDisconnectRef = useRef(false)
+  // ponytail: session-scoped passphrase fallback (configId -> passphrase). Passphrases are
+  // persisted to SQLite when remember_me is on; this cache only covers in-session edits that
+  // haven't been saved yet (e.g. fresh create/edit then immediate connect)
+  const passphraseCacheRef = useRef(new Map<string, string>())
   // ponytail: sessions that initiated normal reboot — skip auto-reconnect on disconnect
   const normalRebootSessionsRef = useRef(new Set<string>())
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0)
@@ -465,11 +470,12 @@ function App() {
 
   const [jumpToPath, setJumpToPath] = useState<string | null>(null)
 
-  const handleCreateConnection = async (data: { name: string; host: string; port: number; username: string; auth_type: string; key_path?: string; password?: string; remember_me?: boolean }) => {
+  const handleCreateConnection = async (data: { name: string; host: string; port: number; username: string; auth_type: string; key_path?: string; password?: string; passphrase?: string; remember_me?: boolean }) => {
     // Save the new connection
+    const newId = Date.now().toString()
     await invoke('config_save', {
       connection: {
-        id: Date.now().toString(),
+        id: newId,
         name: data.name,
         host: data.host,
         port: data.port,
@@ -477,9 +483,12 @@ function App() {
         auth_type: data.auth_type,
         key_path: data.key_path,
         password: data.password,
+        passphrase: data.passphrase,
         remember_me: data.remember_me || false,
       },
     })
+    // Keep passphrase in session memory (not persisted) so immediate connect works
+    if (data.passphrase) passphraseCacheRef.current.set(newId, data.passphrase)
     setSidebarRefreshKey(k => k + 1)
   }
 
@@ -651,31 +660,41 @@ function App() {
 
   // Disconnect SSH session after LNMP installation (environment changes require fresh session)
 
-  const classifyError = (errorMsg: string): { type: 'auth' | 'network' | 'connection' | 'other'; message: string } => {
+  const classifyError = (errorMsg: string): { type: 'auth' | 'network' | 'connection' | 'key' | 'other'; messageKey?: string; params?: Record<string, string>; message?: string } => {
     const s = errorMsg.toLowerCase()
     
     // Authentication errors
     if (s.includes('auth failed') || s.includes('auth error') || s.includes('authentication') || 
         s.includes('no authentication') || s.includes('permission denied') || s.includes('invalid password')) {
-      return { type: 'auth', message: 'Authentication failed. Please check your username and password.' }
+      return { type: 'auth', messageKey: 'errorDialog.authFailed' }
     }
     
     // Network errors
     if (s.includes('timeout') || s.includes('timed out') || s.includes('network unreachable')) {
-      return { type: 'network', message: 'Connection timed out. Please check network connectivity.' }
+      return { type: 'network', messageKey: 'errorDialog.networkTimeout' }
     }
     
     // Connection refused
     if (s.includes('connection refused') || s.includes('host unreachable')) {
-      return { type: 'connection', message: 'Connection refused. Server may be offline or port is incorrect.' }
+      return { type: 'connection', messageKey: 'errorDialog.connectionRefused' }
+    }
+    
+    // Wrong key passphrase — the key file is intact but decryption failed
+    if (s.includes('passphrase')) {
+      return { type: 'key', messageKey: 'errorDialog.wrongPassphrase' }
+    }
+
+    // Encrypted key without passphrase — tell the user to add it in connection settings
+    if (s.includes('encrypted')) {
+      return { type: 'key', messageKey: 'errorDialog.keyEncrypted' }
     }
     
     // Key file errors
     if (s.includes('key') && (s.includes('not found') || s.includes('invalid'))) {
-      return { type: 'auth', message: 'SSH key file not found or invalid.' }
+      return { type: 'auth', messageKey: 'errorDialog.keyNotFound' }
     }
     
-    // Default
+    // Default: raw passthrough
     return { type: 'other', message: errorMsg }
   }
 
@@ -693,7 +712,7 @@ function App() {
       return
     }
 
-    const doConnect = (username: string, password?: string, keyPath?: string) => {
+    const doConnect = (username: string, password?: string, keyPath?: string, passphrase?: string) => {
       setConnectingServerId(conn.id)
       setError('')
       const hostKey = `${conn.host}_${conn.port}`
@@ -705,7 +724,7 @@ function App() {
       Promise.all([
         Promise.race([
           invoke<string>('ssh_connect', {
-            config: { host: conn.host, port: conn.port, username, password, keyPath, cols: estCols, rows: estRows },
+            config: { host: conn.host, port: conn.port, username, password, keyPath, passphrase: passphrase || undefined, cols: estCols, rows: estRows },
           }),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 20000)),
         ]),
@@ -738,35 +757,43 @@ function App() {
         }
       }).catch(e => {
         const msg = String(e)
-        const { type, message } = classifyError(msg)
-        setErrorDialog({ visible: true, message, type })
+        const { type, messageKey, params, message } = classifyError(msg)
+        setErrorDialog({ visible: true, type, messageKey, params, message })
       }).finally(() => setConnectingServerId(null))
     }
 
     let password: string | undefined
     let keyPath: string | undefined
+    let passphrase: string | undefined
     
     // Only use stored credentials if remember_me is true
     if (conn.remember_me) {
       if (conn.auth_type === 'password' && !conn.password) {
-        setErrorDialog({ visible: true, message: 'No password saved. Please edit the connection to add credentials.', type: 'auth' })
+        setErrorDialog({ visible: true, type: 'auth', messageKey: 'errorDialog.noPasswordSaved' })
         return
       }
       if (conn.auth_type === 'password') password = conn.password
+      // Fall back to session-memory cache (freshly created/edited connections aren't persisted)
       if (conn.auth_type === 'key') keyPath = conn.key_path
+      // '' (blank input) means "no passphrase" — fall through || so empty string isn't sent as Some("")
+      if (conn.auth_type === 'key') passphrase = conn.passphrase || passphraseCacheRef.current.get(conn.id)
     } else {
-      setErrorDialog({ visible: true, message: 'Please edit the connection to configure authentication.', type: 'auth' })
+      setErrorDialog({ visible: true, type: 'auth', messageKey: 'errorDialog.editToConfigure' })
       return
     }
 
-    doConnect(conn.username, password, keyPath)
+    doConnect(conn.username, password, keyPath, passphrase)
   }, [sessions, connectedConfigIds])
 
   // Listen for reconnect-after-edit from Sidebar (Connect button)
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail
-      if (detail?.conn) handleDirectConnect(detail.conn)
+      if (detail?.conn) {
+        // Keep edited passphrase in session memory (not persisted) so immediate connect works
+        if (detail.conn.passphrase) passphraseCacheRef.current.set(detail.conn.id, detail.conn.passphrase)
+        handleDirectConnect(detail.conn)
+      }
     }
     window.addEventListener('sidebar-reconnect-after-edit', handler)
     return () => window.removeEventListener('sidebar-reconnect-after-edit', handler)
@@ -847,10 +874,11 @@ function App() {
                 {errorDialog.type === 'auth' && '🔐'}
                 {errorDialog.type === 'network' && '🌐'}
                 {errorDialog.type === 'connection' && '⚠️'}
+                {errorDialog.type === 'key' && '🔑'}
                 {errorDialog.type === 'other' && '❗'}
               </div>
               <div className="error-dialog-title">{t('errorDialog.connectionFailed')}</div>
-              <div className="error-dialog-message">{errorDialog.message}</div>
+              <div className="error-dialog-message">{errorDialog.message ?? t(errorDialog.messageKey ?? '', errorDialog.params)}</div>
               <button className="error-dialog-btn" onClick={() => setErrorDialog(null)}>{t('common.close')}</button>
             </div>
           </div>

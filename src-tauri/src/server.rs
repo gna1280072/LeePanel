@@ -6356,8 +6356,10 @@ pub struct SshAuthMode {
     pub pubkey: bool,
 }
 
-/// Generate SSH key pair locally (no SSH connection needed)
-pub fn generate_ssh_keypair(algorithm: &str) -> Result<SshKeyPair, String> {
+/// Generate SSH key pair locally (no SSH connection needed).
+/// If `passphrase` is non-empty, the private key is encrypted (PKCS#8 encrypted PEM);
+/// otherwise an unencrypted key is produced.
+pub fn generate_ssh_keypair(algorithm: &str, passphrase: Option<&str>) -> Result<SshKeyPair, String> {
     use russh_keys::PublicKeyBase64;
 
     let key_pair = match algorithm {
@@ -6369,8 +6371,17 @@ pub fn generate_ssh_keypair(algorithm: &str) -> Result<SshKeyPair, String> {
     };
 
     let mut pem_buf = Vec::new();
-    russh_keys::encode_pkcs8_pem(&key_pair, &mut pem_buf)
-        .map_err(|e| format!("Failed to encode private key: {}", e))?;
+    match passphrase.filter(|p| !p.is_empty()) {
+        Some(pp) => {
+            // PKCS#8 encrypted PEM ("BEGIN ENCRYPTED PRIVATE KEY") — PBKDF2-SHA256/AES-256-CBC
+            russh_keys::encode_pkcs8_pem_encrypted(&key_pair, pp.as_bytes(), 10_000, &mut pem_buf)
+                .map_err(|e| format!("Failed to encode encrypted private key: {}", e))?;
+        }
+        None => {
+            russh_keys::encode_pkcs8_pem(&key_pair, &mut pem_buf)
+                .map_err(|e| format!("Failed to encode private key: {}", e))?;
+        }
+    }
     let private_key_pem = String::from_utf8(pem_buf)
         .map_err(|e| format!("Invalid UTF-8 in PEM output: {}", e))?;
 
@@ -9752,4 +9763,75 @@ pub async fn kill_pid(
         });
     }
     Ok(format!("Process {} killed with {}", pid, if force { "SIGKILL" } else { "SIGTERM" }))
+}
+
+#[cfg(test)]
+mod keygen_tests {
+    use super::*;
+
+    /// Write PEM to a temp file and attempt to load it with `russh_keys::load_secret_key`.
+    fn try_load(pem: &str, passphrase: Option<&str>) -> Result<(), String> {
+        let path = std::env::temp_dir().join(format!("leepanel_key_test_{}.pem", std::process::id()));
+        std::fs::write(&path, pem).map_err(|e| e.to_string())?;
+        let r = russh_keys::load_secret_key(&path, passphrase).map(|_| ());
+        let _ = std::fs::remove_file(&path);
+        r.map_err(|e| e.to_string())
+    }
+
+    #[test]
+    fn unencrypted_key_loads_without_passphrase() {
+        // regression guard: unencrypted key (no passphrase) must load — pubkey login relies on this
+        let kp = generate_ssh_keypair("ed25519", None).unwrap();
+        assert!(kp.private_key_pem.starts_with("-----BEGIN PRIVATE KEY-----"));
+        let res = try_load(&kp.private_key_pem, None);
+        assert!(res.is_ok(), "unencrypted key should load with None passphrase: {:?}", res.err());
+    }
+
+    #[test]
+    fn encrypted_key_requires_passphrase_and_loads_with_correct_one() {
+        let kp = generate_ssh_keypair("ed25519", Some("secret123")).unwrap();
+        // encrypted PKCS#8 header — must match the pre-check detection in ssh::key_file_is_encrypted
+        assert!(kp.private_key_pem.starts_with("-----BEGIN ENCRYPTED PRIVATE KEY-----"));
+
+        // no passphrase → must fail (friendly "encrypted" error path)
+        let res_none = try_load(&kp.private_key_pem, None);
+        assert!(res_none.is_err(), "encrypted key must not load without passphrase");
+
+        // wrong passphrase → must fail
+        let res_wrong = try_load(&kp.private_key_pem, Some("wrong"));
+        assert!(res_wrong.is_err(), "encrypted key must not load with a wrong passphrase");
+
+        // correct passphrase → must load
+        let res_ok = try_load(&kp.private_key_pem, Some("secret123"));
+        assert!(res_ok.is_ok(), "encrypted key should load with correct passphrase: {:?}", res_ok.err());
+    }
+
+    #[test]
+    fn empty_passphrase_behaves_like_unencrypted() {
+        // UI sends an empty string when the user leaves the field blank.
+        // (ed25519 — the passphrase branch is algorithm-independent, and RSA-4096
+        //  key generation is impractically slow on some machines for a unit test)
+        let kp = generate_ssh_keypair("ed25519", Some("")).unwrap();
+        assert!(kp.private_key_pem.starts_with("-----BEGIN PRIVATE KEY-----"));
+        let res = try_load(&kp.private_key_pem, None);
+        assert!(res.is_ok(), "empty passphrase should produce an unencrypted, loadable key: {:?}", res.err());
+    }
+
+    #[test]
+    fn empty_string_passphrase_is_normalized_to_none_before_load() {
+        // regression guard (2026-08-22 bug): russh-keys treats Some("") as "try to decrypt"
+        // and misparses unencrypted PKCS#8 keys → "Der: unexpected ASN.1 DER tag: expected
+        // SEQUENCE, got INTEGER at DER byte 2". The connect path (ssh::do_connect) must
+        // normalize "" → None via filter(|p| !p.is_empty()) before load_secret_key.
+        let kp = generate_ssh_keypair("ed25519", None).unwrap();
+
+        // raw Some("") fails — documents the upstream behavior that motivates the fix
+        let res_raw = try_load(&kp.private_key_pem, Some(""));
+        assert!(res_raw.is_err(), "raw Some(\"\") must fail on unencrypted keys — if this passes, the normalization guard can be removed");
+
+        // with the same normalization do_connect applies, it must load
+        let normalized: Option<&str> = Some("").filter(|p| !p.is_empty());
+        let res = try_load(&kp.private_key_pem, normalized);
+        assert!(res.is_ok(), "normalized empty passphrase should load an unencrypted key: {:?}", res.err());
+    }
 }

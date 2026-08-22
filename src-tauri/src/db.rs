@@ -137,6 +137,20 @@ pub fn init_db() -> Result<Mutex<SqliteConn>, String> {
         let _ = conn.execute_batch("ALTER TABLE connections ADD COLUMN remember_me INTEGER DEFAULT 0;");
     }
 
+    // v5: add passphrase column to connections (idempotent ALTER TABLE — encrypted SSH key passphrase)
+    let has_passphrase: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('connections') WHERE name='passphrase'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+    if !has_passphrase {
+        let _ = conn.execute_batch("ALTER TABLE connections ADD COLUMN passphrase TEXT;");
+    }
+
     // v3: add db_user column to db_credentials (ponytail: idempotent ALTER TABLE)
     let has_db_user: bool = conn
         .query_row(
@@ -167,7 +181,7 @@ pub fn init_db() -> Result<Mutex<SqliteConn>, String> {
 
     // Update schema version to latest
     conn.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', '4')",
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', '5')",
         [],
     ).map_err(|e| format!("Failed to update schema_version: {}", e))?;
 

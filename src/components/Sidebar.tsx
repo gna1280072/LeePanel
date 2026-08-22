@@ -12,6 +12,7 @@ interface Connection {
   auth_type: string
   key_path?: string
   password?: string
+  passphrase?: string
   remember_me?: boolean
 }
 
@@ -23,6 +24,7 @@ interface NewConnectionData {
   auth_type: string
   key_path?: string
   password?: string
+  passphrase?: string
   remember_me?: boolean
 }
 
@@ -50,8 +52,10 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
   const [editing, setEditing] = useState<Connection | null>(null)
   const [showEditPassword, setShowEditPassword] = useState(false)
+  const [showEditPassphrase, setShowEditPassphrase] = useState(false)
   const [creating, setCreating] = useState<NewConnectionData | null>(null)
   const [showCreatePassword, setShowCreatePassword] = useState(false)
+  const [showCreatePassphrase, setShowCreatePassphrase] = useState(false)
   const [hasCheckedEmpty, setHasCheckedEmpty] = useState(false)
   const [langDropdownOpen, setLangDropdownOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -127,9 +131,10 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
       username: editing.username.trim(),
       port: Number(String(editing.port).trim()) || editing.port,
       remember_me: editing.remember_me || false,
-      // Only save credentials if remember_me is checked
+      // Only save credentials if remember_me is checked; empty passphrase means none — don't send ""
       password: editing.remember_me ? editing.password : undefined,
-      key_path: editing.remember_me ? editing.key_path : undefined
+      key_path: editing.remember_me ? editing.key_path : undefined,
+      passphrase: editing.remember_me ? (editing.passphrase || undefined) : undefined
     }
     await invoke('config_save', { connection: trimmed })
     setEditing(null)
@@ -146,9 +151,10 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
       username: editing.username.trim(),
       port: Number(String(editing.port).trim()) || editing.port,
       remember_me: editing.remember_me || false,
-      // Only save credentials if remember_me is checked
+      // Only save credentials if remember_me is checked; empty passphrase means none — don't send ""
       password: editing.remember_me ? editing.password : undefined,
-      key_path: editing.remember_me ? editing.key_path : undefined
+      key_path: editing.remember_me ? editing.key_path : undefined,
+      passphrase: editing.remember_me ? (editing.passphrase || undefined) : undefined
     }
     await invoke('config_save', { connection: trimmed })
     
@@ -180,9 +186,10 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
       username: creating.username.trim(),
       port: Number(String(creating.port).trim()) || creating.port,
       remember_me: creating.remember_me || false,
-      // Only save credentials if remember_me is checked
+      // Only save credentials if remember_me is checked; empty passphrase means none — don't send ""
       password: creating.remember_me ? creating.password : undefined,
-      key_path: creating.remember_me ? creating.key_path : undefined
+      key_path: creating.remember_me ? creating.key_path : undefined,
+      passphrase: creating.remember_me ? (creating.passphrase || undefined) : undefined
     }
     await onCreateConnection(trimmed)
     setCreating(null)
@@ -374,6 +381,11 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
                     <input className="sidebar-edit-input" style={{ flex: 1 }} value={editing.key_path || ''} onChange={(e) => setEditing({ ...editing, key_path: e.target.value })} />
                     <button className="sidebar-edit-action-btn" onClick={pickKeyFile} title={t('sidebar.browseKeyFile')}>📂</button>
                   </div>
+                  <label style={{ marginTop: 8 }}>{t('sidebar.passphrase')}</label>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input className="sidebar-edit-input" style={{ flex: 1 }} type={showEditPassphrase ? 'text' : 'password'} value={editing.passphrase || ''} onChange={(e) => setEditing({ ...editing, passphrase: e.target.value })} placeholder={t('sidebar.passphrasePlaceholder')} />
+                    <button className="sidebar-edit-action-btn" onClick={() => setShowEditPassphrase(!showEditPassphrase)} title={showEditPassphrase ? t('sidebar.hidePassword') : t('sidebar.showPassword')}>{showEditPassphrase ? '🙈' : '👁'}</button>
+                  </div>
                 </div>
               )}
             </div>
@@ -468,6 +480,11 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
                   <div style={{ display: 'flex', gap: 6 }}>
                     <input className="sidebar-edit-input" style={{ flex: 1 }} value={creating.key_path || ''} onChange={(e) => setCreating({ ...creating, key_path: e.target.value })} placeholder="~/.ssh/id_rsa" />
                     <button className="sidebar-edit-action-btn" onClick={pickCreateKeyFile} title={t('sidebar.browseKeyFile')}>📂</button>
+                  </div>
+                  <label style={{ marginTop: 8 }}>{t('sidebar.passphrase')}</label>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input className="sidebar-edit-input" style={{ flex: 1 }} type={showCreatePassphrase ? 'text' : 'password'} value={creating.passphrase || ''} onChange={(e) => setCreating({ ...creating, passphrase: e.target.value })} placeholder={t('sidebar.passphrasePlaceholder')} />
+                    <button className="sidebar-edit-action-btn" onClick={() => setShowCreatePassphrase(!showCreatePassphrase)} title={showCreatePassphrase ? t('sidebar.hidePassword') : t('sidebar.showPassword')}>{showCreatePassphrase ? '🙈' : '👁'}</button>
                   </div>
                 </div>
               )}

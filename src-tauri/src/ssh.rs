@@ -68,6 +68,31 @@ fn parse_curl_progress(line: &str) -> Option<f64> {
     None
 }
 
+/// Detect whether a private key file is passphrase-encrypted by inspecting its header.
+/// Covers both PEM ("Proc-Type: 4,ENCRYPTED" / "BEGIN ENCRYPTED PRIVATE KEY") and
+/// OpenSSH formats ("BEGIN OPENSSH PRIVATE KEY" + ciphername != "none").
+fn key_file_is_encrypted(path: &str) -> Result<bool, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read key file: {}", e))?;
+    let head = &content[..content.len().min(8192)];
+    // PEM (traditional / PKCS#8 encrypted) formats
+    if head.contains("Proc-Type: 4,ENCRYPTED") || head.contains("BEGIN ENCRYPTED PRIVATE KEY") {
+        return Ok(true);
+    }
+    // OpenSSH format: header lists the cipher; "none" means unencrypted
+    if head.contains("BEGIN OPENSSH PRIVATE KEY") {
+        if let Some(idx) = head.find("ciphername") {
+            let rest = &head[idx + "ciphername".len()..];
+            let trimmed = rest.trim_start_matches(|c: char| c == ':' || c == ' ' || c == '\t');
+            let name: String = trimmed.chars().take_while(|c| !c.is_whitespace() && *c != '\n').collect();
+            if !name.is_empty() && name != "none" {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
 /// A connection the server forwarded to us (remote forwarding, ssh -R).
 /// Handed to the matching remote tunnel via the forwarded_reg channel.
 pub struct ForwardedTcpip {
@@ -116,6 +141,7 @@ pub struct ConnectInfo {
     pub username: String,
     pub password: Option<String>,
     pub key_path: Option<String>,
+    pub passphrase: Option<String>,
     pub cols: u32,
     pub rows: u32,
 }
@@ -166,11 +192,12 @@ impl SshManager {
         username: String,
         password: Option<String>,
         key_path: Option<String>,
+        passphrase: Option<String>,
         app_handle: AppHandle,
         cols: u32,
         rows: u32,
     ) -> Result<(), String> {
-        let session = Self::do_connect(session_id.clone(), host, port, username, password, key_path, app_handle.clone(), cols, rows).await?;
+        let session = Self::do_connect(session_id.clone(), host, port, username, password, key_path, passphrase, app_handle.clone(), cols, rows).await?;
         self.sessions.write().unwrap().insert(session_id, session);
         Ok(())
     }
@@ -205,10 +232,14 @@ impl SshManager {
         username: String,
         password: Option<String>,
         key_path: Option<String>,
+        passphrase: Option<String>,
         app_handle: AppHandle,
         cols: u32,
         rows: u32,
     ) -> Result<SshSession, String> {
+        // ponytail: normalize empty passphrase to None — russh-keys treats Some("") as
+        // "try to decrypt", which misparses unencrypted PKCS#8 keys (DER tag error at byte 2)
+        let passphrase = passphrase.filter(|p| !p.is_empty());
         let handler = SshHandler {
             forwarded_reg: Arc::new(std::sync::Mutex::new(HashMap::new())),
         };
@@ -228,8 +259,24 @@ impl SshManager {
 
         // Authenticate
         if let Some(ref kp) = key_path {
-            let key = russh_keys::load_secret_key(kp, None)
-                .map_err(|e| format!("Failed to load key: {}", e))?;
+            // Pre-check: if the key is passphrase-encrypted and no passphrase was provided,
+            // fail fast with a clear message (instead of russh's raw "The key is encrypted")
+            let key_encrypted = key_file_is_encrypted(kp)
+                .map_err(|e| format!("Failed to read key file: {}", e))?;
+            if passphrase.is_none() && key_encrypted {
+                return Err("Key file is encrypted but no passphrase was provided".to_string());
+            }
+            let key = russh_keys::load_secret_key(kp, passphrase.as_deref())
+                .map_err(|e| {
+                    // The key file is intact and passphrase-encrypted, so a load failure with a
+                    // passphrase supplied almost certainly means the passphrase is wrong —
+                    // surface a friendly, unambiguous error instead of russh's raw message
+                    if key_encrypted {
+                        format!("Incorrect passphrase: failed to decrypt the key ({})", e)
+                    } else {
+                        format!("Failed to load key: {}", e)
+                    }
+                })?;
             let auth_ok = sh.authenticate_publickey(&username, Arc::new(key))
                 .await
                 .map_err(|e| format!("Key auth error: {}", e))?;
@@ -332,6 +379,7 @@ impl SshManager {
             username: username.clone(),
             password: password.clone(),
             key_path: key_path.clone(),
+            passphrase: passphrase.clone(),
             cols,
             rows,
         };
@@ -1223,6 +1271,7 @@ impl SshManager {
             info.username,
             info.password,
             info.key_path,
+            info.passphrase,
             app_handle,
             info.cols,
             info.rows,

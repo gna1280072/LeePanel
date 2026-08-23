@@ -3709,6 +3709,34 @@ body.dragging-files * {
   font-size: 14px;
 }
 
+.sp-welcome-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.sp-welcome-logo {
+  font-size: 64px;
+  font-weight: 800;
+  color: var(--accent);
+  letter-spacing: -1.5px;
+  line-height: 1;
+}
+
+.sp-welcome-tagline {
+  font-size: 15px;
+  color: var(--text-muted);
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+.sp-welcome-hint {
+  font-size: 13px;
+  color: var(--text-faint);
+  margin-top: 8px;
+}
+
 .sp-error {
   display: flex;
   flex-direction: column;

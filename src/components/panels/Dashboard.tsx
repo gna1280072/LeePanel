@@ -118,7 +118,15 @@ export default function Dashboard({ sessionId, onNavigate }: DashboardProps) {
   }, [sessionId])
 
   if (!sessionId) {
-    return <div className="sp-empty">{t('dashboard.connectToView')}</div>
+    return (
+      <div className="sp-empty">
+        <div className="sp-welcome-hero">
+          <div className="sp-welcome-logo">LeePanel</div>
+          <div className="sp-welcome-tagline">SSH直连服务器面板开创者</div>
+          <div className="sp-welcome-hint">{t('dashboard.connectToView')}</div>
+        </div>
+      </div>
+    )
   }
 
   if (loading && !sysInfo) {

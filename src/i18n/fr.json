@@ -157,7 +157,7 @@
     "firewall": "Pare-feu",
     "port": "Ports",
     "bbr": "Accélération BBR",
-    "tunnel": "Tunnel",
+    "tunnel": "Traversal NAT",
     "docker": "Docker",
     "update": "Mise à jour",
     "settings": "Paramètres",
@@ -185,7 +185,7 @@
     "manageTitle": "Commandes rapides personnalisées"
   },
   "tunnel": {
-    "title": "Tunnels SSH (pénétration d'intranet) New~",
+    "title": "Traversal NAT New~",
     "reconnectDone": "Reconnecté. GatewayPorts est actif — recréez vos tunnels de transfert serveur.",
     "reconnectDoneDisable": "Reconnecté. GatewayPorts est désactivé — les transferts serveur n'accepteront que 127.0.0.1.",
     "reconnectFailed": "Échec de la reconnexion : {{error}}",

@@ -157,7 +157,7 @@
     "firewall": "방화벽",
     "port": "포트",
     "bbr": "BBR 가속",
-    "tunnel": "터널",
+    "tunnel": "NAT 트래버설",
     "docker": "Docker",
     "update": "업데이트",
     "settings": "설정",
@@ -185,7 +185,7 @@
     "manageTitle": "사용자 지정 빠른 명령"
   },
   "tunnel": {
-    "title": "SSH 터널 (인트라넷 침투) New~",
+    "title": "NAT 트래버설 New~",
     "reconnectDone": "재연결 완료. GatewayPorts가 활성화되었습니다 — 서버 전달 터널을 다시 만드세요.",
     "reconnectDoneDisable": "재연결 완료. GatewayPorts가 비활성화되었습니다 — 서버 전달은 127.0.0.1만 허용됩니다.",
     "reconnectFailed": "재연결 실패: {{error}}",

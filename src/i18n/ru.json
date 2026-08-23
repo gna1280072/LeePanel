@@ -157,7 +157,7 @@
     "firewall": "Фаервол",
     "port": "Порты",
     "bbr": "Ускорение BBR",
-    "tunnel": "Туннель",
+    "tunnel": "NAT-обход",
     "docker": "Docker",
     "update": "Обновление",
     "settings": "Настройки",
@@ -185,7 +185,7 @@
     "manageTitle": "Пользовательские быстрые команды"
   },
   "tunnel": {
-    "title": "SSH-туннели (проникновение в интранет) New~",
+    "title": "NAT-обход New~",
     "reconnectDone": "Переподключено. GatewayPorts активен — создайте заново туннели пересылки сервера.",
     "reconnectDoneDisable": "Переподключено. GatewayPorts отключён — серверные пересылки будут принимать только 127.0.0.1.",
     "reconnectFailed": "Ошибка переподключения: {{error}}",

@@ -157,7 +157,7 @@
     "firewall": "جدار الحماية",
     "port": "المنافذ",
     "bbr": "تسريع BBR",
-    "tunnel": "النفق",
+    "tunnel": "اختراق NAT",
     "docker": "Docker",
     "update": "تحديث",
     "settings": "الإعدادات",
@@ -185,7 +185,7 @@
     "manageTitle": "أوامر سريعة مخصصة"
   },
   "tunnel": {
-    "title": "أنفاق SSH (اختراق الشبكة الداخلية) New~",
+    "title": "اختراق NAT New~",
     "reconnectDone": "تمت إعادة الاتصال. GatewayPorts نشط — أعد إنشاء تونلات إعادة التوجيه من الخادم.",
     "reconnectDoneDisable": "تمت إعادة الاتصال. GatewayPorts معطل — ستقبل عمليات إعادة التوجيه من الخادم 127.0.0.1 فقط.",
     "reconnectFailed": "فشلت إعادة الاتصال: {{error}}",

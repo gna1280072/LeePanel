@@ -157,7 +157,7 @@
     "firewall": "ファイアウォール",
     "port": "ポート",
     "bbr": "BBR 高速化",
-    "tunnel": "トンネル",
+    "tunnel": "NATトラバーサル",
     "docker": "Docker",
     "update": "アップデート",
     "settings": "設定",
@@ -185,7 +185,7 @@
     "manageTitle": "カスタムコマンド"
   },
   "tunnel": {
-    "title": "SSH トンネル (イントラネット越え) New~",
+    "title": "NATトラバーサル New~",
     "reconnectDone": "再接続しました。GatewayPorts が有効になりました — サーバー転送トンネルを再作成してください。",
     "reconnectDoneDisable": "再接続しました。GatewayPorts が無効になりました — サーバー転送は 127.0.0.1 のみ受け付けます。",
     "reconnectFailed": "再接続に失敗しました: {{error}}",

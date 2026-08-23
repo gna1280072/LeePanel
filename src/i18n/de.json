@@ -157,7 +157,7 @@
     "firewall": "Firewall",
     "port": "Ports",
     "bbr": "BBR-Beschleunigung",
-    "tunnel": "Tunnel",
+    "tunnel": "NAT-Traversal",
     "docker": "Docker",
     "update": "Update",
     "settings": "Einstellungen",
@@ -185,7 +185,7 @@
     "manageTitle": "Benutzerdefinierte Schnellbefehle"
   },
   "tunnel": {
-    "title": "SSH-Tunnel (Intranet-Penetration) New~",
+    "title": "NAT-Traversal New~",
     "reconnectDone": "Wiederverbunden. GatewayPorts ist aktiv — erstellen Sie Ihre Server-Weiterleitungstunnel neu.",
     "reconnectDoneDisable": "Wiederverbunden. GatewayPorts ist deaktiviert — Server-Weiterleitungen akzeptieren nur noch 127.0.0.1.",
     "reconnectFailed": "Wiederverbindung fehlgeschlagen: {{error}}",

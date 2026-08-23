@@ -157,7 +157,7 @@
     "firewall": "Firewall",
     "port": "Portas",
     "bbr": "Aceleração BBR",
-    "tunnel": "Túnel",
+    "tunnel": "Travessia NAT",
     "docker": "Docker",
     "update": "Atualização",
     "settings": "Configurações",
@@ -185,7 +185,7 @@
     "manageTitle": "Comandos rápidos personalizados"
   },
   "tunnel": {
-    "title": "Túneis SSH (penetração de intranet) New~",
+    "title": "Travessia NAT New~",
     "reconnectDone": "Reconectado. GatewayPorts está ativo — recrie seus túneis de encaminhamento de servidor.",
     "reconnectDoneDisable": "Reconectado. GatewayPorts está desativado — os encaminhamentos de servidor só aceitarão 127.0.0.1.",
     "reconnectFailed": "Falha na reconexão: {{error}}",

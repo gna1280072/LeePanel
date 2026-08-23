@@ -157,7 +157,7 @@
     "firewall": "防火牆",
     "port": "連接埠",
     "bbr": "BBR 加速",
-    "tunnel": "隧道",
+    "tunnel": "內網穿透",
     "docker": "Docker",
     "update": "更新",
     "settings": "設定",
@@ -185,7 +185,7 @@
     "manageTitle": "自訂快捷命令"
   },
   "tunnel": {
-    "title": "SSH 隧道(內網穿透) New~",
+    "title": "內網穿透 New~",
     "create": "建立隧道",
     "type": "隧道類型",
     "types": {

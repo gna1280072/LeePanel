@@ -156,7 +156,7 @@
     "monitor": "监控",
     "firewall": "防火墙",
     "port": "端口",
-    "tunnel": "隧道",
+    "tunnel": "内网穿透",
     "bbr": "BBR 加速",
     "docker": "Docker",
     "update": "更新",
@@ -185,7 +185,7 @@
     "manageTitle": "自定义快捷命令"
   },
   "tunnel": {
-    "title": "SSH 隧道(内网穿透) New~",
+    "title": "内网穿透 New~",
     "create": "创建隧道",
     "type": "隧道类型",
     "types": {

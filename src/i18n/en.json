@@ -156,7 +156,7 @@
     "monitor": "Monitor",
     "firewall": "Firewall",
     "port": "Ports",
-    "tunnel": "Tunnel",
+    "tunnel": "NAT Traversal",
     "bbr": "BBR Acceleration",
     "docker": "Docker",
     "update": "Update",
@@ -185,7 +185,7 @@
     "manageTitle": "Custom quick commands"
   },
   "tunnel": {
-    "title": "SSH Tunnels (Intranet Penetration) New~",
+    "title": "NAT Traversal New~",
     "create": "Create Tunnel",
     "type": "Tunnel Type",
     "types": {

@@ -152,7 +152,7 @@ export default function HostKeysDialog({ open, onClose }: Props) {
                 className="hostkeys-delete"
                 onClick={() => remove(it.host, it.key_type)}
                 title={t('common.delete')}
-              >🗑</button>
+              >{t('common.delete')}</button>
             </div>
           ))}
         </div>

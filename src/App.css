@@ -1583,16 +1583,19 @@ body {
   background: transparent;
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 6px 8px;
+  padding: 6px 12px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
+  color: var(--red-strong);
   flex-shrink: 0;
+  white-space: nowrap;
   transition: all 0.2s;
 }
 
 .hostkeys-delete:hover {
   background: var(--red-soft);
   border-color: var(--red-strong);
+  color: var(--red-strong);
 }
 
 /* Host keys dialog toolbar & manual add */

@@ -532,6 +532,7 @@
     "noLnmp": "Nenhum serviço LNMP detectado.",
     "installLnmp": "Instalar ambiente LNMP",
     "connectToView": "Conecte-se a um servidor para ver o painel",
+    "tagline": "Pioneiro em painéis de servidor com conexão SSH direta",
     "loadingSystem": "Carregando informações do sistema...",
     "cores": "núcleos",
     "welcome": "Bem-vindo ao LeePanel"

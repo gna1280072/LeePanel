@@ -532,6 +532,7 @@
     "noLnmp": "No LNMP services detected.",
     "installLnmp": "Install LNMP Environment",
     "connectToView": "Connect to a server to view dashboard",
+    "tagline": "Pioneer of SSH Direct Server Panel",
     "loadingSystem": "Loading system information...",
     "cores": "cores",
     "welcome": "Welcome to LeePanel"

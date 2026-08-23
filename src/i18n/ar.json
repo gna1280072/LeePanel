@@ -532,6 +532,7 @@
     "noLnmp": "لم يتم اكتشاف خدمات LNMP.",
     "installLnmp": "تثبيت بيئة LNMP",
     "connectToView": "اتصل بخادم لعرض لوحة التحكم",
+    "tagline": "رائد لوحات الخوادم عبر SSH المباشر",
     "loadingSystem": "تحميل معلومات النظام...",
     "cores": "أنوية",
     "welcome": "مرحبًا بك في LeePanel"

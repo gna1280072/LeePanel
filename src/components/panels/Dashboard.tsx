@@ -122,7 +122,7 @@ export default function Dashboard({ sessionId, onNavigate }: DashboardProps) {
       <div className="sp-empty">
         <div className="sp-welcome-hero">
           <div className="sp-welcome-logo">LeePanel</div>
-          <div className="sp-welcome-tagline">SSH直连服务器面板开创者</div>
+          <div className="sp-welcome-tagline">{t('dashboard.tagline')}</div>
           <div className="sp-welcome-hint">{t('dashboard.connectToView')}</div>
         </div>
       </div>

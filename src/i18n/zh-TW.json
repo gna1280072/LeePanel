@@ -532,6 +532,7 @@
     "noLnmp": "未檢測到 LNMP 服務。",
     "installLnmp": "安裝 LNMP 環境",
     "connectToView": "連線伺服器以檢視儀表板",
+    "tagline": "SSH 直連伺服器面板開創者",
     "loadingSystem": "載入系統資訊中...",
     "cores": "核心",
     "welcome": "歡迎使用 LeePanel"

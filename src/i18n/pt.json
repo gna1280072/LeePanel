@@ -114,7 +114,7 @@
     "hostKeyChanged": "A chave do host mudou, conexão abortada. Pode haver um ataque man-in-the-middle — não digite sua senha!"
   },
   "sidebar": {
-    "servers": "Servidores",
+    "servers": "Lista de servidores",
     "newConnection": "Nova conexão",
     "editConnection": "Editar conexão",
     "confirmDelete": "Confirmar exclusão",

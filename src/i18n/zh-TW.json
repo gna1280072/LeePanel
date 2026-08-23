@@ -114,7 +114,7 @@
     "hostKeyChanged": "主機金鑰已變更，連線已中止。可能存在中間人攻擊，請勿輸入密碼！"
   },
   "sidebar": {
-    "servers": "伺服器",
+    "servers": "伺服器清單",
     "newConnection": "新建連線",
     "editConnection": "編輯連線",
     "confirmDelete": "確認刪除",

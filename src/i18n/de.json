@@ -114,7 +114,7 @@
     "hostKeyChanged": "Hostschlüssel geändert, Verbindung abgebrochen. Ein Man-in-the-Middle-Angriff ist möglich — geben Sie kein Passwort ein!"
   },
   "sidebar": {
-    "servers": "Server",
+    "servers": "Serverliste",
     "newConnection": "Neue Verbindung",
     "editConnection": "Verbindung bearbeiten",
     "confirmDelete": "Löschen bestätigen",

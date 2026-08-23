@@ -114,7 +114,7 @@
     "hostKeyChanged": "호스트 키가 변경되어 연결을 중단했습니다. 중간자 공격 가능성이 있으니 비밀번호를 입력하지 마세요!"
   },
   "sidebar": {
-    "servers": "서버",
+    "servers": "서버 목록",
     "newConnection": "새 연결",
     "editConnection": "연결 편집",
     "confirmDelete": "삭제 확인",

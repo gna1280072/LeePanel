@@ -114,7 +114,7 @@
     "hostKeyChanged": "ホスト鍵が変更されたため接続を中止しました。中間者攻撃の可能性があります。パスワードを入力しないでください！"
   },
   "sidebar": {
-    "servers": "サーバー",
+    "servers": "サーバーリスト",
     "newConnection": "新規接続",
     "editConnection": "接続を編集",
     "confirmDelete": "削除確認",

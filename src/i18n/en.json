@@ -114,7 +114,7 @@
     "hostKeyChanged": "Host key changed, connection aborted. A man-in-the-middle attack may be in progress — do not enter your password!"
   },
   "sidebar": {
-    "servers": "Servers",
+    "servers": "Server List",
     "newConnection": "New Connection",
     "editConnection": "Edit Connection",
     "confirmDelete": "Confirm Delete",

@@ -114,7 +114,7 @@
     "hostKeyChanged": "La clé d'hôte a changé, connexion interrompue. Une attaque de l'homme du milieu est possible — ne saisissez pas votre mot de passe !"
   },
   "sidebar": {
-    "servers": "Serveurs",
+    "servers": "Liste des serveurs",
     "newConnection": "Nouvelle connexion",
     "editConnection": "Modifier la connexion",
     "confirmDelete": "Confirmer la suppression",

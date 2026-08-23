@@ -1936,18 +1936,18 @@ body.dragging-files * {
   gap: 6px;
   padding: 8px 20px;
   min-width: 140px;
-  background: #2d3748;
-  border: 1px solid #4a5568;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: #e2e8f0;
+  color: var(--text);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .fb-refresh-empty:hover {
-  background: #3d4a5c;
-  border-color: #6b7a90;
+  filter: brightness(1.12);
+  border-color: var(--border-color);
 }
 
 /* ===== File Preview Modal ===== */
@@ -2385,7 +2385,7 @@ body.dragging-files * {
 .success-title {
   font-size: 20px;
   font-weight: 700;
-  color: #4ade80;
+  color: var(--green-strong);
   margin-bottom: 12px;
 }
 .success-message {
@@ -4389,7 +4389,7 @@ body.dragging-files * {
 }
 
 .svc-vhost-item.active {
-  background: #1f2937;
+  background: var(--bg-subtle);
   color: var(--accent);
 }
 

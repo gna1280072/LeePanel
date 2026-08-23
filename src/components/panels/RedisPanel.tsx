@@ -472,8 +472,8 @@ export default function RedisPanel({ sessionId, onNavigateToSoftware }: RedisPan
               padding: '8px 16px',
               border: 'none',
               borderRadius: '4px',
-              backgroundColor: currentDb === db.db_index ? '#4CAF50' : '#2a2a2a',
-              color: currentDb === db.db_index ? '#fff' : '#ccc',
+              backgroundColor: currentDb === db.db_index ? 'var(--green-strong)' : 'var(--bg-subtle)',
+              color: currentDb === db.db_index ? '#fff' : 'var(--text-muted)',
               cursor: 'pointer',
               whiteSpace: 'nowrap'
             }}

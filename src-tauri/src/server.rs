@@ -4150,6 +4150,9 @@ pub struct SoftwareInfo {
     pub version: String,
     pub service_name: String,
     pub running: bool,
+    // ponytail: server-side resolved config file path (empty = not resolvable)
+    #[serde(default)]
+    pub config_path: String,
 }
 
 /// Get list of available software and their install status
@@ -4422,6 +4425,9 @@ if command -v postgres &>/dev/null || [ -x /usr/lib/postgresql/*/bin/postgres ] 
   echo "PGSQL_INSTALLED=1"
   echo "PGSQL_VERSION=$(psql -V 2>/dev/null | grep -oP '[\d]+\.[\d]+' | head -1 || echo '')"
   echo "PGSQL_RUNNING=$(systemctl is-active postgresql 2>/dev/null || echo inactive)"
+  # ponytail: resolve real config file path from disk (Debian/Ubuntu multi-cluster + RHEL layouts).
+  # Does not depend on server running or psql client version; empty when not installed.
+  echo "PGSQL_CONFIG=$(ls /etc/postgresql/*/*/postgresql.conf /var/lib/pgsql/*/data/postgresql.conf /var/lib/pgsql/data/postgresql.conf 2>/dev/null | head -1 || echo '')"
 else
   echo "PGSQL_INSTALLED=0"
 fi
@@ -4449,6 +4455,7 @@ fi
         version: get("NGINX_VERSION"),
         service_name: "nginx".to_string(),
         running: get("NGINX_RUNNING") == "active",
+        config_path: String::new(),
     });
 
     // Apache - detect all installed versions
@@ -4467,6 +4474,7 @@ fi
                 version: get(&ver_key),
                 service_name: get(&svc_key),
                 running: get(&run_key) == "active",
+                config_path: String::new(),
             });
         }
     }
@@ -4480,6 +4488,7 @@ fi
             version: get("APACHE_VERSION"),
             service_name: get("APACHE_SERVICE"),
             running: get("APACHE_RUNNING") == "active",
+            config_path: String::new(),
         });
     }
 
@@ -4492,6 +4501,7 @@ fi
         version: get("MYSQL_VERSION"),
         service_name: get("MYSQL_SERVICE"),
         running: get("MYSQL_RUNNING") == "active",
+        config_path: String::new(),
     });
 
     // PHP - detect all installed versions (dynamic, no hardcoded list)
@@ -4518,6 +4528,7 @@ fi
                 version: fullver.to_string(),
                 service_name: svc.to_string(),
                 running,
+                config_path: String::new(),
             });
             i += 4;
         } else {
@@ -4534,6 +4545,7 @@ fi
         version: get("PHP_GENERIC_VERSION"),
         service_name: get("PHP_GENERIC_SERVICE"),
         running: get("PHP_GENERIC_RUNNING") == "active",
+        config_path: String::new(),
     });
 
     // Redis
@@ -4545,6 +4557,7 @@ fi
         version: get("REDIS_VERSION"),
         service_name: "redis".to_string(),
         running: get("REDIS_RUNNING") == "active",
+        config_path: String::new(),
     });
 
     // Memcached
@@ -4556,6 +4569,7 @@ fi
         version: get("MEMCACHED_VERSION"),
         service_name: "memcached".to_string(),
         running: get("MEMCACHED_RUNNING") == "active",
+        config_path: String::new(),
     });
 
     // Node.js
@@ -4567,6 +4581,7 @@ fi
         version: get("NODEJS_VERSION"),
         service_name: String::new(),
         running: false,
+        config_path: String::new(),
     });
 
     // zip
@@ -4578,6 +4593,7 @@ fi
         version: get("ZIP_VERSION"),
         service_name: String::new(),
         running: false,
+        config_path: String::new(),
     });
 
     // unzip
@@ -4589,6 +4605,7 @@ fi
         version: get("UNZIP_VERSION"),
         service_name: String::new(),
         running: false,
+        config_path: String::new(),
     });
 
     // Docker
@@ -4600,6 +4617,7 @@ fi
         version: get("DOCKER_VERSION"),
         service_name: "docker".to_string(),
         running: get("DOCKER_RUNNING") == "active",
+        config_path: String::new(),
     });
 
     // PostgreSQL
@@ -4611,6 +4629,7 @@ fi
         version: get("PGSQL_VERSION"),
         service_name: "postgresql".to_string(),
         running: get("PGSQL_RUNNING") == "active",
+        config_path: get("PGSQL_CONFIG"),
     });
 
     // ponytail: cache software list
@@ -4680,6 +4699,7 @@ fi
             version: get(&format!("{}VERSION", prefix)),
             service_name: get(&format!("{}SERVICE", prefix)),
             running: get(&format!("{}RUNNING", prefix)) == "active",
+            config_path: String::new(),
         });
     }
     Ok(list)

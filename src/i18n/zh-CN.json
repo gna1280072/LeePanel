@@ -114,7 +114,7 @@
     "hostKeyChanged": "主机密钥已变更，连接已中止。可能存在中间人攻击，请勿输入密码！"
   },
   "sidebar": {
-    "servers": "服务器",
+    "servers": "服务器列表",
     "newConnection": "新建连接",
     "editConnection": "编辑连接",
     "confirmDelete": "确认删除",

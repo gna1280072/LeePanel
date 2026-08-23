@@ -1,4 +1,4 @@
-use rusqlite::Connection as SqliteConn;
+pub use rusqlite::Connection as SqliteConn;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -220,7 +220,8 @@ pub fn init_db() -> Result<Mutex<SqliteConn>, String> {
 ///
 /// 策略：钥匙串不可用 → 跳过并记录 `credential_migration=unavailable`（下次启动重试）；
 /// 写入失败 → 中止并返回 Err（保留明文，不破坏数据）；迁移前自动备份 DB 文件。
-pub fn migrate_credentials(db: &Mutex<SqliteConn>) -> Result<(), String> {
+/// 返回迁移的凭据条数（password/passphrase 各计 1 条），供前端展示"已迁移"提示。
+pub fn migrate_credentials(db: &Mutex<SqliteConn>) -> Result<usize, String> {
     use crate::credentials::{self, CredKind};
     use rusqlite::params;
 
@@ -236,7 +237,7 @@ pub fn migrate_credentials(db: &Mutex<SqliteConn>) -> Result<(), String> {
         )
         .ok();
     if state.as_deref() == Some("done") || state.as_deref() == Some("unavailable") {
-        return Ok(());
+        return Ok(0);
     }
 
     if !credentials::store_available() {
@@ -244,7 +245,7 @@ pub fn migrate_credentials(db: &Mutex<SqliteConn>) -> Result<(), String> {
             "INSERT OR REPLACE INTO settings (key, value) VALUES ('credential_migration', 'unavailable')",
             [],
         );
-        return Ok(());
+        return Ok(0);
     }
 
     // 扫描仍有明文的连接
@@ -267,19 +268,22 @@ pub fn migrate_credentials(db: &Mutex<SqliteConn>) -> Result<(), String> {
             [],
         )
         .map_err(|e| format!("Failed to record migration state: {}", e))?;
-        return Ok(());
+        return Ok(0);
     }
 
     // 有明文待迁移 → 先备份 DB（WAL 模式已开启，复制文件安全）
     let bak = db_path().with_extension("db.bak");
     std::fs::copy(db_path(), &bak).map_err(|e| format!("Failed to back up database: {}", e))?;
 
+    let mut migrated = 0usize;
     for (id, pw, pp) in rows {
         if let Some(p) = pw.as_deref().filter(|p| !p.is_empty()) {
             credentials::store_set(&id, CredKind::Password, p)?; // 失败即中止，保留明文可回滚
+            migrated += 1;
         }
         if let Some(p) = pp.as_deref().filter(|p| !p.is_empty()) {
             credentials::store_set(&id, CredKind::Passphrase, p)?;
+            migrated += 1;
         }
         let has_password = pw.as_deref().is_some_and(|p| !p.is_empty());
         let has_passphrase = pp.as_deref().is_some_and(|p| !p.is_empty());
@@ -295,7 +299,12 @@ pub fn migrate_credentials(db: &Mutex<SqliteConn>) -> Result<(), String> {
         [],
     )
     .map_err(|e| format!("Failed to record migration state: {}", e))?;
-    Ok(())
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('credential_migration_count', ?1)",
+        params![migrated as i64],
+    )
+    .map_err(|e| format!("Failed to record migration count: {}", e))?;
+    Ok(migrated)
 }
 
 // ===== File Browser Favorites =====

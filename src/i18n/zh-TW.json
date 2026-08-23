@@ -12,6 +12,7 @@
     "refreshing": "重新整理中...",
     "loading": "載入中...",
     "keyringUnavailable": "系統金鑰圈不可用，憑據將僅保存在本次會話。",
+    "credentialsMigrated": "已安全遷移 {count} 條憑據至系統金鑰圈。",
     "retry": "重試",
     "ok": "確定",
     "apply": "套用",
@@ -177,11 +178,6 @@
     "maxReached": "最多支援 {{max}} 條命令",
     "autoEnter": "點擊後自動換行",
     "autoEnterHint": "開啟後點擊命令立即執行；關閉則只填入命令，確認後再按 Enter 執行。",
-    "autoEnter": "點擊後自動換行",
-    "autoEnterHint": "開啟後點擊命令立即執行；關閉則只填入命令，確認後再按 Enter 執行。",
-    "autoEnter": "點擊後自動換行",
-    "autoEnterHint": "開啟後點擊命令立即執行；關閉則只填入命令，確認後再按 Enter 執行。",
-    "manageTitle": "自訂快捷命令",
     "manageTitle": "自訂快捷命令"
   },
   "tunnel": {

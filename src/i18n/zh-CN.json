@@ -12,6 +12,7 @@
     "refreshing": "刷新中...",
     "loading": "加载中...",
     "keyringUnavailable": "系统钥匙串不可用，凭据将仅保存在本次会话。",
+    "credentialsMigrated": "已安全迁移 {count} 条凭据至系统钥匙串。",
     "retry": "重试",
     "ok": "确定",
     "apply": "应用",
@@ -177,11 +178,6 @@
     "maxReached": "最多支持 {{max}} 条命令",
     "autoEnter": "点击后自动回车",
     "autoEnterHint": "开启后点击命令立即执行；关闭则只填入命令，确认后再回车执行。",
-    "autoEnter": "点击后自动回车",
-    "autoEnterHint": "开启后点击命令立即执行；关闭则只填入命令，确认后再回车执行。",
-    "autoEnter": "点击后自动回车",
-    "autoEnterHint": "开启后点击命令立即执行；关闭则只填入命令，确认后再回车执行。",
-    "manageTitle": "自定义快捷命令",
     "manageTitle": "自定义快捷命令"
   },
   "tunnel": {

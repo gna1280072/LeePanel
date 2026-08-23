@@ -12,6 +12,7 @@
     "refreshing": "Wird aktualisiert...",
     "loading": "Wird geladen...",
     "keyringUnavailable": "System-Schlüsselbund nicht verfügbar. Anmeldedaten werden nur für diese Sitzung gespeichert.",
+    "credentialsMigrated": "{count} Zugangsdaten wurden sicher in den System-Schlüsselbund übertragen.",
     "retry": "Erneut versuchen",
     "ok": "OK",
     "apply": "Anwenden",
@@ -177,11 +178,6 @@
     "maxReached": "Maximal {{max}} Befehle erlaubt",
     "autoEnter": "Nach Klick automatisch ausführen",
     "autoEnterHint": "Führt den Befehl beim Klick sofort aus. Aus: nur eingeben, dann selbst bestätigen.",
-    "autoEnter": "Nach Klick automatisch ausführen",
-    "autoEnterHint": "Führt den Befehl beim Klick sofort aus. Aus: nur eingeben, dann selbst bestätigen.",
-    "autoEnter": "Nach Klick automatisch ausführen",
-    "autoEnterHint": "Führt den Befehl beim Klick sofort aus. Aus: nur eingeben, dann selbst bestätigen.",
-    "manageTitle": "Benutzerdefinierte Schnellbefehle",
     "manageTitle": "Benutzerdefinierte Schnellbefehle"
   },
   "tunnel": {

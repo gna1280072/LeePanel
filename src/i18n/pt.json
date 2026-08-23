@@ -12,6 +12,7 @@
     "refreshing": "Atualizando...",
     "loading": "Carregando...",
     "keyringUnavailable": "Chaveiro do sistema indisponível. As credenciais serão mantidas apenas nesta sessão.",
+    "credentialsMigrated": "{count} credencial(is) migrada(s) com segurança para o chaveiro do sistema.",
     "retry": "Tentar novamente",
     "ok": "OK",
     "apply": "Aplicar",
@@ -177,11 +178,6 @@
     "maxReached": "Máximo de {{max}} comandos",
     "autoEnter": "Executar automaticamente",
     "autoEnterHint": "Executa o comando ao clicar. Desativado: apenas insere para confirmação.",
-    "autoEnter": "Executar automaticamente",
-    "autoEnterHint": "Executa o comando ao clicar. Desativado: apenas insere para confirmação.",
-    "autoEnter": "Executar automaticamente",
-    "autoEnterHint": "Executa o comando ao clicar. Desativado: apenas insere para confirmação.",
-    "manageTitle": "Comandos rápidos personalizados",
     "manageTitle": "Comandos rápidos personalizados"
   },
   "tunnel": {

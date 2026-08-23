@@ -67,6 +67,7 @@ pub fn run() {
             // Credentials (system keyring)
             commands::credentials::credential_set, commands::credentials::credential_get,
             commands::credentials::credential_delete, commands::credentials::credential_available,
+            commands::credentials::credential_migration_count,
             // Settings
             commands::config::settings_load, commands::config::settings_save,
             // Data Directory

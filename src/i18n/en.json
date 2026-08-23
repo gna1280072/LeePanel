@@ -12,6 +12,7 @@
     "refreshing": "Refreshing...",
     "loading": "Loading...",
     "keyringUnavailable": "System keyring unavailable. Credentials will only be kept for this session.",
+    "credentialsMigrated": "{count} credential(s) securely migrated to the system keyring.",
     "retry": "Retry",
     "ok": "OK",
     "apply": "Apply",
@@ -177,11 +178,6 @@
     "maxReached": "Up to {{max}} commands allowed",
     "autoEnter": "Auto-enter after click",
     "autoEnterHint": "Run the command immediately when a chip is clicked. Off: fill it in for review.",
-    "autoEnter": "Auto-enter after click",
-    "autoEnterHint": "Run the command immediately when a chip is clicked. Off: fill it in for review.",
-    "autoEnter": "Auto-enter after click",
-    "autoEnterHint": "Run the command immediately when a chip is clicked. Off: fill it in for review.",
-    "manageTitle": "Custom quick commands",
     "manageTitle": "Custom quick commands"
   },
   "tunnel": {

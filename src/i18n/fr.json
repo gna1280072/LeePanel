@@ -12,6 +12,7 @@
     "refreshing": "Actualisation...",
     "loading": "Chargement...",
     "keyringUnavailable": "Trousseau système indisponible. Les identifiants ne seront conservés que pour cette session.",
+    "credentialsMigrated": "{count} identifiant(s) migré(s) en toute sécurité vers le trousseau système.",
     "retry": "Réessayer",
     "ok": "OK",
     "apply": "Appliquer",
@@ -177,11 +178,6 @@
     "maxReached": "Maximum {{max}} commandes autorisées",
     "autoEnter": "Exécution auto après clic",
     "autoEnterHint": "Exécute la commande dès qu'un chip est cliqué. Désactivé : la saisit pour confirmation.",
-    "autoEnter": "Exécution auto après clic",
-    "autoEnterHint": "Exécute la commande dès qu'un chip est cliqué. Désactivé : la saisit pour confirmation.",
-    "autoEnter": "Exécution auto après clic",
-    "autoEnterHint": "Exécute la commande dès qu'un chip est cliqué. Désactivé : la saisit pour confirmation.",
-    "manageTitle": "Commandes rapides personnalisées",
     "manageTitle": "Commandes rapides personnalisées"
   },
   "tunnel": {

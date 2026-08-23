@@ -38,3 +38,17 @@ pub fn credential_delete(config_id: String) -> Result<(), String> {
 pub fn credential_available() -> bool {
     credentials::store_available()
 }
+
+/// 返回启动迁移时实际搬入钥匙串的凭据条数（迁移完成前为 0）。
+/// 前端据此在首次启动时展示"已迁移 N 条凭据"提示。
+#[tauri::command]
+pub fn credential_migration_count(db: tauri::State<'_, std::sync::Mutex<crate::db::SqliteConn>>) -> Result<u32, String> {
+    let conn = db.lock().unwrap();
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = 'credential_migration_count'",
+        [],
+        |r| r.get::<_, String>(0),
+    )
+    .map(|v| v.parse::<u32>().unwrap_or(0))
+    .or_else(|_| Ok(0u32))
+}

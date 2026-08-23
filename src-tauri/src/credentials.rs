@@ -7,8 +7,11 @@
 //! - `NoEntry` 视为"凭据不存在"（返回 None），不向上报错。
 
 use keyring::Entry;
+#[cfg(test)]
 use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
+#[cfg(test)]
+use std::sync::LazyLock;
+use std::sync::Mutex;
 
 /// 凭据种类
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

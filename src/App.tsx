@@ -543,6 +543,19 @@ function App() {
     // 探测系统钥匙串可用性：不可用时降级提示（凭据仅存本次会话）
     invoke<boolean>('credential_available').then(ok => {
       if (!ok) showToast(t('common.keyringUnavailable'))
+      else {
+        // 首次迁移提示：历史明文凭据已搬入系统钥匙串（仅提示一次，用 localStorage 去重）
+        try {
+          if (!localStorage.getItem('leepanel_cred_migration_notified')) {
+            invoke<number>('credential_migration_count').then(n => {
+              if (n > 0) {
+                localStorage.setItem('leepanel_cred_migration_notified', '1')
+                showToast(t('common.credentialsMigrated', { count: String(n) }))
+              }
+            }).catch(() => {})
+          }
+        } catch { /* localStorage 不可用时静默跳过 */ }
+      }
     }).catch(() => {})
     // ponytail: auto-check for updates on startup, ask user before downloading
     Promise.race([

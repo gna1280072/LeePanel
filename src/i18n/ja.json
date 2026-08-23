@@ -12,6 +12,7 @@
     "refreshing": "更新中...",
     "loading": "読み込み中...",
     "keyringUnavailable": "システムキーリングが利用できません。認証情報はこのセッションのみ保持されます。",
+    "credentialsMigrated": "{count} 件の認証情報を安全にシステムキーリングへ移行しました。",
     "retry": "再試行",
     "ok": "OK",
     "apply": "適用",
@@ -177,11 +178,6 @@
     "maxReached": "最大 {{max}} 件まで登録できます",
     "autoEnter": "クリック後に自動実行",
     "autoEnterHint": "オンにするとクリックで即実行。オフでは入力のみ行い、確認後に実行します。",
-    "autoEnter": "クリック後に自動実行",
-    "autoEnterHint": "オンにするとクリックで即実行。オフでは入力のみ行い、確認後に実行します。",
-    "autoEnter": "クリック後に自動実行",
-    "autoEnterHint": "オンにするとクリックで即実行。オフでは入力のみ行い、確認後に実行します。",
-    "manageTitle": "カスタムコマンド",
     "manageTitle": "カスタムコマンド"
   },
   "tunnel": {

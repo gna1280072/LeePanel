@@ -9769,9 +9769,17 @@ pub async fn kill_pid(
 mod keygen_tests {
     use super::*;
 
+    // keygen 测试并行运行，临时文件必须唯一，否则并发读写同一路径互相干扰（flaky）。
+    static KEY_TEST_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
     /// Write PEM to a temp file and attempt to load it with `russh_keys::load_secret_key`.
     fn try_load(pem: &str, passphrase: Option<&str>) -> Result<(), String> {
-        let path = std::env::temp_dir().join(format!("leepanel_key_test_{}.pem", std::process::id()));
+        let seq = KEY_TEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let path = std::env::temp_dir().join(format!(
+            "leepanel_key_test_{}_{}.pem",
+            std::process::id(),
+            seq
+        ));
         std::fs::write(&path, pem).map_err(|e| e.to_string())?;
         let r = russh_keys::load_secret_key(&path, passphrase).map(|_| ());
         let _ = std::fs::remove_file(&path);

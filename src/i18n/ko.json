@@ -12,6 +12,7 @@
     "refreshing": "새로고침 중...",
     "loading": "로딩 중...",
     "keyringUnavailable": "시스템 키링을 사용할 수 없습니다. 자격 증명은 이 세션에서만 유지됩니다.",
+    "credentialsMigrated": "{count}개의 자격 증명을 시스템 키링으로 안전하게 마이그레이션했습니다.",
     "retry": "재시도",
     "ok": "확인",
     "apply": "적용",
@@ -177,11 +178,6 @@
     "maxReached": "최대 {{max}}개 명령",
     "autoEnter": "클릭 후 자동 실행",
     "autoEnterHint": "켜면 칩 클릭 시 즉시 실행. 끄면 명령만 입력되고 확인 후 실행됩니다.",
-    "autoEnter": "클릭 후 자동 실행",
-    "autoEnterHint": "켜면 칩 클릭 시 즉시 실행. 끄면 명령만 입력되고 확인 후 실행됩니다.",
-    "autoEnter": "클릭 후 자동 실행",
-    "autoEnterHint": "켜면 칩 클릭 시 즉시 실행. 끄면 명령만 입력되고 확인 후 실행됩니다.",
-    "manageTitle": "사용자 지정 빠른 명령",
     "manageTitle": "사용자 지정 빠른 명령"
   },
   "tunnel": {

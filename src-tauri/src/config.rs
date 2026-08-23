@@ -329,7 +329,8 @@ mod tests {
             id: "1".into(), name: "S".into(), host: "1.2.3.4".into(),
             port: 22, username: "root".into(), auth_type: "key".into(),
             key_path: Some("/root/.ssh/id_rsa".into()), password: None, passphrase: Some("pp".into()), remember_me: true,
-            has_password: None, has_passphrase: None,
+            // save() 的 has_* 标记由 command 层（config_save）根据钥匙串状态计算后传入
+            has_password: Some(false), has_passphrase: Some(true),
         };
         ConfigManager::save(&conn, &c).unwrap();
         let list = ConfigManager::list(&conn);

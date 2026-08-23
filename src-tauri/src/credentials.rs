@@ -8,7 +8,7 @@
 
 use keyring::Entry;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
 /// 凭据种类
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -35,7 +35,8 @@ static ENTRY_LOCK: Mutex<()> = Mutex::new(());
 /// 不用 keyring 的 mock builder——它的每个 Entry 持有独立 store，
 /// set 与 get 跨 Entry 不共享，roundtrip 无法通过。
 #[cfg(test)]
-static MOCK_DB: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
+static MOCK_DB: LazyLock<Mutex<HashMap<String, String>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 fn mock_key(config_id: &str, kind: CredKind) -> String {
     format!("{}:{}:{}", SERVICE, config_id, kind.suffix())

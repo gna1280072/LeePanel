@@ -109,7 +109,9 @@
     "noPasswordSaved": "No password saved. Please edit the connection to add credentials.",
     "editToConfigure": "Please edit the connection to configure authentication.",
     "keyEncrypted": "SSH key is encrypted. Please enter the key passphrase in the connection settings.",
-    "wrongPassphrase": "Incorrect key passphrase. Please check it and try again."
+    "wrongPassphrase": "Incorrect key passphrase. Please check it and try again.",
+    "hostKeyRejected": "Server identity verification failed: host key was not accepted.",
+    "hostKeyChanged": "Host key changed, connection aborted. A man-in-the-middle attack may be in progress — do not enter your password!"
   },
   "sidebar": {
     "servers": "Servers",
@@ -137,7 +139,8 @@
     "showPassword": "Show password",
     "hidePassword": "Hide password",
     "deleteConfirmMsg": "Delete {{name}}?",
-    "language": "Language"
+    "language": "Language",
+    "hostKeys": "Host keys"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -1105,5 +1108,25 @@
     "fromDate": "From date/time",
     "toDate": "To date/time",
     "clearDateRange": "Clear date range"
+  },
+  "hostKey": {
+    "confirmTitle": "First connection — verify server identity",
+    "confirmDesc": "This is your first connection to this server. Confirm the fingerprint matches the one provided by the server provider (cloud console / administrator) to avoid man-in-the-middle attacks.",
+    "host": "Server",
+    "port": "Port",
+    "algorithm": "Algorithm",
+    "fingerprint": "SHA-256 Fingerprint",
+    "trustAndConnect": "Trust & Connect",
+    "cancel": "Cancel",
+    "changedTitle": "Host key has changed",
+    "changedDesc": "The server key differs from the previously recorded one — a man-in-the-middle attack may be in progress, so the connection was aborted. If the server was reinstalled or its key was rotated, delete the old fingerprint and retry.",
+    "rejectedTitle": "Unable to verify server identity",
+    "rejectedDesc": "Server fingerprint failed verification, connection aborted.",
+    "manage": "Manage fingerprints",
+    "manageTitle": "Trusted host fingerprints",
+    "manageEmpty": "No trusted server fingerprints yet. On first connection, the app will ask you to confirm the fingerprint.",
+    "deleteConfirm": "Delete this fingerprint? It will need to be confirmed again on the next connection.",
+    "deleted": "Fingerprint deleted",
+    "updated": "Fingerprint list updated"
   }
 }

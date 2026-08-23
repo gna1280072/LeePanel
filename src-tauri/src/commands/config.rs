@@ -121,6 +121,22 @@ pub fn favorites_remove(db: tauri::State<'_, DbPool>, path: &str) -> Result<(), 
     FavoritesManager::remove(&conn, path)
 }
 
+// ===== Known Hosts Commands (SSH server identity, TOFU) =====
+
+/// List all trusted SSH host keys (fingerprint store).
+#[tauri::command]
+pub fn known_hosts_list(db: tauri::State<'_, DbPool>) -> Vec<crate::db::KnownHost> {
+    let conn = db.lock().unwrap();
+    crate::db::KnownHostsManager::list(&conn)
+}
+
+/// Delete a trusted SSH host key (used after a legitimate server key rotation).
+#[tauri::command]
+pub fn known_hosts_delete(db: tauri::State<'_, DbPool>, host: String, key_type: String) -> Result<(), String> {
+    let conn = db.lock().unwrap();
+    crate::db::KnownHostsManager::delete(&conn, &host, &key_type)
+}
+
 // ===== Data Directory Commands =====
 
 /// Get the local SQLite data directory (stores connections, settings, cache, etc.)

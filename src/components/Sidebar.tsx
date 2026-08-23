@@ -42,6 +42,7 @@ interface SidebarProps {
   connectedIds?: string[]
   connectingServerId?: string | null
   activeConfigId?: string | null
+  onManageHostKeys?: () => void
 }
 
 interface ContextMenu {
@@ -50,7 +51,7 @@ interface ContextMenu {
   conn: Connection
 }
 
-export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection, refreshKey, connectedIds, connectingServerId, activeConfigId }: SidebarProps) {
+export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection, refreshKey, connectedIds, connectingServerId, activeConfigId, onManageHostKeys }: SidebarProps) {
   const { t, i18n } = useTranslation()
   const [connections, setConnections] = useState<Connection[]>([])
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null)
@@ -284,6 +285,14 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
           )
         })}
       </div>
+
+      {onManageHostKeys && (
+        <div className="sidebar-footer">
+          <button className="btn-host-keys" onClick={onManageHostKeys}>
+            🔐 {t('sidebar.hostKeys')}
+          </button>
+        </div>
+      )}
 
       {/* Context Menu */}
       {contextMenu && (

@@ -4,6 +4,25 @@ use tokio::sync::Mutex as AsyncMutex;
 use crate::ssh::{self, SshManager};
 use crate::server;
 use crate::tunnel::TunnelManager;
+use crate::HostKeyPending;
+
+/// Resolve a pending first-contact host-key confirmation from the SSH handshake.
+/// The frontend shows the fingerprint dialog and calls this with `trusted`.
+#[tauri::command]
+pub async fn ssh_confirm_host_key(
+    pending: tauri::State<'_, HostKeyPending>,
+    session_id: String,
+    trusted: bool,
+) -> Result<(), String> {
+    let sender = pending
+        .lock()
+        .unwrap()
+        .remove(&session_id)
+        .ok_or_else(|| "No pending host key confirmation for this session".to_string())?;
+    sender
+        .send(trusted)
+        .map_err(|_| "Host key confirmation channel closed".to_string())
+}
 
 #[tauri::command]
 pub async fn ssh_connect(

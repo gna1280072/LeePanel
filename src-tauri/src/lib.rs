@@ -15,6 +15,11 @@ use tokio::sync::Mutex as AsyncMutex;
 
 type DbPool = std::sync::Mutex<SqliteConn>;
 
+/// Pending host-key confirmation callbacks: session_id -> oneshot sender(bool = trusted).
+/// Registered during the SSH handshake, resolved by `ssh_confirm_host_key`.
+pub(crate) type HostKeyPending =
+    std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<bool>>>>;
+
 // ===== App Entry =====
 
 pub fn run() {
@@ -49,6 +54,11 @@ pub fn run() {
             }
             app.manage(db);
 
+            // Pending host-key confirmations (TOFU known_hosts)
+            let host_key_pending: HostKeyPending =
+                std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+            app.manage(host_key_pending);
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -61,6 +71,9 @@ pub fn run() {
             commands::ssh::ssh_download_to_local, commands::ssh::ssh_save_as_local, commands::ssh::ssh_save_pause, commands::ssh::ssh_save_resume, commands::ssh::ssh_save_stop,
             commands::ssh::ssh_compress, commands::ssh::ssh_extract, commands::ssh::ssh_reconnect,
             commands::ssh::ssh_generate_keypair, commands::ssh::save_key_to_local,
+            commands::ssh::ssh_confirm_host_key,
+            // Known hosts (SSH server identity, TOFU)
+            commands::config::known_hosts_list, commands::config::known_hosts_delete,
             // Config
             commands::config::config_list, commands::config::config_save, commands::config::config_delete, commands::config::config_save_credentials,
             commands::config::clear_proxy_env,

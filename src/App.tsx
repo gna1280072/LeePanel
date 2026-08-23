@@ -5,6 +5,7 @@ import { check, type Update } from '@tauri-apps/plugin-updater'
 import { useTranslation } from 'react-i18next'
 import Sidebar from './components/Sidebar'
 import ServerPanel from './components/ServerPanel'
+import HostKeysDialog from './components/HostKeysDialog'
 import type { TerminalHandle } from './components/Terminal'
 import './App.css'
 
@@ -78,8 +79,14 @@ function App() {
   const [showWelcome, setShowWelcome] = useState(false)
   const termRefMap = useRef(new Map<string, TerminalHandle | null>())
   const activeTermRef = useRef<TerminalHandle | null>(null)
-  const [errorDialog, setErrorDialog] = useState<{ visible: boolean; type: 'auth' | 'network' | 'connection' | 'key' | 'other'; messageKey?: string; params?: Record<string, string>; message?: string } | null>(null)
+  const [errorDialog, setErrorDialog] = useState<{ visible: boolean; type: 'auth' | 'network' | 'connection' | 'key' | 'hostKey' | 'hostKeyChanged' | 'other'; messageKey?: string; params?: Record<string, string>; message?: string } | null>(null)
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null)
+  // TOFU host-key verification (first-contact confirmation / key-changed warning)
+  const [hostKeyPrompt, setHostKeyPrompt] = useState<{ sessionId: string; host: string; port: number; keyType: string; fingerprint: string } | null>(null)
+  const [hostKeyChangedWarn, setHostKeyChangedWarn] = useState<{ host: string; port: number; keyType: string; fingerprint: string } | null>(null)
+  const [showHostKeysDialog, setShowHostKeysDialog] = useState(false)
+  // Set when the host-key-changed warning is shown — suppress the generic error dialog for the same failure
+  const hostKeyChangedHandledRef = useRef(false)
 
   // Settings
   const [settings, setSettings] = useState<Settings>({
@@ -680,8 +687,18 @@ function App() {
 
   // Disconnect SSH session after LNMP installation (environment changes require fresh session)
 
-  const classifyError = (errorMsg: string): { type: 'auth' | 'network' | 'connection' | 'key' | 'other'; messageKey?: string; params?: Record<string, string>; message?: string } => {
+  const classifyError = (errorMsg: string): { type: 'auth' | 'network' | 'connection' | 'key' | 'hostKey' | 'hostKeyChanged' | 'other'; messageKey?: string; params?: Record<string, string>; message?: string } => {
     const s = errorMsg.toLowerCase()
+    
+    // Host key verification errors (TOFU known_hosts)
+    // russh returns "Unknown server key" when check_server_key rejects the key
+    // (first-contact user rejection, or key change — the latter also emits a dedicated event)
+    if (s.includes('unknown server key')) {
+      return { type: 'hostKey', messageKey: 'errorDialog.hostKeyRejected' }
+    }
+    if (s.includes('host key') && (s.includes('changed') || s.includes('mismatch'))) {
+      return { type: 'hostKeyChanged', messageKey: 'errorDialog.hostKeyChanged' }
+    }
     
     // Authentication errors
     if (s.includes('auth failed') || s.includes('auth error') || s.includes('authentication') || 
@@ -718,6 +735,58 @@ function App() {
     return { type: 'other', message: errorMsg }
   }
 
+  // Listen for host-key events from the backend (TOFU known_hosts verification).
+  // - host-key-confirm: first contact → show fingerprint dialog; user decision is sent
+  //   back via ssh_confirm_host_key, which resolves the paused handshake.
+  // - host-key-changed: recorded key differs → hard reject; show MITM warning.
+  useEffect(() => {
+    let cancelled = false
+    const unlistens: Array<() => void> = []
+    listen<{ sessionId: string; host: string; port: number; keyType: string; fingerprint: string }>(
+      'host-key-confirm',
+      (event) => {
+        if (cancelled) return
+        setHostKeyPrompt({
+          sessionId: event.payload.sessionId,
+          host: event.payload.host,
+          port: event.payload.port,
+          keyType: event.payload.keyType,
+          fingerprint: event.payload.fingerprint,
+        })
+      },
+    ).then((fn) => { if (cancelled) fn(); else unlistens.push(fn) })
+    listen<{ sessionId: string; host: string; port: number; keyType: string; fingerprint: string }>(
+      'host-key-changed',
+      (event) => {
+        if (cancelled) return
+        hostKeyChangedHandledRef.current = true
+        // Close any generic error dialog that raced ahead — the dedicated warning is authoritative
+        setErrorDialog(null)
+        setHostKeyChangedWarn({
+          host: event.payload.host,
+          port: event.payload.port,
+          keyType: event.payload.keyType,
+          fingerprint: event.payload.fingerprint,
+        })
+      },
+    ).then((fn) => { if (cancelled) fn(); else unlistens.push(fn) })
+    return () => { cancelled = true; unlistens.forEach((fn) => fn()) }
+  }, [])
+
+  const confirmHostKey = () => {
+    if (!hostKeyPrompt) return
+    const sid = hostKeyPrompt.sessionId
+    setHostKeyPrompt(null)
+    invoke('ssh_confirm_host_key', { sessionId: sid, trusted: true }).catch(() => {})
+  }
+
+  const rejectHostKey = () => {
+    if (!hostKeyPrompt) return
+    const sid = hostKeyPrompt.sessionId
+    setHostKeyPrompt(null)
+    invoke('ssh_confirm_host_key', { sessionId: sid, trusted: false }).catch(() => {})
+  }
+
   const handleSelectConnection = (conn: SidebarConnection) => {
     // ponytail: single-click switches to server if connected, otherwise connects
     handleDirectConnect(conn)
@@ -743,19 +812,18 @@ function App() {
       // ponytail: parallel SSH + DB read → no flash, correct page rendered immediately
       // 凭据策略：前端显式传入的 password/passphrase 为会话级覆盖（优先）；
       // 未传入时 Rust 端按 configId 从系统钥匙串读取（已保存凭据不进前端）
+      // NOTE: no client-side timeout here — the backend splits TCP connect (8s) from the
+      // SSH handshake (90s), and the handshake may pause on first-contact host-key confirmation.
       Promise.all([
-        Promise.race([
-          invoke<string>('ssh_connect', {
-            config: {
-              host: conn.host, port: conn.port, username,
-              password: password || undefined, keyPath,
-              passphrase: passphrase || undefined,
-              configId: configId || undefined,
-              cols: estCols, rows: estRows,
-            },
-          }),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 20000)),
-        ]),
+        invoke<string>('ssh_connect', {
+          config: {
+            host: conn.host, port: conn.port, username,
+            password: password || undefined, keyPath,
+            passphrase: passphrase || undefined,
+            configId: configId || undefined,
+            cols: estCols, rows: estRows,
+          },
+        }),
         invoke<string>('ui_state_get', { key: panelKey }).catch(() => ''),
       ]).then(([sid, savedPanel]) => {
         if (existing) {
@@ -786,6 +854,11 @@ function App() {
       }).catch(e => {
         const msg = String(e)
         const { type, messageKey, params, message } = classifyError(msg)
+        // host-key-changed already shows a dedicated MITM warning — skip the generic dialog
+        if (hostKeyChangedHandledRef.current) {
+          hostKeyChangedHandledRef.current = false
+          return
+        }
         setErrorDialog({ visible: true, type, messageKey, params, message })
       }).finally(() => setConnectingServerId(null))
     }
@@ -834,7 +907,7 @@ function App() {
       {sidebarVisible && (
         <>
           <div style={{ width: sidebarWidth, minWidth: sidebarWidth, flexShrink: 0, display: 'flex', position: 'relative' }}>
-            <Sidebar onSelect={handleSelectConnection} onConnect={handleDirectConnect} onNew={() => {}} onCreateConnection={handleCreateConnection} refreshKey={sidebarRefreshKey} connectedIds={Array.from(connectedConfigIds)} connectingServerId={connectingServerId} activeConfigId={activeConfigId} />
+            <Sidebar onSelect={handleSelectConnection} onConnect={handleDirectConnect} onNew={() => {}} onCreateConnection={handleCreateConnection} refreshKey={sidebarRefreshKey} connectedIds={Array.from(connectedConfigIds)} connectingServerId={connectingServerId} activeConfigId={activeConfigId} onManageHostKeys={() => setShowHostKeysDialog(true)} />
             {/* Sidebar Toggle Button */}
             <button 
               className="sidebar-toggle-btn visible"
@@ -905,14 +978,70 @@ function App() {
                 {errorDialog.type === 'network' && '🌐'}
                 {errorDialog.type === 'connection' && '⚠️'}
                 {errorDialog.type === 'key' && '🔑'}
+                {errorDialog.type === 'hostKey' && '🛡️'}
+                {errorDialog.type === 'hostKeyChanged' && '🚨'}
                 {errorDialog.type === 'other' && '❗'}
               </div>
               <div className="error-dialog-title">{t('errorDialog.connectionFailed')}</div>
               <div className="error-dialog-message">{errorDialog.message ?? t(errorDialog.messageKey ?? '', errorDialog.params)}</div>
-              <button className="error-dialog-btn" onClick={() => setErrorDialog(null)}>{t('common.close')}</button>
+              <div className="error-dialog-actions">
+                {(errorDialog.type === 'hostKey' || errorDialog.type === 'hostKeyChanged') && (
+                  <button
+                    className="error-dialog-btn primary"
+                    onClick={() => { setErrorDialog(null); setShowHostKeysDialog(true) }}
+                  >{t('hostKey.manage')}</button>
+                )}
+                <button className="error-dialog-btn secondary" onClick={() => setErrorDialog(null)}>{t('common.close')}</button>
+              </div>
             </div>
           </div>
         )}
+
+        {/* First-contact host key confirmation (TOFU) */}
+        {hostKeyPrompt && (
+          <div className="error-dialog-overlay" onClick={rejectHostKey}>
+            <div className="error-dialog" onClick={(e) => e.stopPropagation()}>
+              <button className="error-dialog-close" onClick={rejectHostKey}>×</button>
+              <div className="error-dialog-icon">🔐</div>
+              <div className="error-dialog-title">{t('hostKey.confirmTitle')}</div>
+              <div className="error-dialog-message">{t('hostKey.confirmDesc')}</div>
+              <div className="hostkey-info">
+                <div className="hostkey-info-row"><span>{t('hostKey.host')}</span><b>{hostKeyPrompt.host}</b></div>
+                <div className="hostkey-info-row"><span>{t('hostKey.port')}</span><b>{hostKeyPrompt.port}</b></div>
+                <div className="hostkey-info-row"><span>{t('hostKey.algorithm')}</span><b>{hostKeyPrompt.keyType}</b></div>
+                <div className="hostkey-info-row"><span>{t('hostKey.fingerprint')}</span><code className="hostkey-fp">{hostKeyPrompt.fingerprint}</code></div>
+              </div>
+              <div className="error-dialog-actions">
+                <button className="error-dialog-btn" onClick={rejectHostKey}>{t('hostKey.cancel')}</button>
+                <button className="error-dialog-btn primary" onClick={confirmHostKey}>{t('hostKey.trustAndConnect')}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Host key changed — possible MITM warning (connection already rejected) */}
+        {hostKeyChangedWarn && (
+          <div className="error-dialog-overlay" onClick={() => setHostKeyChangedWarn(null)}>
+            <div className="error-dialog" onClick={(e) => e.stopPropagation()}>
+              <button className="error-dialog-close" onClick={() => setHostKeyChangedWarn(null)}>×</button>
+              <div className="error-dialog-icon">🚨</div>
+              <div className="error-dialog-title">{t('hostKey.changedTitle')}</div>
+              <div className="error-dialog-message">{t('hostKey.changedDesc')}</div>
+              <div className="hostkey-info">
+                <div className="hostkey-info-row"><span>{t('hostKey.host')}</span><b>{hostKeyChangedWarn.host}</b></div>
+                <div className="hostkey-info-row"><span>{t('hostKey.algorithm')}</span><b>{hostKeyChangedWarn.keyType}</b></div>
+                <div className="hostkey-info-row"><span>{t('hostKey.fingerprint')}</span><code className="hostkey-fp">{hostKeyChangedWarn.fingerprint}</code></div>
+              </div>
+              <div className="error-dialog-actions">
+                <button className="error-dialog-btn secondary" onClick={() => setHostKeyChangedWarn(null)}>{t('common.close')}</button>
+                <button className="error-dialog-btn primary" onClick={() => { setHostKeyChangedWarn(null); setShowHostKeysDialog(true) }}>{t('hostKey.manage')}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Trusted host fingerprint manager */}
+        <HostKeysDialog open={showHostKeysDialog} onClose={() => setShowHostKeysDialog(false)} />
         <div className="split-container" ref={splitContainerRef}>
           {/* ponytail: session tab bar — quick switch between connected servers */}
           {sessions.length > 0 && (

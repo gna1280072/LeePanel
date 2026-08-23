@@ -109,7 +109,9 @@
     "noPasswordSaved": "Aucun mot de passe enregistré. Veuillez modifier la connexion pour ajouter les identifiants.",
     "editToConfigure": "Veuillez modifier la connexion pour configurer l'authentification.",
     "keyEncrypted": "La clé SSH est chiffrée. Veuillez saisir la phrase de passe de la clé dans les paramètres de connexion.",
-    "wrongPassphrase": "Phrase de passe de la clé incorrecte. Veuillez la vérifier et réessayer."
+    "wrongPassphrase": "Phrase de passe de la clé incorrecte. Veuillez la vérifier et réessayer.",
+    "hostKeyRejected": "Échec de la vérification de l'identité du serveur : la clé d'hôte n'a pas été acceptée.",
+    "hostKeyChanged": "La clé d'hôte a changé, connexion interrompue. Une attaque de l'homme du milieu est possible — ne saisissez pas votre mot de passe !"
   },
   "sidebar": {
     "servers": "Serveurs",
@@ -137,7 +139,8 @@
     "showPassword": "Afficher le mot de passe",
     "hidePassword": "Masquer le mot de passe",
     "deleteConfirmMsg": "Supprimer {{name}} ?",
-    "language": "Langue"
+    "language": "Langue",
+    "hostKeys": "Clés d'hôte"
   },
   "nav": {
     "dashboard": "Tableau de bord",
@@ -1105,5 +1108,25 @@
     "fromDate": "Date/heure de début",
     "toDate": "Date/heure de fin",
     "clearDateRange": "Effacer la plage de dates"
+  },
+  "hostKey": {
+    "confirmTitle": "Première connexion — vérifier l'identité du serveur",
+    "confirmDesc": "C'est votre première connexion à ce serveur. Vérifiez que l'empreinte correspond à celle fournie par le fournisseur (console cloud / administrateur) pour éviter les attaques de l'homme du milieu.",
+    "host": "Serveur",
+    "port": "Port",
+    "algorithm": "Algorithme",
+    "fingerprint": "Empreinte SHA-256",
+    "trustAndConnect": "Faire confiance et connecter",
+    "cancel": "Annuler",
+    "changedTitle": "La clé d'hôte a changé",
+    "changedDesc": "La clé du serveur diffère de celle enregistrée précédemment — une attaque de l'homme du milieu est possible, connexion interrompue. Si le serveur a été réinstallé ou si sa clé a été renouvelée, supprimez l'ancienne empreinte puis réessayez.",
+    "rejectedTitle": "Impossible de vérifier l'identité du serveur",
+    "rejectedDesc": "L'empreinte du serveur n'a pas été validée, connexion interrompue.",
+    "manage": "Gérer les empreintes",
+    "manageTitle": "Empreintes d'hôtes de confiance",
+    "manageEmpty": "Aucune empreinte de serveur de confiance pour le moment. Lors de la première connexion, l'application demandera de confirmer l'empreinte.",
+    "deleteConfirm": "Supprimer cette empreinte ? Elle devra être reconfirmée à la prochaine connexion.",
+    "deleted": "Empreinte supprimée",
+    "updated": "Liste des empreintes mise à jour"
   }
 }

@@ -8,7 +8,9 @@ use russh::ChannelMsg;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{mpsc, Mutex};
 
+use crate::db::KnownHostsManager;
 use crate::tunnel::TunnelManager;
+use crate::{DbPool, HostKeyPending};
 
 // ===== SSH Response Cache =====
 
@@ -103,6 +105,100 @@ pub struct SshHandler {
     /// Remote-forward registrations: server listen port -> tunnel receiver.
     /// The server names the port in server_channel_open_forwarded_tcpip.
     pub forwarded_reg: Arc<std::sync::Mutex<HashMap<u32, mpsc::UnboundedSender<ForwardedTcpip>>>>,
+    /// Host key verifier (TOFU known_hosts). Always present for connections made via
+    /// do_connect; `None` means verification is disabled → reject by default.
+    pub host_key_verifier: Option<HostKeyVerifier>,
+}
+
+/// Host key verification state for a single connection attempt (TOFU known_hosts).
+#[derive(Clone)]
+pub struct HostKeyVerifier {
+    pub app_handle: AppHandle,
+    pub host: String,
+    pub port: u16,
+    pub session_id: String,
+    /// session_id -> oneshot sender awaiting the user's trust decision (frontend callback).
+    pub pending: HostKeyPending,
+}
+
+impl HostKeyVerifier {
+    /// Verify the server host key against the app's known_hosts store.
+    ///
+    /// - Already trusted & fingerprint matches  → Ok(true), refresh last_seen
+    /// - Known host but fingerprint changed      → emit `host-key-changed`, Ok(false) (hard reject)
+    /// - First contact (TOFU)                    → emit `host-key-confirm`, await user decision
+    pub async fn check(&self, key: &russh_keys::key::PublicKey) -> Result<bool, russh::Error> {
+        let fingerprint = key.fingerprint(); // SHA256 base64 (no "SHA256:" prefix)
+        let key_type = key.name().to_string();
+        let host = self.host.clone();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        let db = self.app_handle.state::<DbPool>();
+        let conn = db.inner();
+
+        let known = {
+            let guard = conn.lock().unwrap();
+            KnownHostsManager::find(&guard, &host, &key_type)
+        };
+
+        match known {
+            Some(k) if k.fingerprint == fingerprint => {
+                // ✅ Already trusted and unchanged — silent pass
+                let guard = conn.lock().unwrap();
+                let _ = KnownHostsManager::touch(&guard, &host, &key_type, now);
+                Ok(true)
+            }
+            Some(_) => {
+                // ❌ Key changed — possible MITM. Hard reject.
+                let _ = self.app_handle.emit(
+                    "host-key-changed",
+                    serde_json::json!({
+                        "sessionId": self.session_id,
+                        "host": self.host,
+                        "port": self.port,
+                        "keyType": key_type,
+                        "fingerprint": format!("SHA256:{}", fingerprint),
+                    }),
+                );
+                Ok(false)
+            }
+            None => {
+                // 🆕 First contact (TOFU) — ask the user to confirm the fingerprint
+                let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
+                self.pending.lock().unwrap().insert(self.session_id.clone(), tx);
+                let _ = self.app_handle.emit(
+                    "host-key-confirm",
+                    serde_json::json!({
+                        "sessionId": self.session_id,
+                        "host": self.host,
+                        "port": self.port,
+                        "keyType": key_type,
+                        "fingerprint": format!("SHA256:{}", fingerprint),
+                    }),
+                );
+                match rx.await {
+                    Ok(true) => {
+                        // User trusted the key → persist it
+                        let key_blob = {
+                            use russh_keys::PublicKeyBase64;
+                            key.public_key_base64()
+                        };
+                        let guard = conn.lock().unwrap();
+                        let _ = KnownHostsManager::insert(&guard, &host, &key_type, &fingerprint, &key_blob, now);
+                        Ok(true)
+                    }
+                    _ => {
+                        // User rejected / dialog closed / channel dropped
+                        self.pending.lock().unwrap().remove(&self.session_id);
+                        Ok(false)
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -111,9 +207,13 @@ impl Handler for SshHandler {
 
     async fn check_server_key(
         &mut self,
-        _server_public_key: &russh_keys::key::PublicKey,
+        server_public_key: &russh_keys::key::PublicKey,
     ) -> Result<bool, Self::Error> {
-        Ok(true)
+        // TOFU known_hosts verification; no verifier → reject (secure default).
+        match &self.host_key_verifier {
+            Some(v) => v.check(server_public_key).await,
+            None => Ok(false),
+        }
     }
 
     /// Remote forwarding: the server opens a channel for a new incoming connection.
@@ -240,8 +340,16 @@ impl SshManager {
         // ponytail: normalize empty passphrase to None — russh-keys treats Some("") as
         // "try to decrypt", which misparses unencrypted PKCS#8 keys (DER tag error at byte 2)
         let passphrase = passphrase.filter(|p| !p.is_empty());
+        let pending = app_handle.state::<HostKeyPending>().inner().clone();
         let handler = SshHandler {
             forwarded_reg: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            host_key_verifier: Some(HostKeyVerifier {
+                app_handle: app_handle.clone(),
+                host: host.clone(),
+                port,
+                session_id: session_id.clone(),
+                pending,
+            }),
         };
         let forwarded_reg = handler.forwarded_reg.clone();
         let mut ssh_config = client::Config::default();
@@ -251,11 +359,23 @@ impl SshManager {
         ssh_config.inactivity_timeout = Some(std::time::Duration::from_secs(60));
         let config = Arc::new(ssh_config);
         let addr_str = format!("{}:{}", host, port);
-        // ponytail: 15s timeout for TCP+SSH handshake — prevents indefinite hang on unreachable servers
-        let mut sh = tokio::time::timeout(std::time::Duration::from_secs(15), client::connect(config, &addr_str, handler))
-            .await
-            .map_err(|_| format!("Connection timeout: {}:{} unreachable", host, port))?
-            .map_err(|e| format!("Connection failed: {}", e))?;
+        // Host key verification flow: 1) TCP connect 8s fast-fail; 2) SSH handshake up to 90s
+        // (handshake may pause while the user confirms a first-contact host key fingerprint).
+        let stream = tokio::time::timeout(
+            std::time::Duration::from_secs(8),
+            tokio::net::TcpStream::connect(&addr_str),
+        )
+        .await
+        .map_err(|_| format!("Connection timeout: {}:{} unreachable", host, port))?
+        .map_err(|e| format!("Connection failed: {}", e))?;
+
+        let mut sh = tokio::time::timeout(
+            std::time::Duration::from_secs(90),
+            client::connect_stream(config, stream, handler),
+        )
+        .await
+        .map_err(|_| format!("SSH handshake timeout: {}:{}", host, port))?
+        .map_err(|e| format!("Connection failed: {}", e))?;
 
         // Authenticate
         if let Some(ref kp) = key_path {
@@ -1264,7 +1384,8 @@ impl SshManager {
         let info = self.get_connect_info(session_id).ok_or("Session not found")?;
         // ponytail: use AppHandle from command context — self.app_handle is never initialised
         self.disconnect(session_id).await.ok();
-        let result = tokio::time::timeout(std::time::Duration::from_secs(30), self.connect(
+        // 120s: TCP (8s) + handshake (90s) may pause on host-key confirmation
+        let result = tokio::time::timeout(std::time::Duration::from_secs(120), self.connect(
             session_id.to_string(),
             info.host,
             info.port,
@@ -1278,7 +1399,7 @@ impl SshManager {
         )).await;
         match result {
             Ok(r) => r,
-            Err(_) => Err("Reconnect timed out (30s)".to_string()),
+            Err(_) => Err("Reconnect timed out (120s)".to_string()),
         }
     }
 }

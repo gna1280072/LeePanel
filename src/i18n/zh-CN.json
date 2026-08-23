@@ -109,7 +109,9 @@
     "noPasswordSaved": "未保存密码，请编辑连接添加凭据。",
     "editToConfigure": "请编辑连接以配置认证信息。",
     "keyEncrypted": "SSH 密钥已加密，请在连接设置中输入密钥密码（Passphrase）。",
-    "wrongPassphrase": "密钥密码（Passphrase）不正确，请检查后重试。"
+    "wrongPassphrase": "密钥密码（Passphrase）不正确，请检查后重试。",
+    "hostKeyRejected": "服务器身份验证失败：主机密钥未通过验证。",
+    "hostKeyChanged": "主机密钥已变更，连接已中止。可能存在中间人攻击，请勿输入密码！"
   },
   "sidebar": {
     "servers": "服务器",
@@ -137,7 +139,8 @@
     "showPassword": "显示密码",
     "hidePassword": "隐藏密码",
     "deleteConfirmMsg": "删除 {{name}}？",
-    "language": "语言"
+    "language": "语言",
+    "hostKeys": "主机指纹"
   },
   "nav": {
     "dashboard": "仪表盘",
@@ -1105,5 +1108,25 @@
     "fromDate": "起始日期/时间",
     "toDate": "结束日期/时间",
     "clearDateRange": "清除日期范围"
+  },
+  "hostKey": {
+    "confirmTitle": "首次连接 — 确认服务器身份",
+    "confirmDesc": "这是您首次连接该服务器。请确认指纹与服务器提供方（云控制台 / 管理员）提供的一致，以防中间人攻击。",
+    "host": "服务器",
+    "port": "端口",
+    "algorithm": "算法",
+    "fingerprint": "SHA-256 指纹",
+    "trustAndConnect": "信任并连接",
+    "cancel": "取消",
+    "changedTitle": "主机密钥已变更",
+    "changedDesc": "服务器的密钥与上次记录不一致，可能存在中间人攻击，连接已中止。如果确认服务器重装过系统或更换了密钥，请删除旧指纹后重试。",
+    "rejectedTitle": "无法验证服务器身份",
+    "rejectedDesc": "服务器指纹未通过验证，连接已中止。",
+    "manage": "管理指纹",
+    "manageTitle": "已信任的主机指纹",
+    "manageEmpty": "暂无已信任的服务器指纹。首次连接服务器时，应用会要求您确认指纹。",
+    "deleteConfirm": "确定删除该指纹？删除后需重新确认指纹才能连接。",
+    "deleted": "已删除指纹",
+    "updated": "指纹列表已更新"
   }
 }

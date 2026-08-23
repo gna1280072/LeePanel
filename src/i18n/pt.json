@@ -109,7 +109,9 @@
     "noPasswordSaved": "Nenhuma senha salva. Edite a conexão para adicionar credenciais.",
     "editToConfigure": "Edite a conexão para configurar a autenticação.",
     "keyEncrypted": "A chave SSH está criptografada. Insira a frase secreta da chave nas configurações de conexão.",
-    "wrongPassphrase": "Frase secreta da chave incorreta. Verifique e tente novamente."
+    "wrongPassphrase": "Frase secreta da chave incorreta. Verifique e tente novamente.",
+    "hostKeyRejected": "Falha na verificação da identidade do servidor: a chave do host não foi aceita.",
+    "hostKeyChanged": "A chave do host mudou, conexão abortada. Pode haver um ataque man-in-the-middle — não digite sua senha!"
   },
   "sidebar": {
     "servers": "Servidores",
@@ -137,7 +139,8 @@
     "showPassword": "Mostrar senha",
     "hidePassword": "Ocultar senha",
     "deleteConfirmMsg": "Excluir {{name}}?",
-    "language": "Idioma"
+    "language": "Idioma",
+    "hostKeys": "Chaves de host"
   },
   "nav": {
     "dashboard": "Painel",
@@ -1105,5 +1108,25 @@
     "fromDate": "De data/hora",
     "toDate": "Até data/hora",
     "clearDateRange": "Limpar intervalo de datas"
+  },
+  "hostKey": {
+    "confirmTitle": "Primeira conexão — verificar identidade do servidor",
+    "confirmDesc": "Esta é a sua primeira conexão a este servidor. Confirme que a impressão digital corresponde à fornecida pelo provedor (console da nuvem / administrador) para evitar ataques man-in-the-middle.",
+    "host": "Servidor",
+    "port": "Porta",
+    "algorithm": "Algoritmo",
+    "fingerprint": "Impressão digital SHA-256",
+    "trustAndConnect": "Confiar e conectar",
+    "cancel": "Cancelar",
+    "changedTitle": "A chave do host mudou",
+    "changedDesc": "A chave do servidor difere da registrada anteriormente — pode haver um ataque man-in-the-middle em andamento, conexão abortada. Se o servidor foi reinstalado ou a chave foi rotacionada, exclua a impressão digital antiga e tente novamente.",
+    "rejectedTitle": "Não foi possível verificar a identidade do servidor",
+    "rejectedDesc": "A impressão digital do servidor falhou na verificação, conexão abortada.",
+    "manage": "Gerenciar impressões digitais",
+    "manageTitle": "Impressões digitais de host confiáveis",
+    "manageEmpty": "Ainda não há impressões digitais de servidor confiáveis. Na primeira conexão, o aplicativo pedirá que você confirme a impressão digital.",
+    "deleteConfirm": "Excluir esta impressão digital? Ela precisará ser confirmada novamente na próxima conexão.",
+    "deleted": "Impressão digital excluída",
+    "updated": "Lista de impressões digitais atualizada"
   }
 }

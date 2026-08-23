@@ -109,7 +109,9 @@
     "noPasswordSaved": "未儲存密碼，請編輯連線新增憑證。",
     "editToConfigure": "請編輯連線以設定認證資訊。",
     "keyEncrypted": "SSH 金鑰已加密，請在連線設定中輸入金鑰密碼（Passphrase）。",
-    "wrongPassphrase": "金鑰密碼（Passphrase）不正確，請檢查後重試。"
+    "wrongPassphrase": "金鑰密碼（Passphrase）不正確，請檢查後重試。",
+    "hostKeyRejected": "伺服器身分驗證失敗：主機金鑰未通過驗證。",
+    "hostKeyChanged": "主機金鑰已變更，連線已中止。可能存在中間人攻擊，請勿輸入密碼！"
   },
   "sidebar": {
     "servers": "伺服器",
@@ -137,7 +139,8 @@
     "showPassword": "顯示密碼",
     "hidePassword": "隱藏密碼",
     "deleteConfirmMsg": "刪除 {{name}}？",
-    "language": "語言"
+    "language": "語言",
+    "hostKeys": "主機指紋"
   },
   "nav": {
     "dashboard": "儀表板",
@@ -1105,5 +1108,25 @@
     "fromDate": "起始日期/時間",
     "toDate": "結束日期/時間",
     "clearDateRange": "清除日期範圍"
+  },
+  "hostKey": {
+    "confirmTitle": "首次連線 — 確認伺服器身分",
+    "confirmDesc": "這是您首次連線該伺服器。請確認指紋與伺服器提供方（雲端控制台 / 管理員）提供的一致，以防中間人攻擊。",
+    "host": "伺服器",
+    "port": "連接埠",
+    "algorithm": "演算法",
+    "fingerprint": "SHA-256 指紋",
+    "trustAndConnect": "信任並連線",
+    "cancel": "取消",
+    "changedTitle": "主機金鑰已變更",
+    "changedDesc": "伺服器的金鑰與上次記錄不一致，可能存在中間人攻擊，連線已中止。如果確認伺服器重裝過系統或更換了金鑰，請刪除舊指紋後重試。",
+    "rejectedTitle": "無法驗證伺服器身分",
+    "rejectedDesc": "伺服器指紋未通過驗證，連線已中止。",
+    "manage": "管理指紋",
+    "manageTitle": "已信任的主機指紋",
+    "manageEmpty": "暫無已信任的伺服器指紋。首次連線伺服器時，應用程式會要求您確認指紋。",
+    "deleteConfirm": "確定刪除該指紋？刪除後需重新確認指紋才能連線。",
+    "deleted": "已刪除指紋",
+    "updated": "指紋清單已更新"
   }
 }

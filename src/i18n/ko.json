@@ -109,7 +109,9 @@
     "noPasswordSaved": "저장된 비밀번호가 없습니다. 연결을 편집하여 자격 증명을 추가하세요.",
     "editToConfigure": "연결을 편집하여 인증을 구성하세요.",
     "keyEncrypted": "SSH 키가 암호화되어 있습니다. 연결 설정에서 키 암호(Passphrase)를 입력하세요.",
-    "wrongPassphrase": "키 암호(Passphrase)가 올바르지 않습니다. 확인 후 다시 시도하세요."
+    "wrongPassphrase": "키 암호(Passphrase)가 올바르지 않습니다. 확인 후 다시 시도하세요.",
+    "hostKeyRejected": "서버 신원 검증 실패: 호스트 키가 수락되지 않았습니다.",
+    "hostKeyChanged": "호스트 키가 변경되어 연결을 중단했습니다. 중간자 공격 가능성이 있으니 비밀번호를 입력하지 마세요!"
   },
   "sidebar": {
     "servers": "서버",
@@ -137,7 +139,8 @@
     "showPassword": "비밀번호 표시",
     "hidePassword": "비밀번호 숨기기",
     "deleteConfirmMsg": "{{name}} 을(를) 삭제하시겠습니까?",
-    "language": "언어"
+    "language": "언어",
+    "hostKeys": "호스트 키"
   },
   "nav": {
     "dashboard": "대시보드",
@@ -1105,5 +1108,25 @@
     "fromDate": "시작 날짜/시간",
     "toDate": "종료 날짜/시간",
     "clearDateRange": "날짜 범위 지우기"
+  },
+  "hostKey": {
+    "confirmTitle": "첫 연결 — 서버 신원 확인",
+    "confirmDesc": "이 서버에 처음 연결합니다. 지문이 서버 제공자(클라우드 콘솔 / 관리자)가 제공한 것과 일치하는지 확인하세요 (중간자 공격 방지).",
+    "host": "서버",
+    "port": "포트",
+    "algorithm": "알고리즘",
+    "fingerprint": "SHA-256 지문",
+    "trustAndConnect": "신뢰하고 연결",
+    "cancel": "취소",
+    "changedTitle": "호스트 키가 변경되었습니다",
+    "changedDesc": "서버 키가 이전에 기록된 것과 다릅니다. 중간자 공격이 진행 중일 수 있으므로 연결을 중단했습니다. 서버를 재설치했거나 키를 교체했다면 이전 지문을 삭제하고 다시 시도하세요.",
+    "rejectedTitle": "서버 신원을 확인할 수 없습니다",
+    "rejectedDesc": "서버 지문 검증에 실패하여 연결을 중단했습니다.",
+    "manage": "지문 관리",
+    "manageTitle": "신뢰된 호스트 지문",
+    "manageEmpty": "신뢰된 서버 지문이 없습니다. 첫 연결 시 지문 확인을 요청합니다.",
+    "deleteConfirm": "이 지문을 삭제하시겠습니까? 삭제 후 다음 연결 때 다시 확인해야 합니다.",
+    "deleted": "지문이 삭제되었습니다",
+    "updated": "지문 목록이 업데이트되었습니다"
   }
 }

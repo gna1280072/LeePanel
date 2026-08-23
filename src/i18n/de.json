@@ -109,7 +109,9 @@
     "noPasswordSaved": "Kein Passwort gespeichert. Bitte bearbeiten Sie die Verbindung, um Anmeldeinformationen hinzuzufügen.",
     "editToConfigure": "Bitte bearbeiten Sie die Verbindung, um die Authentifizierung zu konfigurieren.",
     "keyEncrypted": "Der SSH-Schlüssel ist verschlüsselt. Bitte geben Sie die Passphrase des Schlüssels in den Verbindungseinstellungen ein.",
-    "wrongPassphrase": "Die Passphrase des Schlüssels ist falsch. Bitte überprüfen Sie sie und versuchen Sie es erneut."
+    "wrongPassphrase": "Die Passphrase des Schlüssels ist falsch. Bitte überprüfen Sie sie und versuchen Sie es erneut.",
+    "hostKeyRejected": "Verifizierung der Serveridentität fehlgeschlagen: Hostschlüssel wurde nicht akzeptiert.",
+    "hostKeyChanged": "Hostschlüssel geändert, Verbindung abgebrochen. Ein Man-in-the-Middle-Angriff ist möglich — geben Sie kein Passwort ein!"
   },
   "sidebar": {
     "servers": "Server",
@@ -137,7 +139,8 @@
     "showPassword": "Passwort anzeigen",
     "hidePassword": "Passwort verbergen",
     "deleteConfirmMsg": "{{name}} löschen?",
-    "language": "Sprache"
+    "language": "Sprache",
+    "hostKeys": "Hostschlüssel"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -1105,5 +1108,25 @@
     "fromDate": "Von Datum/Zeit",
     "toDate": "Bis Datum/Zeit",
     "clearDateRange": "Datumsbereich löschen"
+  },
+  "hostKey": {
+    "confirmTitle": "Erste Verbindung — Serveridentität prüfen",
+    "confirmDesc": "Dies ist Ihre erste Verbindung zu diesem Server. Bestätigen Sie, dass der Fingerabdruck mit dem vom Anbieter (Cloud-Konsole / Administrator) bereitgestellten übereinstimmt, um Man-in-the-Middle-Angriffe zu vermeiden.",
+    "host": "Server",
+    "port": "Port",
+    "algorithm": "Algorithmus",
+    "fingerprint": "SHA-256-Fingerabdruck",
+    "trustAndConnect": "Vertrauen und verbinden",
+    "cancel": "Abbrechen",
+    "changedTitle": "Hostschlüssel wurde geändert",
+    "changedDesc": "Der Serverschlüssel weicht vom zuvor gespeicherten ab — ein Man-in-the-Middle-Angriff ist möglich, Verbindung abgebrochen. Falls der Server neu installiert oder der Schlüssel rotiert wurde, löschen Sie den alten Fingerabdruck und versuchen Sie es erneut.",
+    "rejectedTitle": "Serveridentität kann nicht verifiziert werden",
+    "rejectedDesc": "Der Server-Fingerabdruck konnte nicht bestätigt werden, Verbindung abgebrochen.",
+    "manage": "Fingerabdrücke verwalten",
+    "manageTitle": "Vertrauenswürdige Host-Fingerabdrücke",
+    "manageEmpty": "Noch keine vertrauenswürdigen Server-Fingerabdrücke. Bei der ersten Verbindung werden Sie zur Bestätigung aufgefordert.",
+    "deleteConfirm": "Diesen Fingerabdruck löschen? Er muss bei der nächsten Verbindung erneut bestätigt werden.",
+    "deleted": "Fingerabdruck gelöscht",
+    "updated": "Fingerabdruckliste aktualisiert"
   }
 }

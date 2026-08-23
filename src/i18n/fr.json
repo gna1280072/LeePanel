@@ -387,7 +387,12 @@
     "commitExport": "Export minimal (image la plus petite)",
     "commitExportHint": "Aplatit le conteneur en une image monocouche. Tout l'historique des couches est supprimé, produisant l'image la plus petite possible.",
     "commitExportCmd": "Commande de démarrage (optionnelle) :",
-    "commitExportExpose": "Ports exposés (optionnels, séparés par virgules) :"
+    "commitExportExpose": "Ports exposés (optionnels, séparés par virgules) :",
+    "permissionTitle": "L'utilisateur actuel n'a pas la permission Docker.",
+    "permissionDesc": "Veuillez vous connecter avec un compte disposant des privilèges root et exécuter la commande suivante pour ajouter l'utilisateur actuel au groupe docker :",
+    "permissionCmd": "sudo usermod -aG docker {{username}}",
+    "permissionReconnect": "Après l'exécution, veuillez vous déconnecter puis vous reconnecter au serveur, sinon la session actuelle ne prendra pas effet.",
+    "permissionSelinux": "Si cela échoue encore après l'exécution, vérifiez la politique SELinux/AppArmor du serveur."
   },
   "files": {
     "notConnected": "Non connecté",

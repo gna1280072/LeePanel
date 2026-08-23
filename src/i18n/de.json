@@ -387,7 +387,12 @@
     "commitExport": "Minimaler Export (kleinstes Image)",
     "commitExportHint": "Flacht den Container zu einem einschichtigen Image ab. Der gesamte Schichtenverlauf wird entfernt, was das kleinstmögliche Image erzeugt.",
     "commitExportCmd": "Startbefehl (optional):",
-    "commitExportExpose": "Freigegebene Ports (optional, kommagetrennt):"
+    "commitExportExpose": "Freigegebene Ports (optional, kommagetrennt):",
+    "permissionTitle": "Der aktuelle Benutzer hat keine Docker-Berechtigung.",
+    "permissionDesc": "Bitte melden Sie sich mit einem Konto mit Root-Rechten an und führen Sie den folgenden Befehl aus, um den aktuellen Benutzer zur Docker-Gruppe hinzuzufügen:",
+    "permissionCmd": "sudo usermod -aG docker {{username}}",
+    "permissionReconnect": "Nach der Ausführung trennen Sie bitte die Verbindung zum Server und verbinden Sie sich erneut, da die Änderung sonst erst in einer neuen Sitzung wirksam wird.",
+    "permissionSelinux": "Falls es nach der Ausführung weiterhin fehlschlägt, überprüfen Sie die SELinux/AppArmor-Richtlinie des Servers."
   },
   "files": {
     "notConnected": "Nicht verbunden",

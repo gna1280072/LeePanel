@@ -387,7 +387,12 @@
     "commitExport": "تصدير أدنى (أصغر صورة)",
     "commitExportHint": "يُسطّح الحاوية في صورة ذات طبقة واحدة. يتم إزالة كل سجل الطبقات، مما ينتج أصغر صورة ممكنة.",
     "commitExportCmd": "أمر التشغيل (اختياري):",
-    "commitExportExpose": "المنافذ المكشوفة (اختياري، مفصولة بفواصل):"
+    "commitExportExpose": "المنافذ المكشوفة (اختياري، مفصولة بفواصل):",
+    "permissionTitle": "المستخدم الحالي لا يملك صلاحيات Docker.",
+    "permissionDesc": "يرجى تسجيل الدخول بحساب يتمتع بصلاحيات root وتنفيذ الأمر التالي لإضافة المستخدم الحالي إلى مجموعة docker:",
+    "permissionCmd": "sudo usermod -aG docker {{username}}",
+    "permissionReconnect": "بعد التنفيذ، يرجى قطع الاتصال بالخادم وإعادة الاتصال، وإلا فلن يسري التغيير على الجلسة الحالية.",
+    "permissionSelinux": "إذا استمر الفشل بعد التنفيذ، تحقق من سياسة SELinux/AppArmor على الخادم."
   },
   "files": {
     "notConnected": "غير متصل",

@@ -387,7 +387,12 @@
     "commitExport": "最小化打包（體積最小）",
     "commitExportHint": "將容器扁平化為單層鏡像，移除所有歷史層，生成最小體積的鏡像。",
     "commitExportCmd": "啟動命令（可選）：",
-    "commitExportExpose": "暴露連接埠（可選，逗號分隔）："
+    "commitExportExpose": "暴露連接埠（可選，逗號分隔）：",
+    "permissionTitle": "目前使用者沒有 Docker 權限。",
+    "permissionDesc": "請以具 root 權限的帳號登入，執行以下指令將目前使用者加入 docker 群組：",
+    "permissionCmd": "sudo usermod -aG docker {{username}}",
+    "permissionReconnect": "執行完成後請中斷並重新連線伺服器，否則目前工作階段不會生效。",
+    "permissionSelinux": "若執行後仍失敗，請檢查伺服器 SELinux/AppArmor 政策。"
   },
   "files": {
     "notConnected": "未連線",

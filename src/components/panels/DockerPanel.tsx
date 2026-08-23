@@ -37,12 +37,18 @@ interface DockerBatchResult {
 
 interface DockerPanelProps {
   sessionId: string | null
+  connUsername?: string | null
   onNavigateToSoftware?: () => void
 }
 
 type DockerTab = 'containers' | 'images' | 'mirror'
 
-export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerPanelProps) {
+// ponytail: detect docker unix-socket permission errors (user not in docker group)
+function isDockerPermissionError(message: string): boolean {
+  return /permission denied/i.test(message) && /docker\.sock/i.test(message)
+}
+
+export default function DockerPanel({ sessionId, connUsername, onNavigateToSoftware }: DockerPanelProps) {
   const { t } = useTranslation()
   const [status, setStatus] = useState<DockerStatus | null>(null)
   const [statusLoading, setStatusLoading] = useState(true)
@@ -482,7 +488,22 @@ export default function DockerPanel({ sessionId, onNavigateToSoftware }: DockerP
         </button>
       </div>
 
-      {error && <div className="docker-message docker-error">{error}</div>}
+      {error && (
+        <>
+          <div className="docker-message docker-error">{error}</div>
+          {isDockerPermissionError(error) && (
+            <div className="docker-message docker-error docker-permission-hint">
+              <div className="docker-permission-title">{t('dockerPanel.permissionTitle')}</div>
+              <div className="docker-permission-desc">{t('dockerPanel.permissionDesc')}</div>
+              <code className="docker-permission-cmd">
+                {t('dockerPanel.permissionCmd', { username: connUsername || 'username' })}
+              </code>
+              <div className="docker-permission-note">{t('dockerPanel.permissionReconnect')}</div>
+              <div className="docker-permission-note">{t('dockerPanel.permissionSelinux')}</div>
+            </div>
+          )}
+        </>
+      )}
       {success && <div className="docker-message docker-success">{success}</div>}
 
       {/* Docker Status Card */}

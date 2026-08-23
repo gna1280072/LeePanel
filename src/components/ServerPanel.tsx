@@ -182,7 +182,7 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
       case 'redis':
         return <RedisPanel sessionId={sessionId} onNavigateToSoftware={() => setActiveSection('software')} />
       case 'docker':
-        return <DockerPanel sessionId={sessionId} onNavigateToSoftware={() => setActiveSection('software')} />
+        return <DockerPanel sessionId={sessionId} connUsername={connUsername} onNavigateToSoftware={() => setActiveSection('software')} />
       case 'tunnel':
         return <TunnelPanel
           sessionId={sessionId}

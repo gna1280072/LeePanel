@@ -387,7 +387,12 @@
     "commitExport": "最小化打包（体积最小）",
     "commitExportHint": "将容器扁平化为单层镜像，移除所有历史层，生成最小体积的镜像。",
     "commitExportCmd": "启动命令（可选）：",
-    "commitExportExpose": "暴露端口（可选，逗号分隔）："
+    "commitExportExpose": "暴露端口（可选，逗号分隔）：",
+    "permissionTitle": "当前用户没有 Docker 权限。",
+    "permissionDesc": "请以有 root 权限的账号登录，执行以下命令将当前用户加入 docker 组：",
+    "permissionCmd": "sudo usermod -aG docker {{username}}",
+    "permissionReconnect": "执行完成后请断开并重新连接服务器，否则当前会话不会生效。",
+    "permissionSelinux": "若执行后仍失败，请检查服务器 SELinux/AppArmor 策略。"
   },
   "files": {
     "notConnected": "未连接",

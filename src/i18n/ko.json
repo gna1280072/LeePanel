@@ -387,7 +387,12 @@
     "commitExport": "최소화 내보내기 (가장 작은 이미지)",
     "commitExportHint": "컨테이너를 단일 레이어 이미지로 평탄화합니다. 모든 레이어 기록이 제거되어 가장 작은 이미지가 생성됩니다.",
     "commitExportCmd": "시작 명령 (선택):",
-    "commitExportExpose": "노출 포트 (선택, 쉼표로 구분):"
+    "commitExportExpose": "노출 포트 (선택, 쉼표로 구분):",
+    "permissionTitle": "현재 사용자에게 Docker 권한이 없습니다.",
+    "permissionDesc": "root 권한이 있는 계정으로 로그인하여 다음 명령을 실행해 현재 사용자를 docker 그룹에 추가하세요:",
+    "permissionCmd": "sudo usermod -aG docker {{username}}",
+    "permissionReconnect": "실행 후 서버 연결을 끊고 다시 연결하세요. 그렇지 않으면 현재 세션에 반영되지 않습니다.",
+    "permissionSelinux": "실행 후에도 실패하면 서버의 SELinux/AppArmor 정책을 확인하세요."
   },
   "files": {
     "notConnected": "연결되지 않음",

@@ -387,7 +387,12 @@
     "commitExport": "最小化エクスポート（最小イメージ）",
     "commitExportHint": "コンテナを単層イメージにフラット化します。すべてのレイヤー履歴が削除され、最小サイズのイメージが生成されます。",
     "commitExportCmd": "起動コマンド（任意）：",
-    "commitExportExpose": "公開ポート（任意、カンマ区切り）："
+    "commitExportExpose": "公開ポート（任意、カンマ区切り）：",
+    "permissionTitle": "現在のユーザーに Docker の権限がありません。",
+    "permissionDesc": "root 権限のあるアカウントでログインし、次のコマンドを実行して現在のユーザーを docker グループに追加してください：",
+    "permissionCmd": "sudo usermod -aG docker {{username}}",
+    "permissionReconnect": "実行後、サーバーへの接続を切断して再接続してください。そうしないと現在のセッションでは反映されません。",
+    "permissionSelinux": "実行後も失敗する場合は、サーバーの SELinux/AppArmor ポリシーを確認してください。"
   },
   "files": {
     "notConnected": "未接続",

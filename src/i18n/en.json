@@ -387,7 +387,12 @@
     "commitExport": "Minimal export (smallest image)",
     "commitExportHint": "Flattens the container into a single-layer image. All layer history is removed, producing the smallest possible image.",
     "commitExportCmd": "Startup command (optional):",
-    "commitExportExpose": "Exposed ports (optional, comma-separated):"
+    "commitExportExpose": "Exposed ports (optional, comma-separated):",
+    "permissionTitle": "The current user has no Docker permission.",
+    "permissionDesc": "Please log in with a root-privileged account and run the following command to add the current user to the docker group:",
+    "permissionCmd": "sudo usermod -aG docker {{username}}",
+    "permissionReconnect": "After running it, please disconnect and reconnect to the server, otherwise the current session will not take effect.",
+    "permissionSelinux": "If it still fails after running, please check the SELinux/AppArmor policy on the server."
   },
   "files": {
     "notConnected": "Not connected",

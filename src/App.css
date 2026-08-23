@@ -7244,6 +7244,37 @@ body.dragging-files * {
   color: var(--green);
 }
 
+.docker-permission-hint {
+  margin-top: -4px;
+  line-height: 1.6;
+}
+
+.docker-permission-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.docker-permission-desc {
+  margin-bottom: 6px;
+}
+
+.docker-permission-cmd {
+  display: inline-block;
+  padding: 4px 10px;
+  margin-bottom: 6px;
+  border-radius: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12.5px;
+  user-select: all;
+}
+
+.docker-permission-note {
+  font-size: 12.5px;
+  opacity: 0.9;
+}
+
 .docker-status-card {
   background: var(--bg-panel);
   border: 1px solid var(--border);

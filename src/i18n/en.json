@@ -126,6 +126,7 @@
     "password": "Password",
     "keyPath": "Key Path",
     "rememberMe": "Remember me",
+    "rememberMeTooltip": "Connection info is saved in the app config SQLite database; passwords are stored in the system keyring.",
     "serverName": "Server name",
     "enterPassword": "Enter password",
     "browseKeyFile": "Browse key file",

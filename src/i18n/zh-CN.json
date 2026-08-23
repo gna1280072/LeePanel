@@ -126,6 +126,7 @@
     "password": "密码",
     "keyPath": "密钥路径",
     "rememberMe": "记住我",
+    "rememberMeTooltip": "将连接信息保存在软件配置 SQLite 数据库里，密码保存在本地电脑系统 Keyring 里。",
     "serverName": "服务器名称",
     "enterPassword": "输入密码",
     "browseKeyFile": "浏览密钥文件",

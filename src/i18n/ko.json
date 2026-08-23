@@ -126,6 +126,7 @@
     "password": "비밀번호",
     "keyPath": "키 경로",
     "rememberMe": "로그인 기억",
+    "rememberMeTooltip": "연결 정보는 앱 SQLite 데이터베이스에 저장되고, 비밀번호는 시스템 키링에 저장됩니다.",
     "serverName": "서버 이름",
     "enterPassword": "비밀번호 입력",
     "browseKeyFile": "키 파일 찾아보기",

@@ -425,7 +425,7 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
               )}
             </div>
             <div className="sidebar-confirm-actions">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginRight: 'auto' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginRight: 'auto' }} title={t('sidebar.rememberMeTooltip')}>
                 <input type="checkbox" checked={editing.remember_me || false} onChange={(e) => setEditing({ ...editing, remember_me: e.target.checked })} />
                 <span style={{ color: 'red' }}>{t('sidebar.rememberMe')}</span>
               </label>
@@ -525,7 +525,7 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
               )}
             </div>
             <div className="sidebar-confirm-actions">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginRight: 'auto' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginRight: 'auto' }} title={t('sidebar.rememberMeTooltip')}>
                 <input type="checkbox" checked={creating.remember_me || false} onChange={(e) => setCreating({ ...creating, remember_me: e.target.checked })} />
                 <span style={{ color: 'red' }}>{t('sidebar.rememberMe')}</span>
               </label>

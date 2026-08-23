@@ -126,6 +126,7 @@
     "password": "Mot de passe",
     "keyPath": "Chemin de la clé",
     "rememberMe": "Se souvenir de moi",
+    "rememberMeTooltip": "Les infos de connexion sont enregistrées dans la base SQLite de l'application, les mots de passe dans le trousseau système.",
     "serverName": "Nom du serveur",
     "enterPassword": "Entrer le mot de passe",
     "browseKeyFile": "Parcourir le fichier de clé",

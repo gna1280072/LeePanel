@@ -126,6 +126,7 @@
     "password": "Passwort",
     "keyPath": "Schlüsselpfad",
     "rememberMe": "Angemeldet bleiben",
+    "rememberMeTooltip": "Verbindungsdaten werden in der SQLite-Datenbank der App gespeichert, Passwörter im System-Schlüsselbund.",
     "serverName": "Servername",
     "enterPassword": "Passwort eingeben",
     "browseKeyFile": "Schlüsseldatei durchsuchen",

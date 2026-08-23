@@ -126,6 +126,7 @@
     "password": "Senha",
     "keyPath": "Caminho da chave",
     "rememberMe": "Lembrar-me",
+    "rememberMeTooltip": "As informações de conexão são salvas no banco SQLite do app e as senhas no chaveiro do sistema.",
     "serverName": "Nome do servidor",
     "enterPassword": "Digite a senha",
     "browseKeyFile": "Procurar arquivo de chave",

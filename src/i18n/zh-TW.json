@@ -126,6 +126,7 @@
     "password": "密碼",
     "keyPath": "金鑰路徑",
     "rememberMe": "記住我",
+    "rememberMeTooltip": "將連線資訊保存在軟體設定 SQLite 資料庫中，密碼保存在本機電腦系統 Keyring 中。",
     "serverName": "伺服器名稱",
     "enterPassword": "輸入密碼",
     "browseKeyFile": "瀏覽金鑰檔案",

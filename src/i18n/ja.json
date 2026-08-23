@@ -126,6 +126,7 @@
     "password": "パスワード",
     "keyPath": "鍵パス",
     "rememberMe": "ログインを記憶",
+    "rememberMeTooltip": "接続情報はアプリのSQLiteデータベースに保存され、パスワードはシステムキーリングに保存されます。",
     "serverName": "サーバー名",
     "enterPassword": "パスワードを入力",
     "browseKeyFile": "鍵ファイルを参照",

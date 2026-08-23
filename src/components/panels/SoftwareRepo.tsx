@@ -570,9 +570,9 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
     { key: 'web', label: t('software.webServer') },
     // ponytail: database category restored (only MySQL/MariaDB removed, Redis/PostgreSQL/Memcached kept)
     { key: 'database', label: t('software.database') },
+    { key: 'container', label: t('software.container') },
     { key: 'runtime', label: t('software.runtime') },
     { key: 'tools', label: t('software.tools') },
-    { key: 'container', label: t('software.container') },
     { key: 'custom', label: t('software.customCategory') },
   ]
 

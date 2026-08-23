@@ -140,7 +140,15 @@
     "hidePassword": "Ocultar senha",
     "deleteConfirmMsg": "Excluir {{name}}?",
     "language": "Idioma",
-    "hostKeys": "Chaves de host"
+    "hostKeys": "Chaves de host",
+    "authMode": "Modo de conexão",
+    "authModeRoot": "Root direto",
+    "authModeSudo": "Usuário + Sudo",
+    "sudoPasswordMode": "Política de senha Sudo",
+    "sudoPasswordAsk": "Perguntar sempre",
+    "sudoPasswordKeyring": "Salvar no chaveiro",
+    "sudoPassword": "Senha Sudo",
+    "enterSudoPassword": "Digite a senha Sudo"
   },
   "nav": {
     "dashboard": "Painel",
@@ -182,7 +190,10 @@
     "maxReached": "Máximo de {{max}} comandos",
     "autoEnter": "Executar automaticamente",
     "autoEnterHint": "Executa o comando ao clicar. Desativado: apenas insere para confirmação.",
-    "manageTitle": "Comandos rápidos personalizados"
+    "manageTitle": "Comandos rápidos personalizados",
+    "highRisk": "Comando de alto risco",
+    "highRiskHint": "Confirmação necessária antes de executar",
+    "highRiskConfirm": "Este comando está marcado como de alto risco. Executar?\n{{command}}"
   },
   "tunnel": {
     "title": "Travessia NAT New~",
@@ -1146,5 +1157,12 @@
     "alreadyExists": "Esta impressão digital já existe",
     "added": "Impressão digital adicionada",
     "deleteTitle": "Excluir impressão digital?"
+  },
+  "sudoDialog": {
+    "title": "Senha Sudo necessária",
+    "description": "Esta operação requer privilégios de administrador. Digite a senha Sudo (usada apenas nesta sessão).",
+    "incorrect": "Senha Sudo incorreta, tente novamente.",
+    "password": "Senha Sudo",
+    "passwordPlaceholder": "Digite a senha Sudo"
   }
 }

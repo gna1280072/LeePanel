@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { useTranslation } from 'react-i18next'
+import { invokeWithSudo } from '../../sudoPrompt'
 
 interface PortInfo {
   port: number
@@ -80,11 +81,11 @@ export default function PortPanel({ sessionId }: PortPanelProps) {
     setKillBusy(true)
     setError('')
     try {
-      await invoke('port_kill', {
+      await invokeWithSudo(() => invoke('port_kill', {
         sessionId,
         pid: confirmKill.pid,
         force,
-      })
+      }), sessionId)
       const killed = confirmKill
       setConfirmKill(null)
       setKillConfirmInput('')

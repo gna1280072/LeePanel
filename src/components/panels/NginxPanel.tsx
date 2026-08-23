@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { useTranslation } from 'react-i18next'
+import { invokeWithSudo } from '../../sudoPrompt'
 
 interface ServiceInfo {
   name: string
@@ -53,7 +54,7 @@ export default function NginxPanel({ sessionId }: NginxPanelProps) {
     if (!sessionId) return
     setActionLoading(action)
     try {
-      await invoke('server_service_action', { sessionId, service: 'nginx', action })
+      await invokeWithSudo(() => invoke('server_service_action', { sessionId, service: 'nginx', action }), sessionId)
       setTimeout(fetchInfo, 1000)
     } catch (e) {
       setError(`Action failed: ${e}`)

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { invokeWithSudo } from '../../sudoPrompt'
 
 interface ServiceInfo {
   name: string
@@ -48,7 +49,7 @@ export default function PhpPanel({ sessionId }: PhpPanelProps) {
     if (!sessionId) return
     setActionLoading(action)
     try {
-      await invoke('server_service_action', { sessionId, service: serviceName, action })
+      await invokeWithSudo(() => invoke('server_service_action', { sessionId, service: serviceName, action }), sessionId)
       setTimeout(fetchInfo, 1000)
     } catch (e) {
       setError(`Action failed: ${e}`)

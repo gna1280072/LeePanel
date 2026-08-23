@@ -140,7 +140,15 @@
     "hidePassword": "إخفاء كلمة المرور",
     "deleteConfirmMsg": "حذف {{name}}؟",
     "language": "اللغة",
-    "hostKeys": "مفاتيح المضيف"
+    "hostKeys": "مفاتيح المضيف",
+    "authMode": "وضع الاتصال",
+    "authModeRoot": "اتصال مباشر بـ Root",
+    "authModeSudo": "مستخدم + Sudo",
+    "sudoPasswordMode": "سياسة كلمة مرور Sudo",
+    "sudoPasswordAsk": "اسأل في كل مرة",
+    "sudoPasswordKeyring": "حفظ في سلسلة المفاتيح",
+    "sudoPassword": "كلمة مرور Sudo",
+    "enterSudoPassword": "أدخل كلمة مرور Sudo"
   },
   "nav": {
     "dashboard": "لوحة التحكم",
@@ -182,7 +190,10 @@
     "maxReached": "الحد الأقصى {{max}} أوامر",
     "autoEnter": "تنفيذ تلقائي بعد النقر",
     "autoEnterHint": "تشغيل الأمر فورًا عند النقر. عند إيقافه: يتم إدخاله فقط للتأكيد.",
-    "manageTitle": "أوامر سريعة مخصصة"
+    "manageTitle": "أوامر سريعة مخصصة",
+    "highRisk": "أمر عالي الخطورة",
+    "highRiskHint": "يتطلب تأكيدًا قبل التشغيل",
+    "highRiskConfirm": "تم وضع علامة على هذا الأمر كعالي الخطورة. هل تريد تنفيذه؟\n{{command}}"
   },
   "tunnel": {
     "title": "اختراق NAT New~",
@@ -1146,5 +1157,12 @@
     "alreadyExists": "هذه البصمة موجودة بالفعل",
     "added": "تمت إضافة البصمة",
     "deleteTitle": "حذف البصمة؟"
+  },
+  "sudoDialog": {
+    "title": "كلمة مرور Sudo مطلوبة",
+    "description": "تتطلب هذه العملية صلاحيات المدير. أدخل كلمة مرور Sudo (تُستخدم لهذه الجلسة فقط).",
+    "incorrect": "كلمة مرور Sudo غير صحيحة، حاول مرة أخرى.",
+    "password": "كلمة مرور Sudo",
+    "passwordPlaceholder": "أدخل كلمة مرور Sudo"
   }
 }

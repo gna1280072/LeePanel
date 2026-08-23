@@ -17,6 +17,11 @@ interface Connection {
   // 标记：凭据是否已保存到系统钥匙串（config_list 返回，不返回明文）
   has_password?: boolean
   has_passphrase?: boolean
+  // 权限模型 v8：连接模式（direct_root / sudo）+ sudo 密码策略（ask / keyring）
+  auth_mode?: string
+  sudo_password_mode?: string
+  sudo_password?: string
+  has_sudo_password?: boolean
 }
 
 interface NewConnectionData {
@@ -31,6 +36,10 @@ interface NewConnectionData {
   remember_me?: boolean
   has_password?: boolean
   has_passphrase?: boolean
+  auth_mode?: string
+  sudo_password_mode?: string
+  sudo_password?: string
+  has_sudo_password?: boolean
 }
 
 interface SidebarProps {
@@ -59,6 +68,8 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
   const [editing, setEditing] = useState<Connection | null>(null)
   const [showEditPassword, setShowEditPassword] = useState(false)
   const [showEditPassphrase, setShowEditPassphrase] = useState(false)
+  const [showEditSudoPassword, setShowEditSudoPassword] = useState(false)
+  const [showCreateSudoPassword, setShowCreateSudoPassword] = useState(false)
   const [creating, setCreating] = useState<NewConnectionData | null>(null)
   const [showCreatePassword, setShowCreatePassword] = useState(false)
   const [showCreatePassphrase, setShowCreatePassphrase] = useState(false)
@@ -116,7 +127,9 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
         username: 'root',
         auth_type: 'password',
         password: '',
-        remember_me: true
+        remember_me: true,
+        auth_mode: 'direct_root',
+        sudo_password_mode: 'ask'
       })
       setHasCheckedEmpty(true)
     }
@@ -212,7 +225,9 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
       username: 'root',
       auth_type: 'password',
       password: '',
-      remember_me: true
+      remember_me: true,
+      auth_mode: 'direct_root',
+      sudo_password_mode: 'ask'
     })
     onNew()
   }
@@ -432,6 +447,62 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
                   </div>
                 </div>
               )}
+              {/* 权限模型 v8：连接模式 + sudo 密码策略 */}
+              <div className="form-row">
+                <div className="form-group medium-width">
+                  <label>{t('sidebar.authMode')}</label>
+                  <select
+                    className="sidebar-edit-input"
+                    value={editing.auth_mode || 'direct_root'}
+                    onChange={(e) => setEditing({ ...editing, auth_mode: e.target.value, sudo_password_mode: editing.sudo_password_mode || 'ask' })}
+                  >
+                    <option value="direct_root">{t('sidebar.authModeRoot')}</option>
+                    <option value="sudo">{t('sidebar.authModeSudo')}</option>
+                  </select>
+                </div>
+                {editing.auth_mode === 'sudo' && (
+                  <div className="form-group medium-width">
+                    <label>{t('sidebar.sudoPasswordMode')}</label>
+                    <select
+                      className="sidebar-edit-input"
+                      value={editing.sudo_password_mode || 'ask'}
+                      onChange={(e) => setEditing({ ...editing, sudo_password_mode: e.target.value })}
+                    >
+                      <option value="ask">{t('sidebar.sudoPasswordAsk')}</option>
+                      <option value="keyring">{t('sidebar.sudoPasswordKeyring')}</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+              {editing.auth_mode === 'sudo' && editing.sudo_password_mode === 'keyring' && (
+                <div className="form-group">
+                  <label>{t('sidebar.sudoPassword')}</label>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input
+                      className="sidebar-edit-input"
+                      style={{ flex: 1 }}
+                      type={showEditSudoPassword ? 'text' : 'password'}
+                      value={editing.sudo_password || ''}
+                      onChange={(e) => setEditing({ ...editing, sudo_password: e.target.value })}
+                      placeholder={editing.has_sudo_password ? t('sidebar.passwordSavedPlaceholder') : t('sidebar.enterSudoPassword')}
+                    />
+                    <button className="sidebar-edit-action-btn" onClick={() => {
+                      if (!showEditSudoPassword && (!editing.sudo_password || editing.sudo_password === '') && editing.has_sudo_password) {
+                        invoke<string>('credential_get', { configId: editing.id, kind: 'sudo_password' })
+                          .then(sp => { if (sp) setEditing(prev => prev && { ...prev, sudo_password: sp }) })
+                          .catch(() => {})
+                      }
+                      setShowEditSudoPassword(!showEditSudoPassword)
+                    }} title={showEditSudoPassword ? t('sidebar.hidePassword') : t('sidebar.showPassword')}>{showEditSudoPassword ? '🙈' : '👁'}</button>
+                    {editing.has_sudo_password && (
+                      <button className="sidebar-edit-action-btn" title={t('sidebar.clearSavedCredential')} onClick={async () => {
+                        await invoke('credential_delete_single', { configId: editing.id, kind: 'sudo_password' }).catch(() => {})
+                        setEditing({ ...editing, sudo_password: '', has_sudo_password: false })
+                      }}>🗑</button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="sidebar-confirm-actions">
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginRight: 'auto' }} title={t('sidebar.rememberMeTooltip')}>
@@ -529,6 +600,49 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <input className="sidebar-edit-input" style={{ flex: 1 }} type={showCreatePassphrase ? 'text' : 'password'} value={creating.passphrase || ''} onChange={(e) => setCreating({ ...creating, passphrase: e.target.value })} placeholder={t('sidebar.passphrasePlaceholder')} />
                     <button className="sidebar-edit-action-btn" onClick={() => setShowCreatePassphrase(!showCreatePassphrase)} title={showCreatePassphrase ? t('sidebar.hidePassword') : t('sidebar.showPassword')}>{showCreatePassphrase ? '🙈' : '👁'}</button>
+                  </div>
+                </div>
+              )}
+              {/* 权限模型 v8：连接模式 + sudo 密码策略 */}
+              <div className="form-row">
+                <div className="form-group medium-width">
+                  <label>{t('sidebar.authMode')}</label>
+                  <select
+                    className="sidebar-edit-input"
+                    value={creating.auth_mode || 'direct_root'}
+                    onChange={(e) => setCreating({ ...creating, auth_mode: e.target.value, sudo_password_mode: creating.sudo_password_mode || 'ask' })}
+                  >
+                    <option value="direct_root">{t('sidebar.authModeRoot')}</option>
+                    <option value="sudo">{t('sidebar.authModeSudo')}</option>
+                  </select>
+                </div>
+                {creating.auth_mode === 'sudo' && (
+                  <div className="form-group medium-width">
+                    <label>{t('sidebar.sudoPasswordMode')}</label>
+                    <select
+                      className="sidebar-edit-input"
+                      value={creating.sudo_password_mode || 'ask'}
+                      onChange={(e) => setCreating({ ...creating, sudo_password_mode: e.target.value })}
+                    >
+                      <option value="ask">{t('sidebar.sudoPasswordAsk')}</option>
+                      <option value="keyring">{t('sidebar.sudoPasswordKeyring')}</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+              {creating.auth_mode === 'sudo' && creating.sudo_password_mode === 'keyring' && (
+                <div className="form-group">
+                  <label>{t('sidebar.sudoPassword')}</label>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input
+                      className="sidebar-edit-input"
+                      style={{ flex: 1 }}
+                      type={showCreateSudoPassword ? 'text' : 'password'}
+                      value={creating.sudo_password || ''}
+                      onChange={(e) => setCreating({ ...creating, sudo_password: e.target.value })}
+                      placeholder={t('sidebar.enterSudoPassword')}
+                    />
+                    <button className="sidebar-edit-action-btn" onClick={() => setShowCreateSudoPassword(!showCreateSudoPassword)} title={showCreateSudoPassword ? t('sidebar.hidePassword') : t('sidebar.showPassword')}>{showCreateSudoPassword ? '🙈' : '👁'}</button>
                   </div>
                 </div>
               )}

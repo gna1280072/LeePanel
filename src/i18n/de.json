@@ -140,7 +140,15 @@
     "hidePassword": "Passwort verbergen",
     "deleteConfirmMsg": "{{name}} löschen?",
     "language": "Sprache",
-    "hostKeys": "Hostschlüssel"
+    "hostKeys": "Hostschlüssel",
+    "authMode": "Verbindungsmodus",
+    "authModeRoot": "Root direkt",
+    "authModeSudo": "Benutzer + Sudo",
+    "sudoPasswordMode": "Sudo-Passwortrichtlinie",
+    "sudoPasswordAsk": "Jedes Mal fragen",
+    "sudoPasswordKeyring": "Im Schlüsselbund speichern",
+    "sudoPassword": "Sudo-Passwort",
+    "enterSudoPassword": "Sudo-Passwort eingeben"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -182,7 +190,10 @@
     "maxReached": "Maximal {{max}} Befehle erlaubt",
     "autoEnter": "Nach Klick automatisch ausführen",
     "autoEnterHint": "Führt den Befehl beim Klick sofort aus. Aus: nur eingeben, dann selbst bestätigen.",
-    "manageTitle": "Benutzerdefinierte Schnellbefehle"
+    "manageTitle": "Benutzerdefinierte Schnellbefehle",
+    "highRisk": "Risikoreicher Befehl",
+    "highRiskHint": "Bestätigung vor Ausführung erforderlich",
+    "highRiskConfirm": "Dieser Befehl ist als risikoreich markiert. Ausführen?\n{{command}}"
   },
   "tunnel": {
     "title": "NAT-Traversal New~",
@@ -1146,5 +1157,12 @@
     "alreadyExists": "Dieser Fingerabdruck existiert bereits",
     "added": "Fingerabdruck hinzugefügt",
     "deleteTitle": "Fingerabdruck löschen?"
+  },
+  "sudoDialog": {
+    "title": "Sudo-Passwort erforderlich",
+    "description": "Diese Aktion erfordert Administratorrechte. Geben Sie das Sudo-Passwort ein (nur für diese Sitzung).",
+    "incorrect": "Sudo-Passwort falsch, bitte erneut versuchen.",
+    "password": "Sudo-Passwort",
+    "passwordPlaceholder": "Sudo-Passwort eingeben"
   }
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { useTranslation } from 'react-i18next'
+import { invokeWithSudo } from '../../sudoPrompt'
 
 interface FirewallRule {
   id: string
@@ -126,13 +127,13 @@ export default function FirewallPanel({ sessionId }: FirewallPanelProps) {
     setActionLoading('add')
     setError('')
     try {
-      await invoke('server_firewall_add', {
+      await invokeWithSudo(() => invoke('server_firewall_add', {
         sessionId,
         port: newPort.trim(),
         protocol: newProtocol,
         action: newAction,
         source: newSource.trim() || null,
-      })
+      }), sessionId)
       setNewPort('')
       setNewSource('')
       setShowAdd(false)
@@ -149,13 +150,13 @@ export default function FirewallPanel({ sessionId }: FirewallPanelProps) {
     setActionLoading(rule.id)
     setError('')
     try {
-      await invoke('server_firewall_remove', {
+      await invokeWithSudo(() => invoke('server_firewall_remove', {
         sessionId,
         port: rule.port,
         protocol: rule.protocol,
         action: rule.action,
         source: rule.source === 'Anywhere' || rule.source === 'anywhere' ? null : rule.source,
-      })
+      }), sessionId)
       setConfirmDelete(null)
       await fetchRules()
     } catch (e) {
@@ -172,7 +173,7 @@ export default function FirewallPanel({ sessionId }: FirewallPanelProps) {
     setError('')
     setSshPortNotice(null)
     try {
-      const result = await invoke<FirewallToggleResult>('server_firewall_toggle', { sessionId, enable })
+      const result = await invokeWithSudo(() => invoke<FirewallToggleResult>('server_firewall_toggle', { sessionId, enable }), sessionId)
       if (result.ssh_port_auto_opened) {
         setSshPortNotice(t('firewall.sshPortAutoOpened', { port: result.ssh_port }))
       }

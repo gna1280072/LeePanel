@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useTranslation } from 'react-i18next'
+import { invokeWithSudo } from '../../sudoPrompt'
 
 interface SoftwareInfo {
   name: string
@@ -270,7 +271,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
   const handleServiceAction = async (sw: SoftwareInfo, action: string) => {
     if (!sessionId || !sw.service_name) return
     try {
-      await invoke('server_service_action', { sessionId, service: sw.service_name, action })
+      await invokeWithSudo(() => invoke('server_service_action', { sessionId, service: sw.service_name, action }), sessionId)
       setTimeout(loadSoftware, 1000)
     } catch (e) {
       setError(`${action} failed: ${e}`)

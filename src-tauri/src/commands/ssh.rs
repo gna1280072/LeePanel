@@ -52,12 +52,43 @@ pub async fn ssh_connect(
     }
     let cols = config["cols"].as_u64().unwrap_or(80) as u32;
     let rows = config["rows"].as_u64().unwrap_or(24) as u32;
+    // 权限模型 v8：连接模式 + sudo 密码（auth_mode='sudo' 且 sudo_password_mode='keyring' 时
+    // 从系统钥匙串自动加载到会话缓存；ask 模式由前端在首次 sudo 时弹窗输入）
+    let auth_mode = config["authMode"].as_str().unwrap_or("direct_root").to_string();
+    let mut sudo_password: Option<String> = None;
+    if auth_mode == "sudo" {
+        if let Some(cid) = config["configId"].as_str() {
+            if config["sudoPasswordMode"].as_str().unwrap_or("ask") == "keyring" {
+                sudo_password = crate::credentials::store_get(cid, crate::credentials::CredKind::SudoPassword)?;
+            }
+        }
+    }
     // ponytail: network operations without lock — only acquire briefly to insert session
-    let session = SshManager::do_connect(session_id.clone(), host, port, username, password, key_path, passphrase, app.clone(), cols, rows).await?;
+    let session = SshManager::do_connect(session_id.clone(), host, port, username, password, key_path, passphrase, auth_mode, sudo_password, app.clone(), cols, rows).await?;
     let mgr = ssh_mgr.lock().await;
     mgr.insert_session(session_id.clone(), session, app);
     drop(mgr);
     Ok(session_id)
+}
+
+/// 权限模型 v8：设置会话级 sudo 密码（ask 模式弹窗输入后调用）。
+/// `remember=true` 时同时写入系统钥匙串（需 config_id）。
+#[tauri::command]
+pub async fn ssh_set_sudo_password(
+    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: String,
+    password: String,
+    config_id: Option<String>,
+    remember: bool,
+) -> Result<(), String> {
+    let mgr = ssh_mgr.lock().await;
+    mgr.set_sudo_password(&session_id, password, config_id, remember).await
+}
+
+/// 权限模型 v8：生成 `/etc/sudoers.d/leepanel` 白名单配置文本（用户粘贴到服务器部署）。
+#[tauri::command]
+pub fn ssh_generate_sudoers(username: String) -> String {
+    crate::permissions::sudoers_config(&username)
 }
 
 #[tauri::command]

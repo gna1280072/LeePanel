@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useTranslation } from 'react-i18next'
+import { invokeWithSudo } from '../../sudoPrompt'
 import ServiceUnavailable from './ServiceUnavailable'
 
 interface DockerStatus {
@@ -231,7 +232,7 @@ export default function DockerPanel({ sessionId, connUsername, onNavigateToSoftw
     clearMessages()
     setContainerAction(container.id + action)
     try {
-      await invoke('server_docker_container_action', { sessionId, containerId: container.id, action })
+      await invokeWithSudo(() => invoke('server_docker_container_action', { sessionId, containerId: container.id, action }), sessionId)
       await fetchContainers()
     } catch (e) {
       setError(String(e))

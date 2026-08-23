@@ -7,6 +7,8 @@ interface QuickCommand {
   command: string
   group?: string
   sort: number
+  /** 权限模型 v8：高风险命令 —— autoEnter 直执行前需二次确认 */
+  highRisk?: boolean
 }
 
 interface QuickCommandsBarProps {
@@ -49,6 +51,7 @@ function loadCommands(): QuickCommand[] {
         command: c.command,
         group: typeof c.group === 'string' && c.group ? c.group : undefined,
         sort: typeof c.sort === 'number' ? c.sort : 0,
+        highRisk: c.highRisk === true,
       }))
   } catch {
     return seed()
@@ -68,6 +71,7 @@ export default function QuickCommandsBar({ sessionId, onSendCommand, onShowToast
   const [formName, setFormName] = useState('')
   const [formCommand, setFormCommand] = useState('')
   const [formGroup, setFormGroup] = useState('')
+  const [formHighRisk, setFormHighRisk] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -85,6 +89,11 @@ export default function QuickCommandsBar({ sessionId, onSendCommand, onShowToast
       onShowToast?.(`⚠ ${t('common.connectFirst')}`)
       return
     }
+    // 权限模型 v8：高风险命令在 autoEnter 直执行前强制二次确认
+    if (cmd.highRisk && autoEnter) {
+      const ok = window.confirm(t('quickCommands.highRiskConfirm', { command: cmd.command }))
+      if (!ok) return
+    }
     onSendCommand(cmd.command, autoEnter)
   }
 
@@ -93,6 +102,7 @@ export default function QuickCommandsBar({ sessionId, onSendCommand, onShowToast
     setFormName('')
     setFormCommand('')
     setFormGroup('')
+    setFormHighRisk(false)
     setFormOpen(true)
   }
 
@@ -101,6 +111,7 @@ export default function QuickCommandsBar({ sessionId, onSendCommand, onShowToast
     setFormName(c.name)
     setFormCommand(c.command)
     setFormGroup(c.group || '')
+    setFormHighRisk(c.highRisk === true)
     setFormOpen(true)
   }
 
@@ -114,7 +125,7 @@ export default function QuickCommandsBar({ sessionId, onSendCommand, onShowToast
     if (editingId !== null) {
       setCommands(prev => prev.map(c =>
         c.id === editingId
-          ? { ...c, name: formName.trim(), command: formCommand.trim(), group: formGroup.trim() || undefined }
+          ? { ...c, name: formName.trim(), command: formCommand.trim(), group: formGroup.trim() || undefined, highRisk: formHighRisk }
           : c
       ))
     } else {
@@ -125,6 +136,7 @@ export default function QuickCommandsBar({ sessionId, onSendCommand, onShowToast
         command: formCommand.trim(),
         group: formGroup.trim() || undefined,
         sort: maxSort + 1,
+        highRisk: formHighRisk,
       }])
     }
     setFormOpen(false)
@@ -211,6 +223,12 @@ export default function QuickCommandsBar({ sessionId, onSendCommand, onShowToast
                     placeholder={t('quickCommands.groupPlaceholder')}
                   />
                 </div>
+                <div className="form-group">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} title={t('quickCommands.highRiskHint')}>
+                    <input type="checkbox" checked={formHighRisk} onChange={e => setFormHighRisk(e.target.checked)} />
+                    <span style={{ color: 'red' }}>{t('quickCommands.highRisk')}</span>
+                  </label>
+                </div>
                 <div className="modal-actions">
                   <button type="button" className="quick-cmds-btn" onClick={() => setFormOpen(false)}>{t('common.cancel')}</button>
                   <button type="button" className="quick-cmds-btn primary" onClick={saveForm}>{t('common.save')}</button>
@@ -242,6 +260,7 @@ export default function QuickCommandsBar({ sessionId, onSendCommand, onShowToast
                         <div className="quick-cmds-item-name">
                           {c.name}
                           {c.group && <span className="quick-cmds-item-group">{c.group}</span>}
+                          {c.highRisk && <span className="quick-cmds-item-risk" title={t('quickCommands.highRiskHint')}>⚠</span>}
                         </div>
                         <div className="quick-cmds-item-cmd">{c.command}</div>
                       </div>

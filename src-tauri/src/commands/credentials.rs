@@ -9,6 +9,7 @@ fn parse_kind(s: &str) -> Result<CredKind, String> {
     match s {
         "password" => Ok(CredKind::Password),
         "passphrase" => Ok(CredKind::Passphrase),
+        "sudo_password" => Ok(CredKind::SudoPassword),
         _ => Err(format!("Unknown credential kind: {}", s)),
     }
 }
@@ -31,6 +32,13 @@ pub fn credential_get(config_id: String, kind: String) -> Result<Option<String>,
 #[tauri::command]
 pub fn credential_delete(config_id: String) -> Result<(), String> {
     credentials::store_delete(&config_id)
+}
+
+/// 删除单类凭据（如仅清除 sudo 密码，不影响 password/passphrase）。
+#[tauri::command]
+pub fn credential_delete_single(config_id: String, kind: String) -> Result<(), String> {
+    let kind = parse_kind(&kind)?;
+    credentials::store_delete_single(&config_id, kind)
 }
 
 /// 探测系统钥匙串可用性（Linux 无 D-Bus Secret Service 时返回 false）。

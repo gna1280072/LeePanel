@@ -49,6 +49,9 @@ pub async fn server_service_action(
     service: &str,
     action: &str,
 ) -> Result<String, String> {
+    // 权限模型 v8：参数白名单校验，防 systemctl 命令注入
+    crate::permissions::validate_service_name(service)?;
+    crate::permissions::validate_service_action(action)?;
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();

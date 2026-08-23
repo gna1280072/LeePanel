@@ -18,6 +18,9 @@ use std::sync::Mutex;
 pub enum CredKind {
     Password,
     Passphrase,
+    /// sudo 密码（权限模型 v8）：仅存钥匙串，明文永不落库；
+    /// auth_mode='sudo' 且 sudo_password_mode='keyring' 时连接自动加载到会话缓存。
+    SudoPassword,
 }
 
 impl CredKind {
@@ -25,6 +28,7 @@ impl CredKind {
         match self {
             CredKind::Password => "password",
             CredKind::Passphrase => "passphrase",
+            CredKind::SudoPassword => "sudo_password",
         }
     }
 }
@@ -113,10 +117,10 @@ pub fn store_delete_single(config_id: &str, kind: CredKind) -> Result<(), String
     }
 }
 
-/// 删除某连接的两类凭据；不存在视为成功。
+/// 删除某连接的全部三类凭据；不存在视为成功。
 pub fn store_delete(config_id: &str) -> Result<(), String> {
     let _guard = ENTRY_LOCK.lock().unwrap();
-    for kind in [CredKind::Password, CredKind::Passphrase] {
+    for kind in [CredKind::Password, CredKind::Passphrase, CredKind::SudoPassword] {
         #[cfg(test)]
         {
             MOCK_DB.lock().unwrap().remove(&mock_key(config_id, kind));

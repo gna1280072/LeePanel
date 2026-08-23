@@ -140,7 +140,15 @@
     "hidePassword": "隱藏密碼",
     "deleteConfirmMsg": "刪除 {{name}}？",
     "language": "語言",
-    "hostKeys": "主機指紋"
+    "hostKeys": "主機指紋",
+    "authMode": "連接模式",
+    "authModeRoot": "Root 直連",
+    "authModeSudo": "普通用戶 + Sudo",
+    "sudoPasswordMode": "Sudo 密碼策略",
+    "sudoPasswordAsk": "每次輸入",
+    "sudoPasswordKeyring": "保存到鑰匙圈",
+    "sudoPassword": "Sudo 密碼",
+    "enterSudoPassword": "輸入 Sudo 密碼"
   },
   "nav": {
     "dashboard": "儀表板",
@@ -182,7 +190,10 @@
     "maxReached": "最多支援 {{max}} 條命令",
     "autoEnter": "點擊後自動換行",
     "autoEnterHint": "開啟後點擊命令立即執行；關閉則只填入命令，確認後再按 Enter 執行。",
-    "manageTitle": "自訂快捷命令"
+    "manageTitle": "自訂快捷命令",
+    "highRisk": "高風險命令",
+    "highRiskHint": "執行前需二次確認",
+    "highRiskConfirm": "該命令已標記為高風險，確認執行？\n{{command}}"
   },
   "tunnel": {
     "title": "內網穿透 New~",
@@ -1146,5 +1157,12 @@
     "alreadyExists": "該指紋已存在",
     "added": "已新增指紋",
     "deleteTitle": "刪除指紋確認"
+  },
+  "sudoDialog": {
+    "title": "需要 Sudo 密碼",
+    "description": "此操作需要管理權限。請輸入 Sudo 密碼（僅本次會話使用）。",
+    "incorrect": "Sudo 密碼不正確，請重試。",
+    "password": "Sudo 密碼",
+    "passwordPlaceholder": "輸入 Sudo 密碼"
   }
 }

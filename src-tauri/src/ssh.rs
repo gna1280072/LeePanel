@@ -244,6 +244,8 @@ pub struct ConnectInfo {
     pub passphrase: Option<String>,
     pub cols: u32,
     pub rows: u32,
+    /// 权限模型 v8：'direct_root'（root 直连）/ 'sudo'（普通用户 + sudo）。
+    pub auth_mode: String,
 }
 
 struct ChannelOpen {
@@ -259,6 +261,11 @@ pub struct SshSession {
     pub connect_info: ConnectInfo,
     pub sftp_cache: Arc<tokio::sync::Mutex<Option<(Arc<russh_sftp::client::SftpSession>, tokio::time::Instant)>>>,
     pub forwarded_reg: Arc<std::sync::Mutex<HashMap<u32, mpsc::UnboundedSender<ForwardedTcpip>>>>,
+    /// 会话级 sudo 密码缓存（权限模型 v8）：
+    /// - auth_mode='sudo' 且 sudo_password_mode='keyring'：连接时从系统钥匙串自动加载；
+    /// - 否则为 None，首次 sudo 命令需要密码时由前端弹窗输入（ask 模式）；
+    /// - 明文只在本进程内流转，随会话销毁即释放。
+    pub sudo_password: Arc<tokio::sync::Mutex<Option<String>>>,
 }
 
 /// Controls pause/stop for active file transfers (save-to-local).
@@ -293,11 +300,13 @@ impl SshManager {
         password: Option<String>,
         key_path: Option<String>,
         passphrase: Option<String>,
+        auth_mode: String,
+        sudo_password: Option<String>,
         app_handle: AppHandle,
         cols: u32,
         rows: u32,
     ) -> Result<(), String> {
-        let session = Self::do_connect(session_id.clone(), host, port, username, password, key_path, passphrase, app_handle.clone(), cols, rows).await?;
+        let session = Self::do_connect(session_id.clone(), host, port, username, password, key_path, passphrase, auth_mode, sudo_password, app_handle.clone(), cols, rows).await?;
         self.sessions.write().unwrap().insert(session_id, session);
         Ok(())
     }
@@ -333,6 +342,8 @@ impl SshManager {
         password: Option<String>,
         key_path: Option<String>,
         passphrase: Option<String>,
+        auth_mode: String,
+        sudo_password: Option<String>,
         app_handle: AppHandle,
         cols: u32,
         rows: u32,
@@ -502,6 +513,7 @@ impl SshManager {
             passphrase: passphrase.clone(),
             cols,
             rows,
+            auth_mode: auth_mode.clone(),
         };
 
         let session = SshSession {
@@ -512,6 +524,7 @@ impl SshManager {
             connect_info,
             sftp_cache: Arc::new(tokio::sync::Mutex::new(None)),
             forwarded_reg,
+            sudo_password: Arc::new(tokio::sync::Mutex::new(sudo_password)),
         };
         Ok(session)
     }
@@ -552,6 +565,28 @@ impl SshManager {
     ) -> Result<(String, String, i32), String> {
         let session = self.get_session(session_id)?;
         session_exec_with_output(&session, cmd, timeout_secs).await
+    }
+
+    /// 权限模型 v8：设置会话级 sudo 密码（ask 模式弹窗输入后调用）。
+    /// `remember=true` 且 config_id 存在时同时写入系统钥匙串（keyring 模式持久化）。
+    pub async fn set_sudo_password(
+        &self,
+        session_id: &str,
+        password: String,
+        config_id: Option<String>,
+        remember: bool,
+    ) -> Result<(), String> {
+        let session = self.get_session(session_id)?;
+        {
+            let mut slot = session.sudo_password.lock().await;
+            *slot = Some(password.clone());
+        }
+        if remember {
+            if let Some(cid) = config_id {
+                crate::credentials::store_set(&cid, crate::credentials::CredKind::SudoPassword, &password)?;
+            }
+        }
+        Ok(())
     }
 
     async fn open_sftp(&self, session_id: &str) -> Result<Arc<russh_sftp::client::SftpSession>, String> {
@@ -1381,7 +1416,11 @@ impl SshManager {
     }
 
     pub async fn reconnect(&self, session_id: &str, app_handle: AppHandle) -> Result<(), String> {
-        let info = self.get_connect_info(session_id).ok_or("Session not found")?;
+        let session = self.get_session(session_id).map_err(|_| "Session not found".to_string())?;
+        let info = session.connect_info.clone();
+        // 权限模型 v8：沿用会话级 sudo 密码缓存（无则 None，ask 模式由前端重新输入）
+        let sudo_password = session.sudo_password.lock().await.clone();
+        drop(session);
         // ponytail: use AppHandle from command context — self.app_handle is never initialised
         self.disconnect(session_id).await.ok();
         // 120s: TCP (8s) + handshake (90s) may pause on host-key confirmation
@@ -1393,6 +1432,8 @@ impl SshManager {
             info.password,
             info.key_path,
             info.passphrase,
+            info.auth_mode,
+            sudo_password,
             app_handle,
             info.cols,
             info.rows,
@@ -1695,8 +1736,35 @@ pub async fn session_exec_with_output(
     cmd: &str,
     timeout_secs: u64,
 ) -> Result<(String, String, i32), String> {
+    // 权限模型 v8：auth_mode='sudo' 且非 root 身份 → 命令经 sudo -S 执行。
+    // 密码经 channel stdin 喂入（不拼进命令行，避免出现在远程 ps 进程列表）。
+    let needs_sudo = session.connect_info.auth_mode == "sudo"
+        && session.connect_info.username != "root";
+    let sudo_pw: Option<String> = if needs_sudo {
+        let pw = session.sudo_password.lock().await.clone();
+        if pw.is_none() {
+            // 约定错误码：前端捕获后弹窗输入 sudo 密码，再调用 ssh_set_sudo_password 重试
+            return Err("SUDO_PASSWORD_REQUIRED".to_string());
+        }
+        pw
+    } else {
+        None
+    };
+
     let mut channel = session_open_channel(session).await?;
-    channel.exec(true, cmd).await.map_err(|e| format!("Exec failed: {}", e))?;
+    if needs_sudo {
+        let wrapped = format!("sudo -S {}", cmd);
+        channel.exec(true, wrapped.as_str()).await.map_err(|e| format!("Exec failed: {}", e))?;
+        if let Some(pw) = sudo_pw {
+            let mut data = pw.into_bytes();
+            data.push(b'\n');
+            let mut cursor = Cursor::new(&data);
+            let _ = channel.data(&mut cursor).await;
+            let _ = channel.eof().await;
+        }
+    } else {
+        channel.exec(true, cmd).await.map_err(|e| format!("Exec failed: {}", e))?;
+    }
 
     let mut stdout = String::new();
     let mut stderr = String::new();
@@ -1727,6 +1795,11 @@ pub async fn session_exec_with_output(
                 return Err(format!("Command timed out after {}s", timeout_secs));
             }
         }
+    }
+
+    // sudo 密码错误的典型信号：sudo 把提示/错误写到 stderr（如 "incorrect password"）
+    if needs_sudo && exit_code != 0 && stderr.to_lowercase().contains("incorrect password") {
+        return Err("SUDO_PASSWORD_INCORRECT".to_string());
     }
 
     Ok((stdout, stderr, exit_code))

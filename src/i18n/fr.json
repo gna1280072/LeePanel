@@ -140,7 +140,15 @@
     "hidePassword": "Masquer le mot de passe",
     "deleteConfirmMsg": "Supprimer {{name}} ?",
     "language": "Langue",
-    "hostKeys": "Clés d'hôte"
+    "hostKeys": "Clés d'hôte",
+    "authMode": "Mode de connexion",
+    "authModeRoot": "Root direct",
+    "authModeSudo": "Utilisateur + Sudo",
+    "sudoPasswordMode": "Politique de mot de passe Sudo",
+    "sudoPasswordAsk": "Demander à chaque fois",
+    "sudoPasswordKeyring": "Enregistrer dans le trousseau",
+    "sudoPassword": "Mot de passe Sudo",
+    "enterSudoPassword": "Entrez le mot de passe Sudo"
   },
   "nav": {
     "dashboard": "Tableau de bord",
@@ -182,7 +190,10 @@
     "maxReached": "Maximum {{max}} commandes autorisées",
     "autoEnter": "Exécution auto après clic",
     "autoEnterHint": "Exécute la commande dès qu'un chip est cliqué. Désactivé : la saisit pour confirmation.",
-    "manageTitle": "Commandes rapides personnalisées"
+    "manageTitle": "Commandes rapides personnalisées",
+    "highRisk": "Commande à haut risque",
+    "highRiskHint": "Confirmation requise avant exécution",
+    "highRiskConfirm": "Cette commande est marquée à haut risque. L'exécuter ?\n{{command}}"
   },
   "tunnel": {
     "title": "Traversal NAT New~",
@@ -1146,5 +1157,12 @@
     "alreadyExists": "Cette empreinte existe déjà",
     "added": "Empreinte ajoutée",
     "deleteTitle": "Supprimer l'empreinte ?"
+  },
+  "sudoDialog": {
+    "title": "Mot de passe Sudo requis",
+    "description": "Cette opération nécessite des privilèges admin. Entrez le mot de passe Sudo (utilisé uniquement pour cette session).",
+    "incorrect": "Mot de passe Sudo incorrect, veuillez réessayer.",
+    "password": "Mot de passe Sudo",
+    "passwordPlaceholder": "Entrez le mot de passe Sudo"
   }
 }

@@ -188,6 +188,46 @@ pub fn init_db() -> Result<Mutex<SqliteConn>, String> {
         let _ = conn.execute_batch("ALTER TABLE connections ADD COLUMN has_passphrase INTEGER DEFAULT 0;");
     }
 
+    // v8: 权限模型 —— per-server 连接模式与 sudo 密码策略（幂等 ALTER TABLE）
+    // auth_mode: 'direct_root'（默认，root 直连）/ 'sudo'（普通用户 + sudo）
+    let has_auth_mode: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('connections') WHERE name='auth_mode'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_auth_mode {
+        let _ = conn.execute_batch("ALTER TABLE connections ADD COLUMN auth_mode TEXT NOT NULL DEFAULT 'direct_root';");
+    }
+
+    // sudo_password_mode: 'ask'（默认，每次输入）/ 'keyring'（保存到系统钥匙串，连接时自动加载）
+    let has_sudo_pw_mode: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('connections') WHERE name='sudo_password_mode'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_sudo_pw_mode {
+        let _ = conn.execute_batch("ALTER TABLE connections ADD COLUMN sudo_password_mode TEXT NOT NULL DEFAULT 'ask';");
+    }
+
+    // 标记：钥匙串中是否已保存 sudo 密码（明文永不落库）
+    let has_sudo_pw_marker: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('connections') WHERE name='has_sudo_password'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_sudo_pw_marker {
+        let _ = conn.execute_batch("ALTER TABLE connections ADD COLUMN has_sudo_password INTEGER DEFAULT 0;");
+    }
+
     // v3: add db_user column to db_credentials (ponytail: idempotent ALTER TABLE)
     let has_db_user: bool = conn
         .query_row(
@@ -218,7 +258,7 @@ pub fn init_db() -> Result<Mutex<SqliteConn>, String> {
 
     // Update schema version to latest
     conn.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', '7')",
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', '8')",
         [],
     ).map_err(|e| format!("Failed to update schema_version: {}", e))?;
 

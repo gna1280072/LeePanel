@@ -1,6 +1,7 @@
 mod config;
 mod credentials;
 mod db;
+mod permissions;
 mod server;
 mod ssh;
 mod tunnel;
@@ -72,6 +73,7 @@ pub fn run() {
             commands::ssh::ssh_compress, commands::ssh::ssh_extract, commands::ssh::ssh_reconnect,
             commands::ssh::ssh_generate_keypair, commands::ssh::save_key_to_local,
             commands::ssh::ssh_confirm_host_key,
+            commands::ssh::ssh_set_sudo_password, commands::ssh::ssh_generate_sudoers,
             // Known hosts (SSH server identity, TOFU)
             commands::config::known_hosts_list, commands::config::known_hosts_delete,
             commands::config::known_hosts_add, commands::config::known_hosts_import_from_ssh,
@@ -80,7 +82,8 @@ pub fn run() {
             commands::config::clear_proxy_env,
             // Credentials (system keyring)
             commands::credentials::credential_set, commands::credentials::credential_get,
-            commands::credentials::credential_delete, commands::credentials::credential_available,
+            commands::credentials::credential_delete, commands::credentials::credential_delete_single,
+            commands::credentials::credential_available,
             commands::credentials::credential_migration_count,
             // Settings
             commands::config::settings_load, commands::config::settings_save,

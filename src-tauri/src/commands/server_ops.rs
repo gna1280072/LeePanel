@@ -67,6 +67,9 @@ pub async fn server_toggle_site(
     domain: &str,
     enable: bool,
 ) -> Result<String, String> {
+    // 权限模型 v8：参数白名单校验，防站点命令注入
+    crate::permissions::validate_path(config_path)?;
+    crate::permissions::validate_domain(domain)?;
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
@@ -82,6 +85,8 @@ pub async fn server_delete_site(
     domain: &str,
     remove_files: bool,
 ) -> Result<String, String> {
+    // 权限模型 v8：参数白名单校验，防站点命令注入
+    crate::permissions::validate_domain(domain)?;
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
@@ -274,6 +279,10 @@ pub async fn server_firewall_add(
     action: &str,
     source: Option<&str>,
 ) -> Result<String, String> {
+    // 权限模型 v8：参数白名单校验，防防火墙命令注入
+    crate::permissions::validate_firewall_port(port)?;
+    crate::permissions::validate_firewall_protocol(protocol)?;
+    crate::permissions::validate_firewall_action(action)?;
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
@@ -292,6 +301,10 @@ pub async fn server_firewall_remove(
     action: &str,
     source: Option<&str>,
 ) -> Result<String, String> {
+    // 权限模型 v8：参数白名单校验，防防火墙命令注入
+    crate::permissions::validate_firewall_port(port)?;
+    crate::permissions::validate_firewall_protocol(protocol)?;
+    crate::permissions::validate_firewall_action(action)?;
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
@@ -649,6 +662,9 @@ pub async fn server_docker_container_action(
     container_id: &str,
     action: &str,
 ) -> Result<String, String> {
+    // 权限模型 v8：参数白名单校验，防 docker 命令注入
+    crate::permissions::validate_container_name(container_id)?;
+    crate::permissions::validate_container_action(action)?;
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
@@ -663,6 +679,8 @@ pub async fn server_docker_container_remove(
     container_id: &str,
     force: bool,
 ) -> Result<String, String> {
+    // 权限模型 v8：参数白名单校验，防 docker 命令注入
+    crate::permissions::validate_container_name(container_id)?;
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
@@ -763,6 +781,8 @@ pub async fn server_docker_image_remove(
     session_id: &str,
     image_id: &str,
 ) -> Result<String, String> {
+    // 权限模型 v8：参数白名单校验，防 docker 命令注入
+    crate::permissions::validate_container_name(image_id)?;
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();

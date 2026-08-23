@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useTranslation } from 'react-i18next'
+import { invokeWithSudo } from '../../sudoPrompt'
 import EditSite from './EditSite'
 import ServiceUnavailable from './ServiceUnavailable'
 
@@ -150,11 +151,11 @@ export default function SitesPanel({ sessionId, onOpenFolder, visible, onNavigat
     
     setDeleting(true)
     try {
-      await invoke('server_delete_site', {
+      await invokeWithSudo(() => invoke('server_delete_site', {
         sessionId,
         domain: deleteTarget.domain,
         removeFiles,
-      })
+      }), sessionId)
       setMsg(`Site ${deleteTarget.domain} deleted`)
       setDeleteTarget(null)
       setConfirmDomain('')

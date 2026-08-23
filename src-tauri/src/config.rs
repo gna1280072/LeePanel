@@ -20,6 +20,9 @@ pub struct Connection {
     /// 明文密钥口令 —— 同上，仅作输入。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub passphrase: Option<String>,
+    /// 明文 sudo 密码 —— 仅作"保存表单"输入（权限模型 v8）；list() 永不返回明文。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sudo_password: Option<String>,
     #[serde(default)]
     pub remember_me: bool,
     /// 标记：钥匙串中是否已保存对应凭据（list() 返回，供 UI 显示"已保存"状态）。
@@ -27,14 +30,26 @@ pub struct Connection {
     pub has_password: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub has_passphrase: Option<bool>,
+    /// 权限模型 v8：连接模式 —— 'direct_root'（root 直连，默认）/ 'sudo'（普通用户 + sudo）。
+    #[serde(default = "default_auth_mode")]
+    pub auth_mode: String,
+    /// sudo 密码策略 —— 'ask'（每次输入，默认）/ 'keyring'（保存钥匙串自动加载）。
+    #[serde(default = "default_sudo_password_mode")]
+    pub sudo_password_mode: String,
+    /// 标记：钥匙串中是否已保存 sudo 密码。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub has_sudo_password: Option<bool>,
 }
+
+fn default_auth_mode() -> String { "direct_root".to_string() }
+fn default_sudo_password_mode() -> String { "ask".to_string() }
 
 pub struct ConfigManager;
 
 impl ConfigManager {
     pub fn list(conn: &SqliteConn) -> Vec<Connection> {
         let mut stmt = conn
-            .prepare("SELECT id, name, host, port, username, auth_type, key_path, password, passphrase, remember_me, has_password, has_passphrase FROM connections ORDER BY name")
+            .prepare("SELECT id, name, host, port, username, auth_type, key_path, password, passphrase, remember_me, has_password, has_passphrase, COALESCE(auth_mode,'direct_root'), COALESCE(sudo_password_mode,'ask'), COALESCE(has_sudo_password,0) FROM connections ORDER BY name")
             .expect("prepare connections list");
         stmt.query_map([], |row| {
             // 标记列优先（新数据）；明文列仅作迁移前旧数据兼容推导，永不返回明文
@@ -56,9 +71,13 @@ impl ConfigManager {
                 key_path: row.get(6)?,
                 password: None,
                 passphrase: None,
+                sudo_password: None,
                 remember_me: row.get::<_, Option<i64>>(9)?.map(|v| v == 1).unwrap_or(false),
                 has_password: Some(has_password),
                 has_passphrase: Some(has_passphrase),
+                auth_mode: row.get(12)?,
+                sudo_password_mode: row.get(13)?,
+                has_sudo_password: Some(row.get::<_, i64>(14)? == 1),
             })
         })
         .expect("query connections")
@@ -72,9 +91,10 @@ impl ConfigManager {
         let remember_me = if c.remember_me { 1 } else { 0 };
         let has_password = if c.has_password.unwrap_or(false) { 1 } else { 0 };
         let has_passphrase = if c.has_passphrase.unwrap_or(false) { 1 } else { 0 };
+        let has_sudo_password = if c.has_sudo_password.unwrap_or(false) { 1 } else { 0 };
         conn.execute(
-            "INSERT OR REPLACE INTO connections (id, name, host, port, username, auth_type, key_path, password, passphrase, remember_me, has_password, has_passphrase) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-            params![c.id, c.name, c.host, c.port as i64, c.username, c.auth_type, c.key_path, None::<String>, None::<String>, remember_me, has_password, has_passphrase],
+            "INSERT OR REPLACE INTO connections (id, name, host, port, username, auth_type, key_path, password, passphrase, remember_me, has_password, has_passphrase, auth_mode, sudo_password_mode, has_sudo_password) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            params![c.id, c.name, c.host, c.port as i64, c.username, c.auth_type, c.key_path, None::<String>, None::<String>, remember_me, has_password, has_passphrase, c.auth_mode, c.sudo_password_mode, has_sudo_password],
         ).map_err(|e| format!("Save connection failed: {}", e))?;
         Ok(())
     }
@@ -282,7 +302,10 @@ mod tests {
                 port INTEGER NOT NULL DEFAULT 22, username TEXT NOT NULL DEFAULT 'root',
                 auth_type TEXT NOT NULL DEFAULT 'password', key_path TEXT, password TEXT,
                 passphrase TEXT, remember_me INTEGER DEFAULT 0,
-                has_password INTEGER DEFAULT 0, has_passphrase INTEGER DEFAULT 0
+                has_password INTEGER DEFAULT 0, has_passphrase INTEGER DEFAULT 0,
+                auth_mode TEXT NOT NULL DEFAULT 'direct_root',
+                sudo_password_mode TEXT NOT NULL DEFAULT 'ask',
+                has_sudo_password INTEGER DEFAULT 0
             );
             CREATE TABLE favorites (path TEXT PRIMARY KEY, name TEXT NOT NULL);
             CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
@@ -300,6 +323,7 @@ mod tests {
             port: 22, username: "root".into(), auth_type: "password".into(),
             key_path: None, password: Some("pass".into()), passphrase: None, remember_me: false,
             has_password: None, has_passphrase: None,
+            sudo_password: None, auth_mode: "direct_root".into(), sudo_password_mode: "ask".into(), has_sudo_password: None,
         };
         ConfigManager::save(&conn, &c).unwrap();
         let list = ConfigManager::list(&conn);
@@ -316,6 +340,7 @@ mod tests {
             port: 22, username: "root".into(), auth_type: "password".into(),
             key_path: None, password: None, passphrase: None, remember_me: false,
             has_password: None, has_passphrase: None,
+            sudo_password: None, auth_mode: "direct_root".into(), sudo_password_mode: "ask".into(), has_sudo_password: None,
         };
         ConfigManager::save(&conn, &c).unwrap();
         ConfigManager::delete(&conn, "1").unwrap();
@@ -331,6 +356,7 @@ mod tests {
             key_path: Some("/root/.ssh/id_rsa".into()), password: None, passphrase: Some("pp".into()), remember_me: true,
             // save() 的 has_* 标记由 command 层（config_save）根据钥匙串状态计算后传入
             has_password: Some(false), has_passphrase: Some(true),
+            sudo_password: None, auth_mode: "direct_root".into(), sudo_password_mode: "ask".into(), has_sudo_password: None,
         };
         ConfigManager::save(&conn, &c).unwrap();
         let list = ConfigManager::list(&conn);
@@ -349,6 +375,7 @@ mod tests {
             port: 22, username: "root".into(), auth_type: "password".into(),
             key_path: None, password: None, passphrase: None, remember_me: false,
             has_password: None, has_passphrase: None,
+            sudo_password: None, auth_mode: "direct_root".into(), sudo_password_mode: "ask".into(), has_sudo_password: None,
         };
         ConfigManager::save(&conn, &c).unwrap();
         ConfigManager::save_credentials(&conn, "1", "admin", "key", Some("/key"), None, Some("pp"), true).unwrap();

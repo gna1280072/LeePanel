@@ -1053,6 +1053,12 @@ body {
   padding: 0 6px;
   white-space: nowrap;
 }
+/* 权限模型 v8：高风险命令徽标 */
+.quick-cmds-item-risk {
+  font-size: 11px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
 .quick-cmds-item-cmd {
   font-family: monospace;
   font-size: 12px;

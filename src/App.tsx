@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import Sidebar from './components/Sidebar'
 import ServerPanel from './components/ServerPanel'
 import HostKeysDialog from './components/HostKeysDialog'
+import { SudoPasswordDialog } from './sudoPrompt'
 import type { TerminalHandle } from './components/Terminal'
 import './App.css'
 
@@ -42,6 +43,10 @@ interface SidebarConnection {
   // 标记：凭据是否已保存到系统钥匙串（config_list 返回，不返回明文）
   has_password?: boolean
   has_passphrase?: boolean
+  // 权限模型 v8：连接模式 + sudo 密码策略
+  auth_mode?: string
+  sudo_password_mode?: string
+  has_sudo_password?: boolean
 }
 
 interface Settings {
@@ -821,6 +826,8 @@ function App() {
             password: password || undefined, keyPath,
             passphrase: passphrase || undefined,
             configId: configId || undefined,
+            authMode: conn.auth_mode || 'direct_root',
+            sudoPasswordMode: conn.sudo_password_mode || 'ask',
             cols: estCols, rows: estRows,
           },
         }),
@@ -1134,6 +1141,9 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* 权限模型 v8：全局 sudo 密码弹窗（ask 模式） */}
+      <SudoPasswordDialog />
     </div>
   )
 }

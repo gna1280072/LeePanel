@@ -39,15 +39,33 @@ pub fn config_save(db: tauri::State<'_, DbPool>, connection: Connection) -> Resu
         // 取消"记住我" → 清理钥匙串残留（清理失败不阻塞保存，前端不再传 configId 不会误用）
         let _ = credentials::store_delete(&connection.id);
     }
+    // 1b. sudo 密码 → 系统钥匙串（权限模型 v8）
+    //     仅当 auth_mode='sudo' 且 sudo_password_mode='keyring' 时保存；
+    //     None=保持不变 | Some("")=清空 | Some(值)=覆盖
+    if connection.auth_mode == "sudo" && connection.sudo_password_mode == "keyring" {
+        if let Some(sp) = connection.sudo_password.as_deref() {
+            if sp.is_empty() {
+                credentials::store_delete_single(&connection.id, CredKind::SudoPassword)?;
+            } else {
+                credentials::store_set(&connection.id, CredKind::SudoPassword, sp)?;
+            }
+        }
+    } else {
+        // ask 模式 / 非 sudo 模式 → 清理钥匙串中的 sudo 密码（会话内按需输入仍然可用）
+        let _ = credentials::store_delete_single(&connection.id, CredKind::SudoPassword);
+    }
     // 2. 计算最终标记（以钥匙串当前状态为准；读取失败按无凭据降级，不阻塞连接保存）
     let has_password = credentials::store_get(&connection.id, CredKind::Password).unwrap_or(None).is_some();
     let has_passphrase = credentials::store_get(&connection.id, CredKind::Passphrase).unwrap_or(None).is_some();
+    let has_sudo_password = credentials::store_get(&connection.id, CredKind::SudoPassword).unwrap_or(None).is_some();
     // 3. DB 保存（仅元数据 + 标记，不含明文）
     let db_conn = Connection {
         password: None,
         passphrase: None,
+        sudo_password: None,
         has_password: Some(has_password),
         has_passphrase: Some(has_passphrase),
+        has_sudo_password: Some(has_sudo_password),
         ..connection
     };
     let conn = db.lock().unwrap();

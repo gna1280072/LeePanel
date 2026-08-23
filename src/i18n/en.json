@@ -140,7 +140,15 @@
     "hidePassword": "Hide password",
     "deleteConfirmMsg": "Delete {{name}}?",
     "language": "Language",
-    "hostKeys": "Host keys"
+    "hostKeys": "Host keys",
+    "authMode": "Connection mode",
+    "authModeRoot": "Root direct",
+    "authModeSudo": "User + Sudo",
+    "sudoPasswordMode": "Sudo password policy",
+    "sudoPasswordAsk": "Ask each time",
+    "sudoPasswordKeyring": "Save to keyring",
+    "sudoPassword": "Sudo password",
+    "enterSudoPassword": "Enter Sudo password"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -182,7 +190,10 @@
     "maxReached": "Up to {{max}} commands allowed",
     "autoEnter": "Auto-enter after click",
     "autoEnterHint": "Run the command immediately when a chip is clicked. Off: fill it in for review.",
-    "manageTitle": "Custom quick commands"
+    "manageTitle": "Custom quick commands",
+    "highRisk": "High-risk command",
+    "highRiskHint": "Requires confirmation before running",
+    "highRiskConfirm": "This command is marked as high-risk. Run it?\n{{command}}"
   },
   "tunnel": {
     "title": "NAT Traversal New~",
@@ -1146,5 +1157,12 @@
     "alreadyExists": "This fingerprint already exists",
     "added": "Fingerprint added",
     "deleteTitle": "Delete fingerprint?"
+  },
+  "sudoDialog": {
+    "title": "Sudo password required",
+    "description": "This operation requires admin privileges. Enter the Sudo password (used for this session only).",
+    "incorrect": "Incorrect Sudo password, please try again.",
+    "password": "Sudo password",
+    "passwordPlaceholder": "Enter Sudo password"
   }
 }

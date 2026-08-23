@@ -140,7 +140,15 @@
     "hidePassword": "隐藏密码",
     "deleteConfirmMsg": "删除 {{name}}？",
     "language": "语言",
-    "hostKeys": "主机指纹"
+    "hostKeys": "主机指纹",
+    "authMode": "连接模式",
+    "authModeRoot": "Root 直连",
+    "authModeSudo": "普通用户 + Sudo",
+    "sudoPasswordMode": "Sudo 密码策略",
+    "sudoPasswordAsk": "每次输入",
+    "sudoPasswordKeyring": "保存到钥匙串",
+    "sudoPassword": "Sudo 密码",
+    "enterSudoPassword": "输入 Sudo 密码"
   },
   "nav": {
     "dashboard": "仪表盘",
@@ -182,7 +190,10 @@
     "maxReached": "最多支持 {{max}} 条命令",
     "autoEnter": "点击后自动回车",
     "autoEnterHint": "开启后点击命令立即执行；关闭则只填入命令，确认后再回车执行。",
-    "manageTitle": "自定义快捷命令"
+    "manageTitle": "自定义快捷命令",
+    "highRisk": "高风险命令",
+    "highRiskHint": "执行前需二次确认",
+    "highRiskConfirm": "该命令已标记为高风险，确认执行？\n{{command}}"
   },
   "tunnel": {
     "title": "内网穿透 New~",
@@ -1146,5 +1157,12 @@
     "alreadyExists": "该指纹已存在",
     "added": "已添加指纹",
     "deleteTitle": "删除指纹确认"
+  },
+  "sudoDialog": {
+    "title": "需要 Sudo 密码",
+    "description": "此操作需要管理权限。请输入 Sudo 密码（仅本次会话使用）。",
+    "incorrect": "Sudo 密码不正确，请重试。",
+    "password": "Sudo 密码",
+    "passwordPlaceholder": "输入 Sudo 密码"
   }
 }

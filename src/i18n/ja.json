@@ -140,7 +140,15 @@
     "hidePassword": "パスワードを隠す",
     "deleteConfirmMsg": "{{name}} を削除しますか？",
     "language": "言語",
-    "hostKeys": "ホスト鍵"
+    "hostKeys": "ホスト鍵",
+    "authMode": "接続モード",
+    "authModeRoot": "Root 直接接続",
+    "authModeSudo": "一般ユーザー + Sudo",
+    "sudoPasswordMode": "Sudo パスワードポリシー",
+    "sudoPasswordAsk": "毎回入力",
+    "sudoPasswordKeyring": "キーリングに保存",
+    "sudoPassword": "Sudo パスワード",
+    "enterSudoPassword": "Sudo パスワードを入力"
   },
   "nav": {
     "dashboard": "ダッシュボード",
@@ -182,7 +190,10 @@
     "maxReached": "最大 {{max}} 件まで登録できます",
     "autoEnter": "クリック後に自動実行",
     "autoEnterHint": "オンにするとクリックで即実行。オフでは入力のみ行い、確認後に実行します。",
-    "manageTitle": "カスタムコマンド"
+    "manageTitle": "カスタムコマンド",
+    "highRisk": "高リスクコマンド",
+    "highRiskHint": "実行前に確認が必要",
+    "highRiskConfirm": "このコマンドは高リスクに設定されています。実行しますか？\n{{command}}"
   },
   "tunnel": {
     "title": "NATトラバーサル New~",
@@ -1146,5 +1157,12 @@
     "alreadyExists": "この指紋は既に存在します",
     "added": "指紋を追加しました",
     "deleteTitle": "指紋の削除確認"
+  },
+  "sudoDialog": {
+    "title": "Sudo パスワードが必要です",
+    "description": "この操作には管理者権限が必要です。Sudo パスワードを入力してください（このセッションのみ）。",
+    "incorrect": "Sudo パスワードが正しくありません。もう一度お試しください。",
+    "password": "Sudo パスワード",
+    "passwordPlaceholder": "Sudo パスワードを入力"
   }
 }

@@ -140,7 +140,15 @@
     "hidePassword": "Скрыть пароль",
     "deleteConfirmMsg": "Удалить {{name}}?",
     "language": "Язык",
-    "hostKeys": "Ключи хостов"
+    "hostKeys": "Ключи хостов",
+    "authMode": "Режим подключения",
+    "authModeRoot": "Root напрямую",
+    "authModeSudo": "Пользователь + Sudo",
+    "sudoPasswordMode": "Политика пароля Sudo",
+    "sudoPasswordAsk": "Спрашивать каждый раз",
+    "sudoPasswordKeyring": "Сохранить в связку ключей",
+    "sudoPassword": "Пароль Sudo",
+    "enterSudoPassword": "Введите пароль Sudo"
   },
   "nav": {
     "dashboard": "Панель управления",
@@ -182,7 +190,10 @@
     "maxReached": "Максимум {{max}} команд",
     "autoEnter": "Автовыполнение по клику",
     "autoEnterHint": "Выполнять команду сразу при клике. Выкл.: только вставить, затем подтвердить.",
-    "manageTitle": "Пользовательские быстрые команды"
+    "manageTitle": "Пользовательские быстрые команды",
+    "highRisk": "Команда высокого риска",
+    "highRiskHint": "Требуется подтверждение перед запуском",
+    "highRiskConfirm": "Эта команда помечена как высокорисковая. Выполнить?\n{{command}}"
   },
   "tunnel": {
     "title": "NAT-обход New~",
@@ -1146,5 +1157,12 @@
     "alreadyExists": "Этот отпечаток уже существует",
     "added": "Отпечаток добавлен",
     "deleteTitle": "Удалить отпечаток?"
+  },
+  "sudoDialog": {
+    "title": "Требуется пароль Sudo",
+    "description": "Для этой операции требуются права администратора. Введите пароль Sudo (только для этой сессии).",
+    "incorrect": "Неверный пароль Sudo, попробуйте ещё раз.",
+    "password": "Пароль Sudo",
+    "passwordPlaceholder": "Введите пароль Sudo"
   }
 }

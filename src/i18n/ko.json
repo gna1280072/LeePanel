@@ -140,7 +140,15 @@
     "hidePassword": "비밀번호 숨기기",
     "deleteConfirmMsg": "{{name}} 을(를) 삭제하시겠습니까?",
     "language": "언어",
-    "hostKeys": "호스트 키"
+    "hostKeys": "호스트 키",
+    "authMode": "연결 모드",
+    "authModeRoot": "Root 직접 연결",
+    "authModeSudo": "일반 사용자 + Sudo",
+    "sudoPasswordMode": "Sudo 비밀번호 정책",
+    "sudoPasswordAsk": "매번 입력",
+    "sudoPasswordKeyring": "키링에 저장",
+    "sudoPassword": "Sudo 비밀번호",
+    "enterSudoPassword": "Sudo 비밀번호 입력"
   },
   "nav": {
     "dashboard": "대시보드",
@@ -182,7 +190,10 @@
     "maxReached": "최대 {{max}}개 명령",
     "autoEnter": "클릭 후 자동 실행",
     "autoEnterHint": "켜면 칩 클릭 시 즉시 실행. 끄면 명령만 입력되고 확인 후 실행됩니다.",
-    "manageTitle": "사용자 지정 빠른 명령"
+    "manageTitle": "사용자 지정 빠른 명령",
+    "highRisk": "고위험 명령",
+    "highRiskHint": "실행 전 확인 필요",
+    "highRiskConfirm": "이 명령은 고위험으로 표시되었습니다. 실행하시겠습니까?\n{{command}}"
   },
   "tunnel": {
     "title": "NAT 트래버설 New~",
@@ -1146,5 +1157,12 @@
     "alreadyExists": "이 지문은 이미 존재합니다",
     "added": "지문이 추가되었습니다",
     "deleteTitle": "지문 삭제 확인"
+  },
+  "sudoDialog": {
+    "title": "Sudo 비밀번호 필요",
+    "description": "이 작업에는 관리자 권한이 필요합니다. Sudo 비밀번호를 입력하세요(이 세션에서만 사용).",
+    "incorrect": "Sudo 비밀번호가 올바르지 않습니다. 다시 시도하세요.",
+    "password": "Sudo 비밀번호",
+    "passwordPlaceholder": "Sudo 비밀번호 입력"
   }
 }

@@ -1474,6 +1474,20 @@ body {
   color: var(--text-heading);
 }
 
+.error-dialog-btn.danger {
+  background: var(--red-strong);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.error-dialog-btn.danger:hover {
+  background: var(--red-strong);
+  filter: brightness(1.15);
+}
+
+.hostkeys-confirm {
+  width: 380px;
+}
+
 .hostkey-info {
   margin: 4px 0 16px;
   padding: 12px 14px;

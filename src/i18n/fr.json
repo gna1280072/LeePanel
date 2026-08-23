@@ -1138,6 +1138,7 @@
     "fingerprintHint": "Obtenez-la depuis la console cloud, ou exécutez ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub sur le serveur",
     "invalidInput": "Veuillez saisir l'adresse du serveur et l'empreinte",
     "alreadyExists": "Cette empreinte existe déjà",
-    "added": "Empreinte ajoutée"
+    "added": "Empreinte ajoutée",
+    "deleteTitle": "Supprimer l'empreinte ?"
   }
 }

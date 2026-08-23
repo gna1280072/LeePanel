@@ -1138,6 +1138,7 @@
     "fingerprintHint": "클라우드 콘솔에서 가져오거나 서버에서 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub 실행",
     "invalidInput": "서버 주소와 지문을 입력하세요",
     "alreadyExists": "이 지문은 이미 존재합니다",
-    "added": "지문이 추가되었습니다"
+    "added": "지문이 추가되었습니다",
+    "deleteTitle": "지문 삭제 확인"
   }
 }

@@ -35,6 +35,7 @@ export default function HostKeysDialog({ open, onClose }: Props) {
   const [addKeyType, setAddKeyType] = useState(KEY_TYPES[0])
   const [addFingerprint, setAddFingerprint] = useState('')
   const [addError, setAddError] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState<{ host: string; keyType: string } | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -53,9 +54,9 @@ export default function HostKeysDialog({ open, onClose }: Props) {
   }, [open])
 
   const remove = async (host: string, keyType: string) => {
-    if (!window.confirm(t('hostKey.deleteConfirm'))) return
     try {
       await invoke('known_hosts_delete', { host, keyType })
+      setConfirmDelete(null)
       await load()
     } catch (e) {
       setError(String(e))
@@ -150,7 +151,7 @@ export default function HostKeysDialog({ open, onClose }: Props) {
               </div>
               <button
                 className="hostkeys-delete"
-                onClick={() => remove(it.host, it.key_type)}
+                onClick={() => setConfirmDelete({ host: it.host, keyType: it.key_type })}
                 title={t('common.delete')}
               >{t('common.delete')}</button>
             </div>
@@ -158,6 +159,26 @@ export default function HostKeysDialog({ open, onClose }: Props) {
         </div>
         <button className="error-dialog-btn secondary" onClick={onClose}>{t('common.close')}</button>
       </div>
+
+      {/* Delete confirmation modal — prevent accidental removal */}
+      {confirmDelete && (
+        <div className="error-dialog-overlay" onClick={() => setConfirmDelete(null)}>
+          <div className="error-dialog hostkeys-confirm" onClick={(e) => e.stopPropagation()}>
+            <button className="error-dialog-close" onClick={() => setConfirmDelete(null)}>×</button>
+            <div className="error-dialog-icon">⚠️</div>
+            <div className="error-dialog-title">{t('hostKey.deleteTitle')}</div>
+            <div className="error-dialog-message">{t('hostKey.deleteConfirm')}</div>
+            <div className="hostkey-info">
+              <div className="hostkey-info-row"><span>{t('hostKey.host')}</span><b>{confirmDelete.host}</b></div>
+              <div className="hostkey-info-row"><span>{t('hostKey.algorithm')}</span><b>{confirmDelete.keyType}</b></div>
+            </div>
+            <div className="error-dialog-actions">
+              <button className="error-dialog-btn secondary" onClick={() => setConfirmDelete(null)}>{t('common.cancel')}</button>
+              <button className="error-dialog-btn danger" onClick={() => remove(confirmDelete.host, confirmDelete.keyType)}>{t('common.delete')}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

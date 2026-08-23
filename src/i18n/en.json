@@ -1138,6 +1138,7 @@
     "fingerprintHint": "Get it from the cloud console, or run ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub on the server",
     "invalidInput": "Please fill in the server address and fingerprint",
     "alreadyExists": "This fingerprint already exists",
-    "added": "Fingerprint added"
+    "added": "Fingerprint added",
+    "deleteTitle": "Delete fingerprint?"
   }
 }

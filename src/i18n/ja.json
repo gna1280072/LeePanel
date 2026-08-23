@@ -1138,6 +1138,7 @@
     "fingerprintHint": "クラウドコンソールで取得するか、サーバーで ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub を実行してください",
     "invalidInput": "サーバーアドレスと指紋を入力してください",
     "alreadyExists": "この指紋は既に存在します",
-    "added": "指紋を追加しました"
+    "added": "指紋を追加しました",
+    "deleteTitle": "指紋の削除確認"
   }
 }

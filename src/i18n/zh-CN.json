@@ -1138,6 +1138,7 @@
     "fingerprintHint": "可从云厂商控制台获取，或登录服务器执行 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub",
     "invalidInput": "请填写服务器地址和指纹",
     "alreadyExists": "该指纹已存在",
-    "added": "已添加指纹"
+    "added": "已添加指纹",
+    "deleteTitle": "删除指纹确认"
   }
 }

@@ -1138,6 +1138,7 @@
     "fingerprintHint": "Obtenha no console da nuvem ou execute ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub no servidor",
     "invalidInput": "Preencha o endereço do servidor e a impressão digital",
     "alreadyExists": "Esta impressão digital já existe",
-    "added": "Impressão digital adicionada"
+    "added": "Impressão digital adicionada",
+    "deleteTitle": "Excluir impressão digital?"
   }
 }

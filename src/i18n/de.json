@@ -1138,6 +1138,7 @@
     "fingerprintHint": "Aus der Cloud-Konsole holen oder auf dem Server ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub ausführen",
     "invalidInput": "Bitte Serveradresse und Fingerabdruck eingeben",
     "alreadyExists": "Dieser Fingerabdruck existiert bereits",
-    "added": "Fingerabdruck hinzugefügt"
+    "added": "Fingerabdruck hinzugefügt",
+    "deleteTitle": "Fingerabdruck löschen?"
   }
 }

@@ -1138,6 +1138,7 @@
     "fingerprintHint": "احصل عليها من لوحة التحكم السحابية أو نفّذ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub على الخادم",
     "invalidInput": "يرجى إدخال عنوان الخادم والبصمة",
     "alreadyExists": "هذه البصمة موجودة بالفعل",
-    "added": "تمت إضافة البصمة"
+    "added": "تمت إضافة البصمة",
+    "deleteTitle": "حذف البصمة؟"
   }
 }

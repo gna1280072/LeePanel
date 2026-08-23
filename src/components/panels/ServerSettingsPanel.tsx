@@ -51,6 +51,10 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
   const [keyDeployLoading, setKeyDeployLoading] = useState(false)
   const [keyMessage, setKeyMessage] = useState('')
   const [keyError, setKeyError] = useState('')
+  // Key passphrase dialog — user may leave it empty for an unencrypted key
+  const [keyPassphraseDialog, setKeyPassphraseDialog] = useState(false)
+  const [keyPassphrase, setKeyPassphrase] = useState('')
+  const [showKeyPassphrase, setShowKeyPassphrase] = useState(false)
 
   // App settings editing state
   const [reconnectIntervalInput, setReconnectIntervalInput] = useState<string>('')
@@ -259,14 +263,27 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
     }
   }
 
-  // Generate key pair
+  // Generate key pair — first ask whether to protect the key with a passphrase (optional)
   const handleGenerateKey = async () => {
+    setKeyPassphrase('')
+    setShowKeyPassphrase(false)
+    setKeyError('')
+    setKeyMessage('')
+    setKeyPassphraseDialog(true)
+  }
+
+  const confirmGenerateKey = async () => {
+    setKeyPassphraseDialog(false)
     setKeyGenLoading(true)
     setKeyError('')
     setKeyMessage('')
     try {
-      const kp = await invoke<SshKeyPair>('ssh_generate_keypair', { algorithm: keyAlgorithm })
+      const kp = await invoke<SshKeyPair>('ssh_generate_keypair', {
+        algorithm: keyAlgorithm,
+        passphrase: keyPassphrase || null,
+      })
       setKeyPair(kp)
+      if (keyPassphrase) setKeyMessage(t('settings.keyPassphraseSet'))
     } catch (e) {
       setKeyError(String(e))
     } finally {
@@ -630,6 +647,51 @@ export default function ServerSettingsPanel({ sessionId, appSettings, onToggleAu
           </div>
         </div>
       </div>
+
+      {/* Key Passphrase Dialog — ask before generating; leave empty for unencrypted key */}
+      {keyPassphraseDialog && (
+        <div className="fb-dialog-overlay" onClick={() => setKeyPassphraseDialog(false)}>
+          <div className="fb-dialog reboot-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="modal-close-btn"
+              onClick={() => setKeyPassphraseDialog(false)}
+              title={t('common.close')}
+            >×</button>
+            <div className="fb-dialog-title">{t('settings.keyPassphraseDialogTitle')}</div>
+            <div className="reboot-confirm-msg">{t('settings.keyPassphraseHint')}</div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 12 }}>
+              <input
+                className="sidebar-edit-input"
+                style={{ flex: 1 }}
+                type={showKeyPassphrase ? 'text' : 'password'}
+                value={keyPassphrase}
+                onChange={(e) => setKeyPassphrase(e.target.value)}
+                placeholder={t('settings.keyPassphrasePlaceholder')}
+                autoFocus
+              />
+              <button
+                className="sidebar-edit-action-btn"
+                onClick={() => setShowKeyPassphrase(!showKeyPassphrase)}
+                title={showKeyPassphrase ? t('sidebar.hidePassword') : t('sidebar.showPassword')}
+              >{showKeyPassphrase ? '🙈' : '👁'}</button>
+            </div>
+            <div className="fb-dialog-actions">
+              <button
+                className="fb-dialog-btn"
+                onClick={() => setKeyPassphraseDialog(false)}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                className="fb-dialog-btn primary"
+                onClick={confirmGenerateKey}
+              >
+                {t('settings.generateKey')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Reboot Confirm Dialog */}
       {rebootConfirm.show && (

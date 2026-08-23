@@ -11,6 +11,7 @@ interface SoftwareInfo {
   version: string
   service_name: string
   running: boolean
+  config_path: string
 }
 
 interface SoftwareRepoProps {
@@ -500,7 +501,13 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
     switch (sw.name) {
       case 'nginx': return '/etc/nginx/nginx.conf'
       case 'mysql': return '/etc/mysql/my.cnf'
-      case 'postgresql': return `/etc/postgresql/${sw.version}/main/postgresql.conf`
+      case 'postgresql': {
+        // ponytail: prefer server-resolved real path (handles multi-cluster / non-apt layouts)
+        if (sw.config_path) return sw.config_path
+        // fallback: Debian/Ubuntu layout, major version only (psql -V reports e.g. 15.19)
+        if (sw.version) return `/etc/postgresql/${sw.version.split('.')[0]}/main/postgresql.conf`
+        return ''
+      }
       case 'redis': return '/etc/redis/redis.conf'
       case 'memcached': return '/etc/memcached.conf'
       case 'docker': return '/etc/docker/daemon.json'
@@ -563,9 +570,9 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
     { key: 'web', label: t('software.webServer') },
     // ponytail: database category restored (only MySQL/MariaDB removed, Redis/PostgreSQL/Memcached kept)
     { key: 'database', label: t('software.database') },
+    { key: 'container', label: t('software.container') },
     { key: 'runtime', label: t('software.runtime') },
     { key: 'tools', label: t('software.tools') },
-    { key: 'container', label: t('software.container') },
     { key: 'custom', label: t('software.customCategory') },
   ]
 

@@ -1707,7 +1707,7 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
         </div>
 
         <div className="fb-search-box">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="#656d76"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242.656a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/></svg>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="var(--text-muted)"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242.656a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/></svg>
           <input
             className="fb-search-input"
             placeholder={t('files.searchPlaceholder')}

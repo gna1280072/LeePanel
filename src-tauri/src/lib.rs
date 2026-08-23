@@ -1,4 +1,5 @@
 mod config;
+mod credentials;
 mod db;
 mod server;
 mod ssh;
@@ -13,6 +14,11 @@ use tauri::Manager;
 use tokio::sync::Mutex as AsyncMutex;
 
 type DbPool = std::sync::Mutex<SqliteConn>;
+
+/// Pending host-key confirmation callbacks: session_id -> oneshot sender(bool = trusted).
+/// Registered during the SSH handshake, resolved by `ssh_confirm_host_key`.
+pub(crate) type HostKeyPending =
+    std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<bool>>>>;
 
 // ===== App Entry =====
 
@@ -42,7 +48,16 @@ pub fn run() {
 
             // Initialize SQLite database
             let db = db::init_db().expect("Failed to initialize database");
+            // 凭据安全迁移：历史明文凭据 → 系统钥匙串（幂等；失败仅告警，不阻断启动）
+            if let Err(e) = db::migrate_credentials(&db) {
+                log::warn!("Credential migration failed: {}", e);
+            }
             app.manage(db);
+
+            // Pending host-key confirmations (TOFU known_hosts)
+            let host_key_pending: HostKeyPending =
+                std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+            app.manage(host_key_pending);
 
             Ok(())
         })
@@ -56,9 +71,17 @@ pub fn run() {
             commands::ssh::ssh_download_to_local, commands::ssh::ssh_save_as_local, commands::ssh::ssh_save_pause, commands::ssh::ssh_save_resume, commands::ssh::ssh_save_stop,
             commands::ssh::ssh_compress, commands::ssh::ssh_extract, commands::ssh::ssh_reconnect,
             commands::ssh::ssh_generate_keypair, commands::ssh::save_key_to_local,
+            commands::ssh::ssh_confirm_host_key,
+            // Known hosts (SSH server identity, TOFU)
+            commands::config::known_hosts_list, commands::config::known_hosts_delete,
+            commands::config::known_hosts_add, commands::config::known_hosts_import_from_ssh,
             // Config
             commands::config::config_list, commands::config::config_save, commands::config::config_delete, commands::config::config_save_credentials,
             commands::config::clear_proxy_env,
+            // Credentials (system keyring)
+            commands::credentials::credential_set, commands::credentials::credential_get,
+            commands::credentials::credential_delete, commands::credentials::credential_available,
+            commands::credentials::credential_migration_count,
             // Settings
             commands::config::settings_load, commands::config::settings_save,
             // Data Directory

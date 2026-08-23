@@ -932,8 +932,8 @@ export default function TunnelPanel({ sessionId, serverHost, connUsername: _conn
                 ) : gpStatus.enabled ? (
                   <div style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    gap: '8px', background: 'rgba(35, 134, 54, 0.1)',
-                    border: '1px solid rgba(35, 134, 54, 0.3)',
+                    gap: '8px', background: 'var(--green-soft)',
+                    border: '1px solid var(--green-soft-strong)',
                     borderRadius: '6px', padding: '10px 12px', flexWrap: 'wrap',
                   }}>
                     <span style={{ fontSize: '12px', color: 'var(--green)', lineHeight: 1.6, minWidth: 0 }}>
@@ -951,8 +951,8 @@ export default function TunnelPanel({ sessionId, serverHost, connUsername: _conn
                 ) : (
                   <div style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    gap: '8px', background: 'rgba(218, 54, 51, 0.08)',
-                    border: '1px solid rgba(218, 54, 51, 0.3)',
+                    gap: '8px', background: 'var(--red-soft)',
+                    border: '1px solid var(--red-soft-strong)',
                     borderRadius: '6px', padding: '10px 12px', flexWrap: 'wrap',
                   }}>
                     <span style={{ fontSize: '12px', color: 'var(--red)', lineHeight: 1.6, minWidth: 0 }}>
@@ -974,10 +974,10 @@ export default function TunnelPanel({ sessionId, serverHost, connUsername: _conn
                     style={{
                       fontSize: '12px', marginTop: '8px', padding: '8px 12px', borderRadius: '6px', lineHeight: 1.6,
                       ...(dlgGpMsgType === 'error'
-                        ? { background: 'rgba(218, 54, 51, 0.1)', border: '1px solid rgba(218, 54, 51, 0.3)', color: 'var(--red)' }
+                        ? { background: 'var(--red-soft)', border: '1px solid var(--red-soft-strong)', color: 'var(--red)' }
                         : dlgGpMsgType === 'warn'
-                          ? { background: 'rgba(210, 153, 34, 0.1)', border: '1px solid rgba(210, 153, 34, 0.35)', color: 'var(--yellow)' }
-                          : { background: 'rgba(35, 134, 54, 0.1)', border: '1px solid rgba(35, 134, 54, 0.3)', color: 'var(--green)' }),
+                          ? { background: 'var(--yellow-soft)', border: '1px solid var(--yellow-soft-strong)', color: 'var(--yellow)' }
+                          : { background: 'var(--green-soft)', border: '1px solid var(--green-soft-strong)', color: 'var(--green)' }),
                     }}
                   >
                     {dlgGpMsg}
@@ -1063,7 +1063,7 @@ export default function TunnelPanel({ sessionId, serverHost, connUsername: _conn
             {reconnectAction === 'enable' && (
               <div style={{
                 fontSize: '12px', color: 'var(--yellow)', lineHeight: 1.7,
-                background: 'rgba(210, 153, 34, 0.1)', border: '1px solid rgba(210, 153, 34, 0.35)',
+                background: 'var(--yellow-soft)', border: '1px solid var(--yellow-soft-strong)',
                 borderRadius: '6px', padding: '10px 12px', marginBottom: '12px',
               }}>
                 {t('tunnel.reconnectRisk')}

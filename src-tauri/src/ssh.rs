@@ -8,7 +8,9 @@ use russh::ChannelMsg;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{mpsc, Mutex};
 
+use crate::db::KnownHostsManager;
 use crate::tunnel::TunnelManager;
+use crate::{DbPool, HostKeyPending};
 
 // ===== SSH Response Cache =====
 
@@ -68,6 +70,31 @@ fn parse_curl_progress(line: &str) -> Option<f64> {
     None
 }
 
+/// Detect whether a private key file is passphrase-encrypted by inspecting its header.
+/// Covers both PEM ("Proc-Type: 4,ENCRYPTED" / "BEGIN ENCRYPTED PRIVATE KEY") and
+/// OpenSSH formats ("BEGIN OPENSSH PRIVATE KEY" + ciphername != "none").
+fn key_file_is_encrypted(path: &str) -> Result<bool, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read key file: {}", e))?;
+    let head = &content[..content.len().min(8192)];
+    // PEM (traditional / PKCS#8 encrypted) formats
+    if head.contains("Proc-Type: 4,ENCRYPTED") || head.contains("BEGIN ENCRYPTED PRIVATE KEY") {
+        return Ok(true);
+    }
+    // OpenSSH format: header lists the cipher; "none" means unencrypted
+    if head.contains("BEGIN OPENSSH PRIVATE KEY") {
+        if let Some(idx) = head.find("ciphername") {
+            let rest = &head[idx + "ciphername".len()..];
+            let trimmed = rest.trim_start_matches(|c: char| c == ':' || c == ' ' || c == '\t');
+            let name: String = trimmed.chars().take_while(|c| !c.is_whitespace() && *c != '\n').collect();
+            if !name.is_empty() && name != "none" {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
 /// A connection the server forwarded to us (remote forwarding, ssh -R).
 /// Handed to the matching remote tunnel via the forwarded_reg channel.
 pub struct ForwardedTcpip {
@@ -78,6 +105,100 @@ pub struct SshHandler {
     /// Remote-forward registrations: server listen port -> tunnel receiver.
     /// The server names the port in server_channel_open_forwarded_tcpip.
     pub forwarded_reg: Arc<std::sync::Mutex<HashMap<u32, mpsc::UnboundedSender<ForwardedTcpip>>>>,
+    /// Host key verifier (TOFU known_hosts). Always present for connections made via
+    /// do_connect; `None` means verification is disabled → reject by default.
+    pub host_key_verifier: Option<HostKeyVerifier>,
+}
+
+/// Host key verification state for a single connection attempt (TOFU known_hosts).
+#[derive(Clone)]
+pub struct HostKeyVerifier {
+    pub app_handle: AppHandle,
+    pub host: String,
+    pub port: u16,
+    pub session_id: String,
+    /// session_id -> oneshot sender awaiting the user's trust decision (frontend callback).
+    pub pending: HostKeyPending,
+}
+
+impl HostKeyVerifier {
+    /// Verify the server host key against the app's known_hosts store.
+    ///
+    /// - Already trusted & fingerprint matches  → Ok(true), refresh last_seen
+    /// - Known host but fingerprint changed      → emit `host-key-changed`, Ok(false) (hard reject)
+    /// - First contact (TOFU)                    → emit `host-key-confirm`, await user decision
+    pub async fn check(&self, key: &russh_keys::key::PublicKey) -> Result<bool, russh::Error> {
+        let fingerprint = key.fingerprint(); // SHA256 base64 (no "SHA256:" prefix)
+        let key_type = key.name().to_string();
+        let host = self.host.clone();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        let db = self.app_handle.state::<DbPool>();
+        let conn = db.inner();
+
+        let known = {
+            let guard = conn.lock().unwrap();
+            KnownHostsManager::find(&guard, &host, &key_type)
+        };
+
+        match known {
+            Some(k) if k.fingerprint == fingerprint => {
+                // ✅ Already trusted and unchanged — silent pass
+                let guard = conn.lock().unwrap();
+                let _ = KnownHostsManager::touch(&guard, &host, &key_type, now);
+                Ok(true)
+            }
+            Some(_) => {
+                // ❌ Key changed — possible MITM. Hard reject.
+                let _ = self.app_handle.emit(
+                    "host-key-changed",
+                    serde_json::json!({
+                        "sessionId": self.session_id,
+                        "host": self.host,
+                        "port": self.port,
+                        "keyType": key_type,
+                        "fingerprint": format!("SHA256:{}", fingerprint),
+                    }),
+                );
+                Ok(false)
+            }
+            None => {
+                // 🆕 First contact (TOFU) — ask the user to confirm the fingerprint
+                let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
+                self.pending.lock().unwrap().insert(self.session_id.clone(), tx);
+                let _ = self.app_handle.emit(
+                    "host-key-confirm",
+                    serde_json::json!({
+                        "sessionId": self.session_id,
+                        "host": self.host,
+                        "port": self.port,
+                        "keyType": key_type,
+                        "fingerprint": format!("SHA256:{}", fingerprint),
+                    }),
+                );
+                match rx.await {
+                    Ok(true) => {
+                        // User trusted the key → persist it
+                        let key_blob = {
+                            use russh_keys::PublicKeyBase64;
+                            key.public_key_base64()
+                        };
+                        let guard = conn.lock().unwrap();
+                        let _ = KnownHostsManager::insert(&guard, &host, &key_type, &fingerprint, &key_blob, now);
+                        Ok(true)
+                    }
+                    _ => {
+                        // User rejected / dialog closed / channel dropped
+                        self.pending.lock().unwrap().remove(&self.session_id);
+                        Ok(false)
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -86,9 +207,13 @@ impl Handler for SshHandler {
 
     async fn check_server_key(
         &mut self,
-        _server_public_key: &russh_keys::key::PublicKey,
+        server_public_key: &russh_keys::key::PublicKey,
     ) -> Result<bool, Self::Error> {
-        Ok(true)
+        // TOFU known_hosts verification; no verifier → reject (secure default).
+        match &self.host_key_verifier {
+            Some(v) => v.check(server_public_key).await,
+            None => Ok(false),
+        }
     }
 
     /// Remote forwarding: the server opens a channel for a new incoming connection.
@@ -116,6 +241,7 @@ pub struct ConnectInfo {
     pub username: String,
     pub password: Option<String>,
     pub key_path: Option<String>,
+    pub passphrase: Option<String>,
     pub cols: u32,
     pub rows: u32,
 }
@@ -166,11 +292,12 @@ impl SshManager {
         username: String,
         password: Option<String>,
         key_path: Option<String>,
+        passphrase: Option<String>,
         app_handle: AppHandle,
         cols: u32,
         rows: u32,
     ) -> Result<(), String> {
-        let session = Self::do_connect(session_id.clone(), host, port, username, password, key_path, app_handle.clone(), cols, rows).await?;
+        let session = Self::do_connect(session_id.clone(), host, port, username, password, key_path, passphrase, app_handle.clone(), cols, rows).await?;
         self.sessions.write().unwrap().insert(session_id, session);
         Ok(())
     }
@@ -205,12 +332,24 @@ impl SshManager {
         username: String,
         password: Option<String>,
         key_path: Option<String>,
+        passphrase: Option<String>,
         app_handle: AppHandle,
         cols: u32,
         rows: u32,
     ) -> Result<SshSession, String> {
+        // ponytail: normalize empty passphrase to None — russh-keys treats Some("") as
+        // "try to decrypt", which misparses unencrypted PKCS#8 keys (DER tag error at byte 2)
+        let passphrase = passphrase.filter(|p| !p.is_empty());
+        let pending = app_handle.state::<HostKeyPending>().inner().clone();
         let handler = SshHandler {
             forwarded_reg: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            host_key_verifier: Some(HostKeyVerifier {
+                app_handle: app_handle.clone(),
+                host: host.clone(),
+                port,
+                session_id: session_id.clone(),
+                pending,
+            }),
         };
         let forwarded_reg = handler.forwarded_reg.clone();
         let mut ssh_config = client::Config::default();
@@ -220,16 +359,44 @@ impl SshManager {
         ssh_config.inactivity_timeout = Some(std::time::Duration::from_secs(60));
         let config = Arc::new(ssh_config);
         let addr_str = format!("{}:{}", host, port);
-        // ponytail: 15s timeout for TCP+SSH handshake — prevents indefinite hang on unreachable servers
-        let mut sh = tokio::time::timeout(std::time::Duration::from_secs(15), client::connect(config, &addr_str, handler))
-            .await
-            .map_err(|_| format!("Connection timeout: {}:{} unreachable", host, port))?
-            .map_err(|e| format!("Connection failed: {}", e))?;
+        // Host key verification flow: 1) TCP connect 8s fast-fail; 2) SSH handshake up to 90s
+        // (handshake may pause while the user confirms a first-contact host key fingerprint).
+        let stream = tokio::time::timeout(
+            std::time::Duration::from_secs(8),
+            tokio::net::TcpStream::connect(&addr_str),
+        )
+        .await
+        .map_err(|_| format!("Connection timeout: {}:{} unreachable", host, port))?
+        .map_err(|e| format!("Connection failed: {}", e))?;
+
+        let mut sh = tokio::time::timeout(
+            std::time::Duration::from_secs(90),
+            client::connect_stream(config, stream, handler),
+        )
+        .await
+        .map_err(|_| format!("SSH handshake timeout: {}:{}", host, port))?
+        .map_err(|e| format!("Connection failed: {}", e))?;
 
         // Authenticate
         if let Some(ref kp) = key_path {
-            let key = russh_keys::load_secret_key(kp, None)
-                .map_err(|e| format!("Failed to load key: {}", e))?;
+            // Pre-check: if the key is passphrase-encrypted and no passphrase was provided,
+            // fail fast with a clear message (instead of russh's raw "The key is encrypted")
+            let key_encrypted = key_file_is_encrypted(kp)
+                .map_err(|e| format!("Failed to read key file: {}", e))?;
+            if passphrase.is_none() && key_encrypted {
+                return Err("Key file is encrypted but no passphrase was provided".to_string());
+            }
+            let key = russh_keys::load_secret_key(kp, passphrase.as_deref())
+                .map_err(|e| {
+                    // The key file is intact and passphrase-encrypted, so a load failure with a
+                    // passphrase supplied almost certainly means the passphrase is wrong —
+                    // surface a friendly, unambiguous error instead of russh's raw message
+                    if key_encrypted {
+                        format!("Incorrect passphrase: failed to decrypt the key ({})", e)
+                    } else {
+                        format!("Failed to load key: {}", e)
+                    }
+                })?;
             let auth_ok = sh.authenticate_publickey(&username, Arc::new(key))
                 .await
                 .map_err(|e| format!("Key auth error: {}", e))?;
@@ -332,6 +499,7 @@ impl SshManager {
             username: username.clone(),
             password: password.clone(),
             key_path: key_path.clone(),
+            passphrase: passphrase.clone(),
             cols,
             rows,
         };
@@ -1216,20 +1384,22 @@ impl SshManager {
         let info = self.get_connect_info(session_id).ok_or("Session not found")?;
         // ponytail: use AppHandle from command context — self.app_handle is never initialised
         self.disconnect(session_id).await.ok();
-        let result = tokio::time::timeout(std::time::Duration::from_secs(30), self.connect(
+        // 120s: TCP (8s) + handshake (90s) may pause on host-key confirmation
+        let result = tokio::time::timeout(std::time::Duration::from_secs(120), self.connect(
             session_id.to_string(),
             info.host,
             info.port,
             info.username,
             info.password,
             info.key_path,
+            info.passphrase,
             app_handle,
             info.cols,
             info.rows,
         )).await;
         match result {
             Ok(r) => r,
-            Err(_) => Err("Reconnect timed out (30s)".to_string()),
+            Err(_) => Err("Reconnect timed out (120s)".to_string()),
         }
     }
 }

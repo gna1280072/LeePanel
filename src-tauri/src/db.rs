@@ -1,4 +1,4 @@
-use rusqlite::Connection as SqliteConn;
+pub use rusqlite::Connection as SqliteConn;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -107,6 +107,16 @@ pub fn init_db() -> Result<Mutex<SqliteConn>, String> {
             note TEXT NOT NULL DEFAULT ''
         );
 
+        CREATE TABLE IF NOT EXISTS known_hosts (
+            host TEXT NOT NULL,
+            key_type TEXT NOT NULL,
+            fingerprint TEXT NOT NULL,
+            key_blob TEXT NOT NULL DEFAULT '',
+            first_seen INTEGER NOT NULL,
+            last_seen INTEGER NOT NULL,
+            PRIMARY KEY (host, key_type)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_tunnels_server_key ON tunnels(server_key);"
     ).map_err(|e| format!("Failed to create tables: {}", e))?;
 
@@ -135,6 +145,47 @@ pub fn init_db() -> Result<Mutex<SqliteConn>, String> {
     
     if !has_remember_me {
         let _ = conn.execute_batch("ALTER TABLE connections ADD COLUMN remember_me INTEGER DEFAULT 0;");
+    }
+
+    // v5: add passphrase column to connections (idempotent ALTER TABLE — encrypted SSH key passphrase)
+    let has_passphrase: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('connections') WHERE name='passphrase'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+    if !has_passphrase {
+        let _ = conn.execute_batch("ALTER TABLE connections ADD COLUMN passphrase TEXT;");
+    }
+
+    // v6: add has_password/has_passphrase marker columns to connections
+    // (keyring migration — marks whether a credential exists in the system keyring;
+    //  legacy plaintext rows are synced to the markers during migrate_credentials)
+    let has_marker_password: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('connections') WHERE name='has_password'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_marker_password {
+        let _ = conn.execute_batch("ALTER TABLE connections ADD COLUMN has_password INTEGER DEFAULT 0;");
+    }
+
+    let has_marker_passphrase: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('connections') WHERE name='has_passphrase'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_marker_passphrase {
+        let _ = conn.execute_batch("ALTER TABLE connections ADD COLUMN has_passphrase INTEGER DEFAULT 0;");
     }
 
     // v3: add db_user column to db_credentials (ponytail: idempotent ALTER TABLE)
@@ -167,11 +218,103 @@ pub fn init_db() -> Result<Mutex<SqliteConn>, String> {
 
     // Update schema version to latest
     conn.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', '4')",
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', '7')",
         [],
     ).map_err(|e| format!("Failed to update schema_version: {}", e))?;
 
     Ok(Mutex::new(conn))
+}
+
+/// 凭据安全迁移（一次性，幂等）：把 connections 表中的历史明文 password/passphrase
+/// 搬入系统钥匙串，成功后清空明文列并写入标记。
+///
+/// 策略：钥匙串不可用 → 跳过并记录 `credential_migration=unavailable`（下次启动重试）；
+/// 写入失败 → 中止并返回 Err（保留明文，不破坏数据）；迁移前自动备份 DB 文件。
+/// 返回迁移的凭据条数（password/passphrase 各计 1 条），供前端展示"已迁移"提示。
+pub fn migrate_credentials(db: &Mutex<SqliteConn>) -> Result<usize, String> {
+    use crate::credentials::{self, CredKind};
+    use rusqlite::params;
+
+    let conn = db.lock().unwrap();
+
+    // 幂等：已成功迁移或正在 unavailable 状态（避免每启动都全表扫描；unavailable 也跳过，
+    // 由"钥匙串恢复"场景手动重试——见下）
+    let state: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'credential_migration'",
+            [],
+            |r| r.get(0),
+        )
+        .ok();
+    if state.as_deref() == Some("done") || state.as_deref() == Some("unavailable") {
+        return Ok(0);
+    }
+
+    if !credentials::store_available() {
+        let _ = conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('credential_migration', 'unavailable')",
+            [],
+        );
+        return Ok(0);
+    }
+
+    // 扫描仍有明文的连接
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, password, passphrase FROM connections \
+             WHERE (password IS NOT NULL AND password != '') OR (passphrase IS NOT NULL AND passphrase != '')",
+        )
+        .map_err(|e| format!("Failed to scan credentials: {}", e))?;
+    let rows: Vec<(String, Option<String>, Option<String>)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .map_err(|e| format!("Failed to scan credentials: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if rows.is_empty() {
+        // 无明文可迁移，直接标记完成
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('credential_migration', 'done')",
+            [],
+        )
+        .map_err(|e| format!("Failed to record migration state: {}", e))?;
+        return Ok(0);
+    }
+
+    // 有明文待迁移 → 先备份 DB（WAL 模式已开启，复制文件安全）
+    let bak = db_path().with_extension("db.bak");
+    std::fs::copy(db_path(), &bak).map_err(|e| format!("Failed to back up database: {}", e))?;
+
+    let mut migrated = 0usize;
+    for (id, pw, pp) in rows {
+        if let Some(p) = pw.as_deref().filter(|p| !p.is_empty()) {
+            credentials::store_set(&id, CredKind::Password, p)?; // 失败即中止，保留明文可回滚
+            migrated += 1;
+        }
+        if let Some(p) = pp.as_deref().filter(|p| !p.is_empty()) {
+            credentials::store_set(&id, CredKind::Passphrase, p)?;
+            migrated += 1;
+        }
+        let has_password = pw.as_deref().is_some_and(|p| !p.is_empty());
+        let has_passphrase = pp.as_deref().is_some_and(|p| !p.is_empty());
+        conn.execute(
+            "UPDATE connections SET has_password = ?1, has_passphrase = ?2, password = NULL, passphrase = NULL WHERE id = ?3",
+            params![has_password, has_passphrase, id],
+        )
+        .map_err(|e| format!("Failed to clear migrated credentials: {}", e))?;
+    }
+
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('credential_migration', 'done')",
+        [],
+    )
+    .map_err(|e| format!("Failed to record migration state: {}", e))?;
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('credential_migration_count', ?1)",
+        params![migrated as i64],
+    )
+    .map_err(|e| format!("Failed to record migration count: {}", e))?;
+    Ok(migrated)
 }
 
 // ===== File Browser Favorites =====
@@ -625,6 +768,116 @@ impl TunnelStore {
     }
 }
 
+// ===== Known Hosts (SSH server identity) =====
+
+/// A trusted SSH server host key (TOFU known_hosts).
+/// `fingerprint` is the raw SHA-256 base64 (no "SHA256:" prefix) — prefix only when displaying.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct KnownHost {
+    pub host: String,
+    pub key_type: String,
+    pub fingerprint: String,
+    pub first_seen: i64,
+    pub last_seen: i64,
+}
+
+pub struct KnownHostsManager;
+
+impl KnownHostsManager {
+    /// Look up a trusted key for (host, key_type). Returns None if never seen.
+    pub fn find(conn: &SqliteConn, host: &str, key_type: &str) -> Option<KnownHost> {
+        let mut stmt = conn.prepare(
+            "SELECT host, key_type, fingerprint, first_seen, last_seen FROM known_hosts WHERE host = ?1 AND key_type = ?2"
+        ).ok()?;
+        stmt.query_row(rusqlite::params![host, key_type], |row| {
+            Ok(KnownHost {
+                host: row.get(0)?,
+                key_type: row.get(1)?,
+                fingerprint: row.get(2)?,
+                first_seen: row.get(3)?,
+                last_seen: row.get(4)?,
+            })
+        }).ok()
+    }
+
+    /// Record a newly trusted key (first confirmed connection). Idempotent upsert.
+    pub fn insert(conn: &SqliteConn, host: &str, key_type: &str, fingerprint: &str, key_blob: &str, now: i64) -> Result<(), String> {
+        conn.execute(
+            "INSERT OR REPLACE INTO known_hosts (host, key_type, fingerprint, key_blob, first_seen, last_seen) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+            rusqlite::params![host, key_type, fingerprint, key_blob, now],
+        ).map_err(|e| format!("Failed to insert known host: {}", e))?;
+        Ok(())
+    }
+
+    /// Insert only if (host, key_type) does not already exist (used by imports —
+    /// never overwrite an existing trusted fingerprint). Returns true if inserted.
+    pub fn insert_if_absent(conn: &SqliteConn, host: &str, key_type: &str, fingerprint: &str, key_blob: &str, now: i64) -> Result<bool, String> {
+        let exists: bool = conn.query_row(
+            "SELECT COUNT(*) FROM known_hosts WHERE host = ?1 AND key_type = ?2",
+            rusqlite::params![host, key_type],
+            |r| r.get::<_, i64>(0),
+        ).unwrap_or(0) > 0;
+        if exists {
+            return Ok(false);
+        }
+        conn.execute(
+            "INSERT INTO known_hosts (host, key_type, fingerprint, key_blob, first_seen, last_seen) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+            rusqlite::params![host, key_type, fingerprint, key_blob, now],
+        ).map_err(|e| format!("Failed to insert known host: {}", e))?;
+        Ok(true)
+    }
+
+    /// Update last_seen after a successful verification.
+    pub fn touch(conn: &SqliteConn, host: &str, key_type: &str, now: i64) -> Result<(), String> {
+        conn.execute(
+            "UPDATE known_hosts SET last_seen = ?1 WHERE host = ?2 AND key_type = ?3",
+            rusqlite::params![now, host, key_type],
+        ).map_err(|e| format!("Failed to update known host: {}", e))?;
+        Ok(())
+    }
+
+    /// Delete a trusted key (used when the server legitimately replaced its key).
+    pub fn delete(conn: &SqliteConn, host: &str, key_type: &str) -> Result<(), String> {
+        conn.execute(
+            "DELETE FROM known_hosts WHERE host = ?1 AND key_type = ?2",
+            rusqlite::params![host, key_type],
+        ).map_err(|e| format!("Failed to delete known host: {}", e))?;
+        Ok(())
+    }
+
+    /// Delete all trusted keys for a host (server reinstall / reset).
+    pub fn delete_host(conn: &SqliteConn, host: &str) -> Result<(), String> {
+        conn.execute(
+            "DELETE FROM known_hosts WHERE host = ?1",
+            rusqlite::params![host],
+        ).map_err(|e| format!("Failed to delete known host: {}", e))?;
+        Ok(())
+    }
+
+    /// List all trusted keys, ordered by host then key type.
+    pub fn list(conn: &SqliteConn) -> Vec<KnownHost> {
+        let mut stmt = match conn.prepare(
+            "SELECT host, key_type, fingerprint, first_seen, last_seen FROM known_hosts ORDER BY host, key_type"
+        ) {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        let rows = match stmt.query_map([], |row| {
+            Ok(KnownHost {
+                host: row.get(0)?,
+                key_type: row.get(1)?,
+                fingerprint: row.get(2)?,
+                first_seen: row.get(3)?,
+                last_seen: row.get(4)?,
+            })
+        }) {
+            Ok(rows) => rows,
+            Err(_) => return Vec::new(),
+        };
+        rows.filter_map(|r| r.ok()).collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -638,7 +891,8 @@ mod tests {
              CREATE TABLE db_remarks (server_host TEXT NOT NULL, db_name TEXT NOT NULL, remark TEXT NOT NULL DEFAULT '', PRIMARY KEY(server_host, db_name));
              CREATE TABLE db_credentials (server_host TEXT NOT NULL, db_name TEXT NOT NULL, db_user TEXT NOT NULL DEFAULT '', password TEXT NOT NULL DEFAULT '', access_type TEXT NOT NULL DEFAULT 'local', allowed_ip TEXT NOT NULL DEFAULT '', PRIMARY KEY(server_host, db_name));
              CREATE TABLE site_metadata (server_host TEXT NOT NULL, domain TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(server_host, domain));
-             CREATE TABLE custom_software (server_host TEXT NOT NULL, package_name TEXT NOT NULL, display_name TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'other', PRIMARY KEY(server_host, package_name));"
+             CREATE TABLE custom_software (server_host TEXT NOT NULL, package_name TEXT NOT NULL, display_name TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'other', PRIMARY KEY(server_host, package_name));
+             CREATE TABLE known_hosts (host TEXT NOT NULL, key_type TEXT NOT NULL, fingerprint TEXT NOT NULL, key_blob TEXT NOT NULL DEFAULT '', first_seen INTEGER NOT NULL, last_seen INTEGER NOT NULL, PRIMARY KEY(host, key_type));"
         ).unwrap();
         conn
     }
@@ -845,15 +1099,78 @@ mod tests {
         assert_eq!(ts, 1000); // returns original, not 2000
     }
 
+    // ===== KnownHostsManager =====
+
     #[test]
-    fn site_metadata_list_and_delete() {
+    fn known_hosts_insert_find_and_touch() {
         let conn = test_conn();
-        SiteMetadataManager::save_or_get_created_at(&conn, "host1", "a.com", 100).unwrap();
-        SiteMetadataManager::save_or_get_created_at(&conn, "host1", "b.com", 200).unwrap();
-        let list = SiteMetadataManager::list_for_server(&conn, "host1");
+        KnownHostsManager::insert(&conn, "host1", "ssh-ed25519", "ABC123", "blob1", 1000).unwrap();
+        let kh = KnownHostsManager::find(&conn, "host1", "ssh-ed25519").unwrap();
+        assert_eq!(kh.fingerprint, "ABC123");
+        assert_eq!(kh.first_seen, 1000);
+        assert_eq!(kh.last_seen, 1000);
+        KnownHostsManager::touch(&conn, "host1", "ssh-ed25519", 2000).unwrap();
+        let kh = KnownHostsManager::find(&conn, "host1", "ssh-ed25519").unwrap();
+        assert_eq!(kh.last_seen, 2000);
+        assert_eq!(kh.first_seen, 1000); // first_seen preserved
+    }
+
+    #[test]
+    fn known_hosts_multi_key_type_isolation() {
+        let conn = test_conn();
+        KnownHostsManager::insert(&conn, "host1", "ssh-ed25519", "F1", "b1", 1000).unwrap();
+        KnownHostsManager::insert(&conn, "host1", "ssh-rsa", "F2", "b2", 1000).unwrap();
+        assert_eq!(KnownHostsManager::find(&conn, "host1", "ssh-ed25519").unwrap().fingerprint, "F1");
+        assert_eq!(KnownHostsManager::find(&conn, "host1", "ssh-rsa").unwrap().fingerprint, "F2");
+        // 不存在 (host, key_type) 组合返回 None
+        assert!(KnownHostsManager::find(&conn, "host1", "ecdsa-sha2-nistp256").is_none());
+        assert!(KnownHostsManager::find(&conn, "host2", "ssh-ed25519").is_none());
+    }
+
+    #[test]
+    fn known_hosts_upsert_replaces_fingerprint() {
+        let conn = test_conn();
+        KnownHostsManager::insert(&conn, "host1", "ssh-ed25519", "OLD", "b1", 1000).unwrap();
+        KnownHostsManager::insert(&conn, "host1", "ssh-ed25519", "NEW", "b2", 1500).unwrap();
+        let kh = KnownHostsManager::find(&conn, "host1", "ssh-ed25519").unwrap();
+        assert_eq!(kh.fingerprint, "NEW");
+        assert_eq!(kh.first_seen, 1500); // INSERT OR REPLACE 重置 first_seen（预期行为）
+    }
+
+    #[test]
+    fn known_hosts_delete_and_delete_host() {
+        let conn = test_conn();
+        KnownHostsManager::insert(&conn, "host1", "ssh-ed25519", "F1", "b1", 1000).unwrap();
+        KnownHostsManager::insert(&conn, "host1", "ssh-rsa", "F2", "b2", 1000).unwrap();
+        KnownHostsManager::insert(&conn, "host2", "ssh-ed25519", "F3", "b3", 1000).unwrap();
+        KnownHostsManager::delete(&conn, "host1", "ssh-ed25519").unwrap();
+        assert!(KnownHostsManager::find(&conn, "host1", "ssh-ed25519").is_none());
+        assert!(KnownHostsManager::find(&conn, "host1", "ssh-rsa").is_some()); // 其他 key_type 保留
+        KnownHostsManager::delete_host(&conn, "host1").unwrap();
+        assert!(KnownHostsManager::find(&conn, "host1", "ssh-rsa").is_none());
+        assert!(KnownHostsManager::find(&conn, "host2", "ssh-ed25519").is_some()); // 其他 host 保留
+    }
+
+    #[test]
+    fn known_hosts_list_sorted() {
+        let conn = test_conn();
+        KnownHostsManager::insert(&conn, "host2", "ssh-ed25519", "F2", "b2", 1000).unwrap();
+        KnownHostsManager::insert(&conn, "host1", "ssh-rsa", "F1", "b1", 1000).unwrap();
+        let list = KnownHostsManager::list(&conn);
         assert_eq!(list.len(), 2);
-        SiteMetadataManager::delete(&conn, "host1", "a.com").unwrap();
-        let list = SiteMetadataManager::list_for_server(&conn, "host1");
-        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].host, "host1");
+        assert_eq!(list[1].host, "host2");
+    }
+
+    #[test]
+    fn known_hosts_insert_if_absent_preserves_existing() {
+        let conn = test_conn();
+        KnownHostsManager::insert(&conn, "host1", "ssh-ed25519", "ORIG", "b1", 1000).unwrap();
+        // 已存在 → 不覆盖，返回 false
+        assert!(!KnownHostsManager::insert_if_absent(&conn, "host1", "ssh-ed25519", "EVIL", "b2", 2000).unwrap());
+        assert_eq!(KnownHostsManager::find(&conn, "host1", "ssh-ed25519").unwrap().fingerprint, "ORIG");
+        // 新条目 → 插入，返回 true
+        assert!(KnownHostsManager::insert_if_absent(&conn, "host1", "ssh-rsa", "NEW", "b3", 2000).unwrap());
+        assert_eq!(KnownHostsManager::find(&conn, "host1", "ssh-rsa").unwrap().fingerprint, "NEW");
     }
 }

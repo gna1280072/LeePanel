@@ -1,5 +1,6 @@
 pub mod ssh;
 pub mod config;
+pub mod credentials;
 pub mod server;
 pub mod server_ops;
 pub mod fb;

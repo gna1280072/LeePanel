@@ -5,6 +5,7 @@ import { check, type Update } from '@tauri-apps/plugin-updater'
 import { useTranslation } from 'react-i18next'
 import Sidebar from './components/Sidebar'
 import ServerPanel from './components/ServerPanel'
+import HostKeysDialog from './components/HostKeysDialog'
 import type { TerminalHandle } from './components/Terminal'
 import './App.css'
 
@@ -36,7 +37,11 @@ interface SidebarConnection {
   auth_type: string
   key_path?: string
   password?: string
+  passphrase?: string
   remember_me?: boolean
+  // 标记：凭据是否已保存到系统钥匙串（config_list 返回，不返回明文）
+  has_password?: boolean
+  has_passphrase?: boolean
 }
 
 interface Settings {
@@ -74,8 +79,14 @@ function App() {
   const [showWelcome, setShowWelcome] = useState(false)
   const termRefMap = useRef(new Map<string, TerminalHandle | null>())
   const activeTermRef = useRef<TerminalHandle | null>(null)
-  const [errorDialog, setErrorDialog] = useState<{ visible: boolean; message: string; type: 'auth' | 'network' | 'connection' | 'other' } | null>(null)
+  const [errorDialog, setErrorDialog] = useState<{ visible: boolean; type: 'auth' | 'network' | 'connection' | 'key' | 'hostKey' | 'hostKeyChanged' | 'other'; messageKey?: string; params?: Record<string, string>; message?: string } | null>(null)
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null)
+  // TOFU host-key verification (first-contact confirmation / key-changed warning)
+  const [hostKeyPrompt, setHostKeyPrompt] = useState<{ sessionId: string; host: string; port: number; keyType: string; fingerprint: string } | null>(null)
+  const [hostKeyChangedWarn, setHostKeyChangedWarn] = useState<{ host: string; port: number; keyType: string; fingerprint: string } | null>(null)
+  const [showHostKeysDialog, setShowHostKeysDialog] = useState(false)
+  // Set when the host-key-changed warning is shown — suppress the generic error dialog for the same failure
+  const hostKeyChangedHandledRef = useRef(false)
 
   // Settings
   const [settings, setSettings] = useState<Settings>({
@@ -95,6 +106,10 @@ function App() {
   // ponytail: ref for close_tab_on_disconnect to avoid stale closures in useEffect handlers
   const closeTabOnDisconnectRef = useRef(false)
   const manualDisconnectRef = useRef(false)
+  // ponytail: session-scoped passphrase fallback (configId -> passphrase). Passphrases are
+  // persisted to SQLite when remember_me is on; this cache only covers in-session edits that
+  // haven't been saved yet (e.g. fresh create/edit then immediate connect)
+  const passphraseCacheRef = useRef(new Map<string, string>())
   // ponytail: sessions that initiated normal reboot — skip auto-reconnect on disconnect
   const normalRebootSessionsRef = useRef(new Set<string>())
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0)
@@ -465,11 +480,12 @@ function App() {
 
   const [jumpToPath, setJumpToPath] = useState<string | null>(null)
 
-  const handleCreateConnection = async (data: { name: string; host: string; port: number; username: string; auth_type: string; key_path?: string; password?: string; remember_me?: boolean }) => {
+  const handleCreateConnection = async (data: { name: string; host: string; port: number; username: string; auth_type: string; key_path?: string; password?: string; passphrase?: string; remember_me?: boolean }) => {
     // Save the new connection
+    const newId = Date.now().toString()
     await invoke('config_save', {
       connection: {
-        id: Date.now().toString(),
+        id: newId,
         name: data.name,
         host: data.host,
         port: data.port,
@@ -477,9 +493,12 @@ function App() {
         auth_type: data.auth_type,
         key_path: data.key_path,
         password: data.password,
+        passphrase: data.passphrase,
         remember_me: data.remember_me || false,
       },
     })
+    // Keep passphrase in session memory (not persisted) so immediate connect works
+    if (data.passphrase) passphraseCacheRef.current.set(newId, data.passphrase)
     setSidebarRefreshKey(k => k + 1)
   }
 
@@ -527,6 +546,23 @@ function App() {
       autoReconnectRef.current = s.auto_reconnect
       closeTabOnDisconnectRef.current = s.close_tab_on_disconnect ?? false
       closeTabOnDisconnectRef.current = s.close_tab_on_disconnect ?? false
+    }).catch(() => {})
+    // 探测系统钥匙串可用性：不可用时降级提示（凭据仅存本次会话）
+    invoke<boolean>('credential_available').then(ok => {
+      if (!ok) showToast(t('common.keyringUnavailable'))
+      else {
+        // 首次迁移提示：历史明文凭据已搬入系统钥匙串（仅提示一次，用 localStorage 去重）
+        try {
+          if (!localStorage.getItem('leepanel_cred_migration_notified')) {
+            invoke<number>('credential_migration_count').then(n => {
+              if (n > 0) {
+                localStorage.setItem('leepanel_cred_migration_notified', '1')
+                showToast(t('common.credentialsMigrated', { count: String(n) }))
+              }
+            }).catch(() => {})
+          }
+        } catch { /* localStorage 不可用时静默跳过 */ }
+      }
     }).catch(() => {})
     // ponytail: auto-check for updates on startup, ask user before downloading
     Promise.race([
@@ -651,32 +687,104 @@ function App() {
 
   // Disconnect SSH session after LNMP installation (environment changes require fresh session)
 
-  const classifyError = (errorMsg: string): { type: 'auth' | 'network' | 'connection' | 'other'; message: string } => {
+  const classifyError = (errorMsg: string): { type: 'auth' | 'network' | 'connection' | 'key' | 'hostKey' | 'hostKeyChanged' | 'other'; messageKey?: string; params?: Record<string, string>; message?: string } => {
     const s = errorMsg.toLowerCase()
+    
+    // Host key verification errors (TOFU known_hosts)
+    // russh returns "Unknown server key" when check_server_key rejects the key
+    // (first-contact user rejection, or key change — the latter also emits a dedicated event)
+    if (s.includes('unknown server key')) {
+      return { type: 'hostKey', messageKey: 'errorDialog.hostKeyRejected' }
+    }
+    if (s.includes('host key') && (s.includes('changed') || s.includes('mismatch'))) {
+      return { type: 'hostKeyChanged', messageKey: 'errorDialog.hostKeyChanged' }
+    }
     
     // Authentication errors
     if (s.includes('auth failed') || s.includes('auth error') || s.includes('authentication') || 
         s.includes('no authentication') || s.includes('permission denied') || s.includes('invalid password')) {
-      return { type: 'auth', message: 'Authentication failed. Please check your username and password.' }
+      return { type: 'auth', messageKey: 'errorDialog.authFailed' }
     }
     
     // Network errors
     if (s.includes('timeout') || s.includes('timed out') || s.includes('network unreachable')) {
-      return { type: 'network', message: 'Connection timed out. Please check network connectivity.' }
+      return { type: 'network', messageKey: 'errorDialog.networkTimeout' }
     }
     
     // Connection refused
     if (s.includes('connection refused') || s.includes('host unreachable')) {
-      return { type: 'connection', message: 'Connection refused. Server may be offline or port is incorrect.' }
+      return { type: 'connection', messageKey: 'errorDialog.connectionRefused' }
+    }
+    
+    // Wrong key passphrase — the key file is intact but decryption failed
+    if (s.includes('passphrase')) {
+      return { type: 'key', messageKey: 'errorDialog.wrongPassphrase' }
+    }
+
+    // Encrypted key without passphrase — tell the user to add it in connection settings
+    if (s.includes('encrypted')) {
+      return { type: 'key', messageKey: 'errorDialog.keyEncrypted' }
     }
     
     // Key file errors
     if (s.includes('key') && (s.includes('not found') || s.includes('invalid'))) {
-      return { type: 'auth', message: 'SSH key file not found or invalid.' }
+      return { type: 'auth', messageKey: 'errorDialog.keyNotFound' }
     }
     
-    // Default
+    // Default: raw passthrough
     return { type: 'other', message: errorMsg }
+  }
+
+  // Listen for host-key events from the backend (TOFU known_hosts verification).
+  // - host-key-confirm: first contact → show fingerprint dialog; user decision is sent
+  //   back via ssh_confirm_host_key, which resolves the paused handshake.
+  // - host-key-changed: recorded key differs → hard reject; show MITM warning.
+  useEffect(() => {
+    let cancelled = false
+    const unlistens: Array<() => void> = []
+    listen<{ sessionId: string; host: string; port: number; keyType: string; fingerprint: string }>(
+      'host-key-confirm',
+      (event) => {
+        if (cancelled) return
+        setHostKeyPrompt({
+          sessionId: event.payload.sessionId,
+          host: event.payload.host,
+          port: event.payload.port,
+          keyType: event.payload.keyType,
+          fingerprint: event.payload.fingerprint,
+        })
+      },
+    ).then((fn) => { if (cancelled) fn(); else unlistens.push(fn) })
+    listen<{ sessionId: string; host: string; port: number; keyType: string; fingerprint: string }>(
+      'host-key-changed',
+      (event) => {
+        if (cancelled) return
+        hostKeyChangedHandledRef.current = true
+        // Close any generic error dialog that raced ahead — the dedicated warning is authoritative
+        setErrorDialog(null)
+        setHostKeyChangedWarn({
+          host: event.payload.host,
+          port: event.payload.port,
+          keyType: event.payload.keyType,
+          fingerprint: event.payload.fingerprint,
+        })
+      },
+    ).then((fn) => { if (cancelled) fn(); else unlistens.push(fn) })
+    return () => { cancelled = true; unlistens.forEach((fn) => fn()) }
+  }, [])
+
+  const confirmHostKey = () => {
+    if (!hostKeyPrompt) return
+    const sid = hostKeyPrompt.sessionId
+    setHostKeyPrompt(null)
+    invoke('ssh_confirm_host_key', { sessionId: sid, trusted: true }).catch(() => {})
+  }
+
+  const rejectHostKey = () => {
+    if (!hostKeyPrompt) return
+    const sid = hostKeyPrompt.sessionId
+    setHostKeyPrompt(null)
+    invoke('ssh_confirm_host_key', { sessionId: sid, trusted: false }).catch(() => {})
   }
 
   const handleSelectConnection = (conn: SidebarConnection) => {
@@ -693,7 +801,7 @@ function App() {
       return
     }
 
-    const doConnect = (username: string, password?: string, keyPath?: string) => {
+    const doConnect = (username: string, password?: string, keyPath?: string, passphrase?: string, configId?: string) => {
       setConnectingServerId(conn.id)
       setError('')
       const hostKey = `${conn.host}_${conn.port}`
@@ -702,13 +810,20 @@ function App() {
       const estCols = Math.max(80, Math.floor((window.innerWidth - (sidebarVisible ? sidebarWidth + 10 : 40) - 20) / 8.4))
       const estRows = Math.max(24, Math.floor((window.innerHeight - 100) / 17))
       // ponytail: parallel SSH + DB read → no flash, correct page rendered immediately
+      // 凭据策略：前端显式传入的 password/passphrase 为会话级覆盖（优先）；
+      // 未传入时 Rust 端按 configId 从系统钥匙串读取（已保存凭据不进前端）
+      // NOTE: no client-side timeout here — the backend splits TCP connect (8s) from the
+      // SSH handshake (90s), and the handshake may pause on first-contact host-key confirmation.
       Promise.all([
-        Promise.race([
-          invoke<string>('ssh_connect', {
-            config: { host: conn.host, port: conn.port, username, password, keyPath, cols: estCols, rows: estRows },
-          }),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 20000)),
-        ]),
+        invoke<string>('ssh_connect', {
+          config: {
+            host: conn.host, port: conn.port, username,
+            password: password || undefined, keyPath,
+            passphrase: passphrase || undefined,
+            configId: configId || undefined,
+            cols: estCols, rows: estRows,
+          },
+        }),
         invoke<string>('ui_state_get', { key: panelKey }).catch(() => ''),
       ]).then(([sid, savedPanel]) => {
         if (existing) {
@@ -738,35 +853,50 @@ function App() {
         }
       }).catch(e => {
         const msg = String(e)
-        const { type, message } = classifyError(msg)
-        setErrorDialog({ visible: true, message, type })
+        const { type, messageKey, params, message } = classifyError(msg)
+        // host-key-changed already shows a dedicated MITM warning — skip the generic dialog
+        if (hostKeyChangedHandledRef.current) {
+          hostKeyChangedHandledRef.current = false
+          return
+        }
+        setErrorDialog({ visible: true, type, messageKey, params, message })
       }).finally(() => setConnectingServerId(null))
     }
 
     let password: string | undefined
     let keyPath: string | undefined
-    
+    let passphrase: string | undefined
+    let configId: string | undefined
+
     // Only use stored credentials if remember_me is true
     if (conn.remember_me) {
-      if (conn.auth_type === 'password' && !conn.password) {
-        setErrorDialog({ visible: true, message: 'No password saved. Please edit the connection to add credentials.', type: 'auth' })
+      // 已保存密码由 Rust 端从系统钥匙串读取；这里仅校验"已保存"标记
+      if (conn.auth_type === 'password' && !conn.has_password) {
+        setErrorDialog({ visible: true, type: 'auth', messageKey: 'errorDialog.noPasswordSaved' })
         return
       }
-      if (conn.auth_type === 'password') password = conn.password
       if (conn.auth_type === 'key') keyPath = conn.key_path
+      // Fall back to session-memory cache (freshly created/edited connections aren't persisted)
+      // '' (blank input) means "no passphrase" — fall through || so empty string isn't sent as Some("")
+      if (conn.auth_type === 'key') passphrase = passphraseCacheRef.current.get(conn.id)
+      configId = conn.id
     } else {
-      setErrorDialog({ visible: true, message: 'Please edit the connection to configure authentication.', type: 'auth' })
+      setErrorDialog({ visible: true, type: 'auth', messageKey: 'errorDialog.editToConfigure' })
       return
     }
 
-    doConnect(conn.username, password, keyPath)
+    doConnect(conn.username, password, keyPath, passphrase, configId)
   }, [sessions, connectedConfigIds])
 
   // Listen for reconnect-after-edit from Sidebar (Connect button)
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail
-      if (detail?.conn) handleDirectConnect(detail.conn)
+      if (detail?.conn) {
+        // Keep edited passphrase in session memory (not persisted) so immediate connect works
+        if (detail.conn.passphrase) passphraseCacheRef.current.set(detail.conn.id, detail.conn.passphrase)
+        handleDirectConnect(detail.conn)
+      }
     }
     window.addEventListener('sidebar-reconnect-after-edit', handler)
     return () => window.removeEventListener('sidebar-reconnect-after-edit', handler)
@@ -777,7 +907,7 @@ function App() {
       {sidebarVisible && (
         <>
           <div style={{ width: sidebarWidth, minWidth: sidebarWidth, flexShrink: 0, display: 'flex', position: 'relative' }}>
-            <Sidebar onSelect={handleSelectConnection} onConnect={handleDirectConnect} onNew={() => {}} onCreateConnection={handleCreateConnection} refreshKey={sidebarRefreshKey} connectedIds={Array.from(connectedConfigIds)} connectingServerId={connectingServerId} activeConfigId={activeConfigId} />
+            <Sidebar onSelect={handleSelectConnection} onConnect={handleDirectConnect} onNew={() => {}} onCreateConnection={handleCreateConnection} refreshKey={sidebarRefreshKey} connectedIds={Array.from(connectedConfigIds)} connectingServerId={connectingServerId} activeConfigId={activeConfigId} onManageHostKeys={() => setShowHostKeysDialog(true)} />
             {/* Sidebar Toggle Button */}
             <button 
               className="sidebar-toggle-btn visible"
@@ -847,14 +977,71 @@ function App() {
                 {errorDialog.type === 'auth' && '🔐'}
                 {errorDialog.type === 'network' && '🌐'}
                 {errorDialog.type === 'connection' && '⚠️'}
+                {errorDialog.type === 'key' && '🔑'}
+                {errorDialog.type === 'hostKey' && '🛡️'}
+                {errorDialog.type === 'hostKeyChanged' && '🚨'}
                 {errorDialog.type === 'other' && '❗'}
               </div>
               <div className="error-dialog-title">{t('errorDialog.connectionFailed')}</div>
-              <div className="error-dialog-message">{errorDialog.message}</div>
-              <button className="error-dialog-btn" onClick={() => setErrorDialog(null)}>{t('common.close')}</button>
+              <div className="error-dialog-message">{errorDialog.message ?? t(errorDialog.messageKey ?? '', errorDialog.params)}</div>
+              <div className="error-dialog-actions">
+                {(errorDialog.type === 'hostKey' || errorDialog.type === 'hostKeyChanged') && (
+                  <button
+                    className="error-dialog-btn primary"
+                    onClick={() => { setErrorDialog(null); setShowHostKeysDialog(true) }}
+                  >{t('hostKey.manage')}</button>
+                )}
+                <button className="error-dialog-btn secondary" onClick={() => setErrorDialog(null)}>{t('common.close')}</button>
+              </div>
             </div>
           </div>
         )}
+
+        {/* First-contact host key confirmation (TOFU) */}
+        {hostKeyPrompt && (
+          <div className="error-dialog-overlay" onClick={rejectHostKey}>
+            <div className="error-dialog" onClick={(e) => e.stopPropagation()}>
+              <button className="error-dialog-close" onClick={rejectHostKey}>×</button>
+              <div className="error-dialog-icon">🔐</div>
+              <div className="error-dialog-title">{t('hostKey.confirmTitle')}</div>
+              <div className="error-dialog-message">{t('hostKey.confirmDesc')}</div>
+              <div className="hostkey-info">
+                <div className="hostkey-info-row"><span>{t('hostKey.host')}</span><b>{hostKeyPrompt.host}</b></div>
+                <div className="hostkey-info-row"><span>{t('hostKey.port')}</span><b>{hostKeyPrompt.port}</b></div>
+                <div className="hostkey-info-row"><span>{t('hostKey.algorithm')}</span><b>{hostKeyPrompt.keyType}</b></div>
+                <div className="hostkey-info-row"><span>{t('hostKey.fingerprint')}</span><code className="hostkey-fp">{hostKeyPrompt.fingerprint}</code></div>
+              </div>
+              <div className="error-dialog-actions">
+                <button className="error-dialog-btn" onClick={rejectHostKey}>{t('hostKey.cancel')}</button>
+                <button className="error-dialog-btn primary" onClick={confirmHostKey}>{t('hostKey.trustAndConnect')}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Host key changed — possible MITM warning (connection already rejected) */}
+        {hostKeyChangedWarn && (
+          <div className="error-dialog-overlay" onClick={() => setHostKeyChangedWarn(null)}>
+            <div className="error-dialog" onClick={(e) => e.stopPropagation()}>
+              <button className="error-dialog-close" onClick={() => setHostKeyChangedWarn(null)}>×</button>
+              <div className="error-dialog-icon">🚨</div>
+              <div className="error-dialog-title">{t('hostKey.changedTitle')}</div>
+              <div className="error-dialog-message">{t('hostKey.changedDesc')}</div>
+              <div className="hostkey-info">
+                <div className="hostkey-info-row"><span>{t('hostKey.host')}</span><b>{hostKeyChangedWarn.host}</b></div>
+                <div className="hostkey-info-row"><span>{t('hostKey.algorithm')}</span><b>{hostKeyChangedWarn.keyType}</b></div>
+                <div className="hostkey-info-row"><span>{t('hostKey.fingerprint')}</span><code className="hostkey-fp">{hostKeyChangedWarn.fingerprint}</code></div>
+              </div>
+              <div className="error-dialog-actions">
+                <button className="error-dialog-btn secondary" onClick={() => setHostKeyChangedWarn(null)}>{t('common.close')}</button>
+                <button className="error-dialog-btn primary" onClick={() => { setHostKeyChangedWarn(null); setShowHostKeysDialog(true) }}>{t('hostKey.manage')}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Trusted host fingerprint manager */}
+        <HostKeysDialog open={showHostKeysDialog} onClose={() => setShowHostKeysDialog(false)} />
         <div className="split-container" ref={splitContainerRef}>
           {/* ponytail: session tab bar — quick switch between connected servers */}
           {sessions.length > 0 && (

@@ -4,6 +4,25 @@ use tokio::sync::Mutex as AsyncMutex;
 use crate::ssh::{self, SshManager};
 use crate::server;
 use crate::tunnel::TunnelManager;
+use crate::HostKeyPending;
+
+/// Resolve a pending first-contact host-key confirmation from the SSH handshake.
+/// The frontend shows the fingerprint dialog and calls this with `trusted`.
+#[tauri::command]
+pub async fn ssh_confirm_host_key(
+    pending: tauri::State<'_, HostKeyPending>,
+    session_id: String,
+    trusted: bool,
+) -> Result<(), String> {
+    let sender = pending
+        .lock()
+        .unwrap()
+        .remove(&session_id)
+        .ok_or_else(|| "No pending host key confirmation for this session".to_string())?;
+    sender
+        .send(trusted)
+        .map_err(|_| "Host key confirmation channel closed".to_string())
+}
 
 #[tauri::command]
 pub async fn ssh_connect(
@@ -15,12 +34,26 @@ pub async fn ssh_connect(
     let host = config["host"].as_str().unwrap_or("").to_string();
     let port = config["port"].as_u64().unwrap_or(22) as u16;
     let username = config["username"].as_str().unwrap_or("").to_string();
-    let password = config["password"].as_str().map(|s| s.to_string());
+    // 会话级凭据：前端显式传入时优先（新建/编辑后未落钥匙串的临时凭据）
+    let mut password = config["password"].as_str().map(|s| s.to_string())
+        .filter(|p| !p.is_empty());
     let key_path = config["keyPath"].as_str().map(|s| s.to_string());
+    // ponytail: empty passphrase means "no passphrase" — must be None, not Some("")
+    let mut passphrase = config["passphrase"].as_str().map(|s| s.to_string())
+        .filter(|p| !p.is_empty());
+    // 已保存凭据：会话级未提供时，按 configId 从系统钥匙串读取（明文不进前端）
+    if let Some(cid) = config["configId"].as_str() {
+        if password.is_none() {
+            password = crate::credentials::store_get(cid, crate::credentials::CredKind::Password)?;
+        }
+        if passphrase.is_none() {
+            passphrase = crate::credentials::store_get(cid, crate::credentials::CredKind::Passphrase)?;
+        }
+    }
     let cols = config["cols"].as_u64().unwrap_or(80) as u32;
     let rows = config["rows"].as_u64().unwrap_or(24) as u32;
     // ponytail: network operations without lock — only acquire briefly to insert session
-    let session = SshManager::do_connect(session_id.clone(), host, port, username, password, key_path, app.clone(), cols, rows).await?;
+    let session = SshManager::do_connect(session_id.clone(), host, port, username, password, key_path, passphrase, app.clone(), cols, rows).await?;
     let mgr = ssh_mgr.lock().await;
     mgr.insert_session(session_id.clone(), session, app);
     drop(mgr);
@@ -345,8 +378,10 @@ pub async fn ssh_reconnect(
 }
 
 #[tauri::command]
-pub async fn ssh_generate_keypair(algorithm: String) -> Result<server::SshKeyPair, String> {
-    tokio::task::spawn_blocking(move || server::generate_ssh_keypair(&algorithm))
+pub async fn ssh_generate_keypair(algorithm: String, passphrase: Option<String>) -> Result<server::SshKeyPair, String> {
+    let alg = algorithm;
+    let pp = passphrase;
+    tokio::task::spawn_blocking(move || server::generate_ssh_keypair(&alg, pp.as_deref()))
         .await
         .map_err(|e| format!("Task join error: {}", e))?
 }

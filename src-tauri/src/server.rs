@@ -4150,6 +4150,9 @@ pub struct SoftwareInfo {
     pub version: String,
     pub service_name: String,
     pub running: bool,
+    // ponytail: server-side resolved config file path (empty = not resolvable)
+    #[serde(default)]
+    pub config_path: String,
 }
 
 /// Get list of available software and their install status
@@ -4422,6 +4425,9 @@ if command -v postgres &>/dev/null || [ -x /usr/lib/postgresql/*/bin/postgres ] 
   echo "PGSQL_INSTALLED=1"
   echo "PGSQL_VERSION=$(psql -V 2>/dev/null | grep -oP '[\d]+\.[\d]+' | head -1 || echo '')"
   echo "PGSQL_RUNNING=$(systemctl is-active postgresql 2>/dev/null || echo inactive)"
+  # ponytail: resolve real config file path from disk (Debian/Ubuntu multi-cluster + RHEL layouts).
+  # Does not depend on server running or psql client version; empty when not installed.
+  echo "PGSQL_CONFIG=$(ls /etc/postgresql/*/*/postgresql.conf /var/lib/pgsql/*/data/postgresql.conf /var/lib/pgsql/data/postgresql.conf 2>/dev/null | head -1 || echo '')"
 else
   echo "PGSQL_INSTALLED=0"
 fi
@@ -4449,6 +4455,7 @@ fi
         version: get("NGINX_VERSION"),
         service_name: "nginx".to_string(),
         running: get("NGINX_RUNNING") == "active",
+        config_path: String::new(),
     });
 
     // Apache - detect all installed versions
@@ -4467,6 +4474,7 @@ fi
                 version: get(&ver_key),
                 service_name: get(&svc_key),
                 running: get(&run_key) == "active",
+                config_path: String::new(),
             });
         }
     }
@@ -4480,6 +4488,7 @@ fi
             version: get("APACHE_VERSION"),
             service_name: get("APACHE_SERVICE"),
             running: get("APACHE_RUNNING") == "active",
+            config_path: String::new(),
         });
     }
 
@@ -4492,6 +4501,7 @@ fi
         version: get("MYSQL_VERSION"),
         service_name: get("MYSQL_SERVICE"),
         running: get("MYSQL_RUNNING") == "active",
+        config_path: String::new(),
     });
 
     // PHP - detect all installed versions (dynamic, no hardcoded list)
@@ -4518,6 +4528,7 @@ fi
                 version: fullver.to_string(),
                 service_name: svc.to_string(),
                 running,
+                config_path: String::new(),
             });
             i += 4;
         } else {
@@ -4534,6 +4545,7 @@ fi
         version: get("PHP_GENERIC_VERSION"),
         service_name: get("PHP_GENERIC_SERVICE"),
         running: get("PHP_GENERIC_RUNNING") == "active",
+        config_path: String::new(),
     });
 
     // Redis
@@ -4545,6 +4557,7 @@ fi
         version: get("REDIS_VERSION"),
         service_name: "redis".to_string(),
         running: get("REDIS_RUNNING") == "active",
+        config_path: String::new(),
     });
 
     // Memcached
@@ -4556,6 +4569,7 @@ fi
         version: get("MEMCACHED_VERSION"),
         service_name: "memcached".to_string(),
         running: get("MEMCACHED_RUNNING") == "active",
+        config_path: String::new(),
     });
 
     // Node.js
@@ -4567,6 +4581,7 @@ fi
         version: get("NODEJS_VERSION"),
         service_name: String::new(),
         running: false,
+        config_path: String::new(),
     });
 
     // zip
@@ -4578,6 +4593,7 @@ fi
         version: get("ZIP_VERSION"),
         service_name: String::new(),
         running: false,
+        config_path: String::new(),
     });
 
     // unzip
@@ -4589,6 +4605,7 @@ fi
         version: get("UNZIP_VERSION"),
         service_name: String::new(),
         running: false,
+        config_path: String::new(),
     });
 
     // Docker
@@ -4600,6 +4617,7 @@ fi
         version: get("DOCKER_VERSION"),
         service_name: "docker".to_string(),
         running: get("DOCKER_RUNNING") == "active",
+        config_path: String::new(),
     });
 
     // PostgreSQL
@@ -4611,6 +4629,7 @@ fi
         version: get("PGSQL_VERSION"),
         service_name: "postgresql".to_string(),
         running: get("PGSQL_RUNNING") == "active",
+        config_path: get("PGSQL_CONFIG"),
     });
 
     // ponytail: cache software list
@@ -4680,6 +4699,7 @@ fi
             version: get(&format!("{}VERSION", prefix)),
             service_name: get(&format!("{}SERVICE", prefix)),
             running: get(&format!("{}RUNNING", prefix)) == "active",
+            config_path: String::new(),
         });
     }
     Ok(list)
@@ -6356,8 +6376,10 @@ pub struct SshAuthMode {
     pub pubkey: bool,
 }
 
-/// Generate SSH key pair locally (no SSH connection needed)
-pub fn generate_ssh_keypair(algorithm: &str) -> Result<SshKeyPair, String> {
+/// Generate SSH key pair locally (no SSH connection needed).
+/// If `passphrase` is non-empty, the private key is encrypted (PKCS#8 encrypted PEM);
+/// otherwise an unencrypted key is produced.
+pub fn generate_ssh_keypair(algorithm: &str, passphrase: Option<&str>) -> Result<SshKeyPair, String> {
     use russh_keys::PublicKeyBase64;
 
     let key_pair = match algorithm {
@@ -6369,8 +6391,17 @@ pub fn generate_ssh_keypair(algorithm: &str) -> Result<SshKeyPair, String> {
     };
 
     let mut pem_buf = Vec::new();
-    russh_keys::encode_pkcs8_pem(&key_pair, &mut pem_buf)
-        .map_err(|e| format!("Failed to encode private key: {}", e))?;
+    match passphrase.filter(|p| !p.is_empty()) {
+        Some(pp) => {
+            // PKCS#8 encrypted PEM ("BEGIN ENCRYPTED PRIVATE KEY") — PBKDF2-SHA256/AES-256-CBC
+            russh_keys::encode_pkcs8_pem_encrypted(&key_pair, pp.as_bytes(), 10_000, &mut pem_buf)
+                .map_err(|e| format!("Failed to encode encrypted private key: {}", e))?;
+        }
+        None => {
+            russh_keys::encode_pkcs8_pem(&key_pair, &mut pem_buf)
+                .map_err(|e| format!("Failed to encode private key: {}", e))?;
+        }
+    }
     let private_key_pem = String::from_utf8(pem_buf)
         .map_err(|e| format!("Invalid UTF-8 in PEM output: {}", e))?;
 
@@ -9752,4 +9783,83 @@ pub async fn kill_pid(
         });
     }
     Ok(format!("Process {} killed with {}", pid, if force { "SIGKILL" } else { "SIGTERM" }))
+}
+
+#[cfg(test)]
+mod keygen_tests {
+    use super::*;
+
+    // keygen 测试并行运行，临时文件必须唯一，否则并发读写同一路径互相干扰（flaky）。
+    static KEY_TEST_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+    /// Write PEM to a temp file and attempt to load it with `russh_keys::load_secret_key`.
+    fn try_load(pem: &str, passphrase: Option<&str>) -> Result<(), String> {
+        let seq = KEY_TEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let path = std::env::temp_dir().join(format!(
+            "leepanel_key_test_{}_{}.pem",
+            std::process::id(),
+            seq
+        ));
+        std::fs::write(&path, pem).map_err(|e| e.to_string())?;
+        let r = russh_keys::load_secret_key(&path, passphrase).map(|_| ());
+        let _ = std::fs::remove_file(&path);
+        r.map_err(|e| e.to_string())
+    }
+
+    #[test]
+    fn unencrypted_key_loads_without_passphrase() {
+        // regression guard: unencrypted key (no passphrase) must load — pubkey login relies on this
+        let kp = generate_ssh_keypair("ed25519", None).unwrap();
+        assert!(kp.private_key_pem.starts_with("-----BEGIN PRIVATE KEY-----"));
+        let res = try_load(&kp.private_key_pem, None);
+        assert!(res.is_ok(), "unencrypted key should load with None passphrase: {:?}", res.err());
+    }
+
+    #[test]
+    fn encrypted_key_requires_passphrase_and_loads_with_correct_one() {
+        let kp = generate_ssh_keypair("ed25519", Some("secret123")).unwrap();
+        // encrypted PKCS#8 header — must match the pre-check detection in ssh::key_file_is_encrypted
+        assert!(kp.private_key_pem.starts_with("-----BEGIN ENCRYPTED PRIVATE KEY-----"));
+
+        // no passphrase → must fail (friendly "encrypted" error path)
+        let res_none = try_load(&kp.private_key_pem, None);
+        assert!(res_none.is_err(), "encrypted key must not load without passphrase");
+
+        // wrong passphrase → must fail
+        let res_wrong = try_load(&kp.private_key_pem, Some("wrong"));
+        assert!(res_wrong.is_err(), "encrypted key must not load with a wrong passphrase");
+
+        // correct passphrase → must load
+        let res_ok = try_load(&kp.private_key_pem, Some("secret123"));
+        assert!(res_ok.is_ok(), "encrypted key should load with correct passphrase: {:?}", res_ok.err());
+    }
+
+    #[test]
+    fn empty_passphrase_behaves_like_unencrypted() {
+        // UI sends an empty string when the user leaves the field blank.
+        // (ed25519 — the passphrase branch is algorithm-independent, and RSA-4096
+        //  key generation is impractically slow on some machines for a unit test)
+        let kp = generate_ssh_keypair("ed25519", Some("")).unwrap();
+        assert!(kp.private_key_pem.starts_with("-----BEGIN PRIVATE KEY-----"));
+        let res = try_load(&kp.private_key_pem, None);
+        assert!(res.is_ok(), "empty passphrase should produce an unencrypted, loadable key: {:?}", res.err());
+    }
+
+    #[test]
+    fn empty_string_passphrase_is_normalized_to_none_before_load() {
+        // regression guard (2026-08-22 bug): russh-keys treats Some("") as "try to decrypt"
+        // and misparses unencrypted PKCS#8 keys → "Der: unexpected ASN.1 DER tag: expected
+        // SEQUENCE, got INTEGER at DER byte 2". The connect path (ssh::do_connect) must
+        // normalize "" → None via filter(|p| !p.is_empty()) before load_secret_key.
+        let kp = generate_ssh_keypair("ed25519", None).unwrap();
+
+        // raw Some("") fails — documents the upstream behavior that motivates the fix
+        let res_raw = try_load(&kp.private_key_pem, Some(""));
+        assert!(res_raw.is_err(), "raw Some(\"\") must fail on unencrypted keys — if this passes, the normalization guard can be removed");
+
+        // with the same normalization do_connect applies, it must load
+        let normalized: Option<&str> = Some("").filter(|p| !p.is_empty());
+        let res = try_load(&kp.private_key_pem, normalized);
+        assert!(res.is_ok(), "normalized empty passphrase should load an unencrypted key: {:?}", res.err());
+    }
 }

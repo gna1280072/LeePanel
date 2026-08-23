@@ -1127,6 +1127,17 @@
     "manageEmpty": "Ainda não há impressões digitais de servidor confiáveis. Na primeira conexão, o aplicativo pedirá que você confirme a impressão digital.",
     "deleteConfirm": "Excluir esta impressão digital? Ela precisará ser confirmada novamente na próxima conexão.",
     "deleted": "Impressão digital excluída",
-    "updated": "Lista de impressões digitais atualizada"
+    "updated": "Lista de impressões digitais atualizada",
+    "importFromSsh": "Importar known_hosts do sistema",
+    "importedCount": "{{count}} impressão(ões) digital(is) importada(s)",
+    "importFailed": "Falha ao importar: {{error}}",
+    "manualAdd": "Adicionar manualmente",
+    "add": "Adicionar",
+    "hostPlaceholder": "Endereço do servidor (ex.: example.com)",
+    "fingerprintPlaceholder": "SHA256:xxx ou impressão digital bruta",
+    "fingerprintHint": "Obtenha no console da nuvem ou execute ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub no servidor",
+    "invalidInput": "Preencha o endereço do servidor e a impressão digital",
+    "alreadyExists": "Esta impressão digital já existe",
+    "added": "Impressão digital adicionada"
   }
 }

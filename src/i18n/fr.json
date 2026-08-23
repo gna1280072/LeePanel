@@ -1127,6 +1127,17 @@
     "manageEmpty": "Aucune empreinte de serveur de confiance pour le moment. Lors de la première connexion, l'application demandera de confirmer l'empreinte.",
     "deleteConfirm": "Supprimer cette empreinte ? Elle devra être reconfirmée à la prochaine connexion.",
     "deleted": "Empreinte supprimée",
-    "updated": "Liste des empreintes mise à jour"
+    "updated": "Liste des empreintes mise à jour",
+    "importFromSsh": "Importer known_hosts système",
+    "importedCount": "{{count}} empreinte(s) importée(s)",
+    "importFailed": "Échec de l'import : {{error}}",
+    "manualAdd": "Ajouter manuellement",
+    "add": "Ajouter",
+    "hostPlaceholder": "Adresse du serveur (ex. example.com)",
+    "fingerprintPlaceholder": "SHA256:xxx ou empreinte brute",
+    "fingerprintHint": "Obtenez-la depuis la console cloud, ou exécutez ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub sur le serveur",
+    "invalidInput": "Veuillez saisir l'adresse du serveur et l'empreinte",
+    "alreadyExists": "Cette empreinte existe déjà",
+    "added": "Empreinte ajoutée"
   }
 }

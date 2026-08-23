@@ -1127,6 +1127,17 @@
     "manageEmpty": "Noch keine vertrauenswürdigen Server-Fingerabdrücke. Bei der ersten Verbindung werden Sie zur Bestätigung aufgefordert.",
     "deleteConfirm": "Diesen Fingerabdruck löschen? Er muss bei der nächsten Verbindung erneut bestätigt werden.",
     "deleted": "Fingerabdruck gelöscht",
-    "updated": "Fingerabdruckliste aktualisiert"
+    "updated": "Fingerabdruckliste aktualisiert",
+    "importFromSsh": "System-known_hosts importieren",
+    "importedCount": "{{count}} Fingerabdrücke importiert",
+    "importFailed": "Import fehlgeschlagen: {{error}}",
+    "manualAdd": "Manuell hinzufügen",
+    "add": "Hinzufügen",
+    "hostPlaceholder": "Serveradresse (z. B. example.com)",
+    "fingerprintPlaceholder": "SHA256:xxx oder roher Fingerabdruck",
+    "fingerprintHint": "Aus der Cloud-Konsole holen oder auf dem Server ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub ausführen",
+    "invalidInput": "Bitte Serveradresse und Fingerabdruck eingeben",
+    "alreadyExists": "Dieser Fingerabdruck existiert bereits",
+    "added": "Fingerabdruck hinzugefügt"
   }
 }

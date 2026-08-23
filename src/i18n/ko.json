@@ -1127,6 +1127,17 @@
     "manageEmpty": "신뢰된 서버 지문이 없습니다. 첫 연결 시 지문 확인을 요청합니다.",
     "deleteConfirm": "이 지문을 삭제하시겠습니까? 삭제 후 다음 연결 때 다시 확인해야 합니다.",
     "deleted": "지문이 삭제되었습니다",
-    "updated": "지문 목록이 업데이트되었습니다"
+    "updated": "지문 목록이 업데이트되었습니다",
+    "importFromSsh": "시스템 known_hosts 가져오기",
+    "importedCount": "지문 {{count}}개를 가져왔습니다",
+    "importFailed": "가져오기 실패: {{error}}",
+    "manualAdd": "수동 추가",
+    "add": "추가",
+    "hostPlaceholder": "서버 주소 (예: example.com)",
+    "fingerprintPlaceholder": "SHA256:xxx 또는 원시 지문",
+    "fingerprintHint": "클라우드 콘솔에서 가져오거나 서버에서 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub 실행",
+    "invalidInput": "서버 주소와 지문을 입력하세요",
+    "alreadyExists": "이 지문은 이미 존재합니다",
+    "added": "지문이 추가되었습니다"
   }
 }

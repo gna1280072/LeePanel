@@ -74,6 +74,7 @@ pub fn run() {
             commands::ssh::ssh_confirm_host_key,
             // Known hosts (SSH server identity, TOFU)
             commands::config::known_hosts_list, commands::config::known_hosts_delete,
+            commands::config::known_hosts_add, commands::config::known_hosts_import_from_ssh,
             // Config
             commands::config::config_list, commands::config::config_save, commands::config::config_delete, commands::config::config_save_credentials,
             commands::config::clear_proxy_env,

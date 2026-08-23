@@ -137,6 +137,154 @@ pub fn known_hosts_delete(db: tauri::State<'_, DbPool>, host: String, key_type: 
     crate::db::KnownHostsManager::delete(&conn, &host, &key_type)
 }
 
+/// Manually add a pre-trusted host fingerprint (e.g. obtained out-of-band from a
+/// cloud console / administrator). The fingerprint may include a "SHA256:" prefix.
+#[tauri::command]
+pub fn known_hosts_add(db: tauri::State<'_, DbPool>, host: String, key_type: String, fingerprint: String) -> Result<(), String> {
+    let host = host.trim();
+    let key_type = key_type.trim();
+    if host.is_empty() { return Err("Host is required".to_string()); }
+    if key_type.is_empty() { return Err("Key type is required".to_string()); }
+    let fp = fingerprint.trim();
+    let fp = fp.strip_prefix("SHA256:").unwrap_or(fp).trim();
+    if fp.is_empty() { return Err("Fingerprint is required".to_string()); }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    let conn = db.lock().unwrap();
+    crate::db::KnownHostsManager::insert(&conn, host, key_type, fp, "", now)
+}
+
+/// Import trusted host keys from the system OpenSSH known_hosts file (~/.ssh/known_hosts).
+/// Parses standard entries (`host keytype base64blob`), including `[host]:port` forms and
+/// comma-separated aliases; skips hashed hosts, wildcards and @-tagged lines.
+/// Existing entries in the app store are never overwritten. Returns the number imported.
+#[tauri::command]
+pub fn known_hosts_import_from_ssh(db: tauri::State<'_, DbPool>) -> Result<u32, String> {
+    use crate::db::KnownHostsManager;
+
+    let home = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
+    let path = home.join(".ssh").join("known_hosts");
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    let conn = db.lock().unwrap();
+    let mut imported = 0u32;
+    for line in content.lines() {
+        for (host, key_type, fingerprint, key_blob) in parse_known_hosts_line(line) {
+            if KnownHostsManager::insert_if_absent(&conn, &host, &key_type, &fingerprint, &key_blob, now)? {
+                imported += 1;
+            }
+        }
+    }
+    Ok(imported)
+}
+
+/// Parse one OpenSSH known_hosts line into (host, key_type, fingerprint, key_blob) entries.
+/// Handles comma-separated host aliases and `[host]:port` / `host:port` forms.
+/// Skips: comments, @-tagged lines (@cert-authority/@revoked), hashed hosts (`|1|...`),
+/// wildcard hosts, and unparseable key blobs.
+fn parse_known_hosts_line(line: &str) -> Vec<(String, String, String, String)> {
+    use russh_keys::PublicKeyBase64;
+    let mut out = Vec::new();
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') || line.starts_with('@') {
+        return out;
+    }
+    let mut parts = line.split_whitespace();
+    let host_part = match parts.next() { Some(h) => h, None => return out };
+    let key_type_part = match parts.next() { Some(k) => k, None => return out };
+    let key_blob = match parts.next() { Some(b) => b, None => return out };
+    // 跳过 hashed hosts 与通配符（无法按字面 host 匹配）
+    if host_part.starts_with('|') || host_part.contains('*') || host_part.contains('?') {
+        return out;
+    }
+    let key = match russh_keys::parse_public_key_base64(key_blob) {
+        Ok(k) => k,
+        Err(_) => return out,
+    };
+    // 仅接受与声明类型一致的 key type（防 blob 与类型字段不符）
+    if key.name() != key_type_part {
+        return out;
+    }
+    let fingerprint = key.fingerprint();
+    let blob = key.public_key_base64();
+    // 一行可能有多个别名 host（逗号分隔）
+    for alias in host_part.split(',') {
+        // 提取 host：`[host]:port` → host；`host:port` → host；裸 IPv6 保持原样
+        let host = if let Some(rest) = alias.strip_prefix('[') {
+            rest.split(']').next().unwrap_or("")
+        } else if alias.contains(':') && alias.matches(':').count() == 1 && !alias.starts_with('[') {
+            alias.split(':').next().unwrap_or(alias)
+        } else {
+            alias
+        };
+        if !host.is_empty() {
+            out.push((host.to_string(), key_type_part.to_string(), fingerprint.clone(), blob.clone()));
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_known_hosts_line;
+
+    #[test]
+    fn parse_simple_host_line() {
+        // 真实 ed25519 公钥（仅作解析验证）
+        let blob = "AAAAC3NzaC1lZDI1NTE5AAAAIJdD7y3aLq454yWBdwLWbieU1ebz9/cu7/QEXn9OIeZJ";
+        let line = format!("example.com ssh-ed25519 {}", blob);
+        let entries = parse_known_hosts_line(&line);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].0, "example.com");
+        assert_eq!(entries[0].1, "ssh-ed25519");
+        assert_eq!(entries[0].2.len(), 43); // SHA256 base64 无填充
+    }
+
+    #[test]
+    fn parse_bracketed_port_host() {
+        let blob = "AAAAC3NzaC1lZDI1NTE5AAAAIJdD7y3aLq454yWBdwLWbieU1ebz9/cu7/QEXn9OIeZJ";
+        let line = format!("[example.com]:2222 ssh-ed25519 {}", blob);
+        let entries = parse_known_hosts_line(&line);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].0, "example.com");
+    }
+
+    #[test]
+    fn parse_comma_aliases() {
+        let blob = "AAAAC3NzaC1lZDI1NTE5AAAAIJdD7y3aLq454yWBdwLWbieU1ebz9/cu7/QEXn9OIeZJ";
+        let line = format!("host1,host2,host3 ssh-ed25519 {}", blob);
+        let entries = parse_known_hosts_line(&line);
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].0, "host1");
+        assert_eq!(entries[2].0, "host3");
+    }
+
+    #[test]
+    fn skip_hashed_wildcard_tagged_and_comments() {
+        let blob = "AAAAC3NzaC1lZDI1NTE5AAAAIJdD7y3aLq454yWBdwLWbieU1ebz9/cu7/QEXn9OIeZJ";
+        assert!(parse_known_hosts_line(&format!("|1|abc== ssh-ed25519 {}", blob)).is_empty());
+        assert!(parse_known_hosts_line(&format!("*.example.com ssh-ed25519 {}", blob)).is_empty());
+        assert!(parse_known_hosts_line(&format!("@cert-authority example.com ssh-ed25519 {}", blob)).is_empty());
+        assert!(parse_known_hosts_line("# comment line").is_empty());
+        assert!(parse_known_hosts_line("").is_empty());
+    }
+
+    #[test]
+    fn skip_bad_blob_and_type_mismatch() {
+        let blob = "AAAAC3NzaC1lZDI1NTE5AAAAIJdD7y3aLq454yWBdwLWbieU1ebz9/cu7/QEXn9OIeZJ";
+        assert!(parse_known_hosts_line("example.com ssh-ed25519 not-a-valid-blob!").is_empty());
+        // blob 是 ed25519，但类型字段声明为 ssh-rsa → 拒绝
+        assert!(parse_known_hosts_line(&format!("example.com ssh-rsa {}", blob)).is_empty());
+    }
+}
+
 // ===== Data Directory Commands =====
 
 /// Get the local SQLite data directory (stores connections, settings, cache, etc.)

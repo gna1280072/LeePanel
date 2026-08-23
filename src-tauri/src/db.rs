@@ -809,6 +809,24 @@ impl KnownHostsManager {
         Ok(())
     }
 
+    /// Insert only if (host, key_type) does not already exist (used by imports —
+    /// never overwrite an existing trusted fingerprint). Returns true if inserted.
+    pub fn insert_if_absent(conn: &SqliteConn, host: &str, key_type: &str, fingerprint: &str, key_blob: &str, now: i64) -> Result<bool, String> {
+        let exists: bool = conn.query_row(
+            "SELECT COUNT(*) FROM known_hosts WHERE host = ?1 AND key_type = ?2",
+            rusqlite::params![host, key_type],
+            |r| r.get::<_, i64>(0),
+        ).unwrap_or(0) > 0;
+        if exists {
+            return Ok(false);
+        }
+        conn.execute(
+            "INSERT INTO known_hosts (host, key_type, fingerprint, key_blob, first_seen, last_seen) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+            rusqlite::params![host, key_type, fingerprint, key_blob, now],
+        ).map_err(|e| format!("Failed to insert known host: {}", e))?;
+        Ok(true)
+    }
+
     /// Update last_seen after a successful verification.
     pub fn touch(conn: &SqliteConn, host: &str, key_type: &str, now: i64) -> Result<(), String> {
         conn.execute(
@@ -1142,5 +1160,17 @@ mod tests {
         assert_eq!(list.len(), 2);
         assert_eq!(list[0].host, "host1");
         assert_eq!(list[1].host, "host2");
+    }
+
+    #[test]
+    fn known_hosts_insert_if_absent_preserves_existing() {
+        let conn = test_conn();
+        KnownHostsManager::insert(&conn, "host1", "ssh-ed25519", "ORIG", "b1", 1000).unwrap();
+        // 已存在 → 不覆盖，返回 false
+        assert!(!KnownHostsManager::insert_if_absent(&conn, "host1", "ssh-ed25519", "EVIL", "b2", 2000).unwrap());
+        assert_eq!(KnownHostsManager::find(&conn, "host1", "ssh-ed25519").unwrap().fingerprint, "ORIG");
+        // 新条目 → 插入，返回 true
+        assert!(KnownHostsManager::insert_if_absent(&conn, "host1", "ssh-rsa", "NEW", "b3", 2000).unwrap());
+        assert_eq!(KnownHostsManager::find(&conn, "host1", "ssh-rsa").unwrap().fingerprint, "NEW");
     }
 }

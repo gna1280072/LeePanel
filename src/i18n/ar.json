@@ -1127,6 +1127,17 @@
     "manageEmpty": "لا توجد بصمات خادم موثوقة بعد. عند الاتصال الأول، سيطلب التطبيق تأكيد البصمة.",
     "deleteConfirm": "حذف هذه البصمة؟ ستحتاج إلى تأكيدها مرة أخرى عند الاتصال التالي.",
     "deleted": "تم حذف البصمة",
-    "updated": "تم تحديث قائمة البصمات"
+    "updated": "تم تحديث قائمة البصمات",
+    "importFromSsh": "استيراد known_hosts من النظام",
+    "importedCount": "تم استيراد {{count}} بصمة",
+    "importFailed": "فشل الاستيراد: {{error}}",
+    "manualAdd": "إضافة يدويًا",
+    "add": "إضافة",
+    "hostPlaceholder": "عنوان الخادم (مثل example.com)",
+    "fingerprintPlaceholder": "SHA256:xxx أو بصمة خام",
+    "fingerprintHint": "احصل عليها من لوحة التحكم السحابية أو نفّذ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub على الخادم",
+    "invalidInput": "يرجى إدخال عنوان الخادم والبصمة",
+    "alreadyExists": "هذه البصمة موجودة بالفعل",
+    "added": "تمت إضافة البصمة"
   }
 }

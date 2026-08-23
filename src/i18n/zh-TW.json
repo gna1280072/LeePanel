@@ -1127,6 +1127,17 @@
     "manageEmpty": "暫無已信任的伺服器指紋。首次連線伺服器時，應用程式會要求您確認指紋。",
     "deleteConfirm": "確定刪除該指紋？刪除後需重新確認指紋才能連線。",
     "deleted": "已刪除指紋",
-    "updated": "指紋清單已更新"
+    "updated": "指紋清單已更新",
+    "importFromSsh": "匯入系統 known_hosts",
+    "importedCount": "已匯入 {{count}} 條指紋",
+    "importFailed": "匯入失敗：{{error}}",
+    "manualAdd": "手動新增",
+    "add": "新增",
+    "hostPlaceholder": "伺服器位址（如 example.com）",
+    "fingerprintPlaceholder": "SHA256:xxx 或裸指紋",
+    "fingerprintHint": "可從雲端控制台取得，或登入伺服器執行 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub",
+    "invalidInput": "請填寫伺服器位址和指紋",
+    "alreadyExists": "該指紋已存在",
+    "added": "已新增指紋"
   }
 }

@@ -1127,6 +1127,17 @@
     "manageEmpty": "信頼済みのサーバー指紋はありません。初回接続時に指紋の確認が求められます。",
     "deleteConfirm": "この指紋を削除しますか？削除後、次回接続時に再確認が必要です。",
     "deleted": "指紋を削除しました",
-    "updated": "指紋リストを更新しました"
+    "updated": "指紋リストを更新しました",
+    "importFromSsh": "システム known_hosts をインポート",
+    "importedCount": "{{count}} 件の指紋をインポートしました",
+    "importFailed": "インポートに失敗しました：{{error}}",
+    "manualAdd": "手動追加",
+    "add": "追加",
+    "hostPlaceholder": "サーバーアドレス（例：example.com）",
+    "fingerprintPlaceholder": "SHA256:xxx または生の指紋",
+    "fingerprintHint": "クラウドコンソールで取得するか、サーバーで ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub を実行してください",
+    "invalidInput": "サーバーアドレスと指紋を入力してください",
+    "alreadyExists": "この指紋は既に存在します",
+    "added": "指紋を追加しました"
   }
 }

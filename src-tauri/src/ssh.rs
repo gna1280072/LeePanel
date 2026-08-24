@@ -1878,14 +1878,42 @@ pub async fn session_write_file(session: &SshSession, path: &str, content: &str)
 }
 
 pub async fn session_write_file_bytes(session: &SshSession, path: &str, content: &[u8]) -> Result<(), String> {
-    let sftp = session_open_sftp(session).await?;
     use tokio::io::AsyncWriteExt;
-    let mut file = sftp.create(path).await
-        .map_err(|e| format!("Failed to create file: {}", e))?;
-    file.write_all(content).await
-        .map_err(|e| format!("Failed to write file: {}", e))?;
-    file.shutdown().await
-        .map_err(|e| format!("Failed to flush file: {}", e))?;
+    // 1) 首选 SFTP 直写（快、无额外依赖）
+    match session_open_sftp(session).await {
+        Ok(sftp) => {
+            match sftp.create(path).await {
+                Ok(mut file) => {
+                    let w = file.write_all(content).await;
+                    let f = file.shutdown().await;
+                    if w.is_ok() && f.is_ok() {
+                        return Ok(());
+                    }
+                    // 写/刷新失败 → 落到 exec 兜底（文件可能部分写入，由兜底整体覆盖）
+                }
+                Err(_) => {
+                    // create 失败（典型：目标文件已存在且为 root 属主 644 残留，
+                    // 普通用户无权覆盖）→ 落到 exec 兜底
+                }
+            }
+        }
+        Err(_) => {
+            // SFTP 会话打不开 → 落到 exec 兜底
+        }
+    }
+    // 2) 兜底：exec + base64 解码写文件。
+    //    auth_mode='sudo' 时 session_exec_with_output 注入 sudo -S，整条经
+    //    `bash -c` 以 root 执行（不能只 sudo 前缀——管道后段会以原用户身份
+    //    执行，依旧无写权限）。解决"普通用户覆盖 root 属主残留文件"问题。
+    use base64::Engine as _;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(content);
+    let safe_path = path.replace('\'', "'\\''");
+    let inner = format!("echo {} | base64 -d > '{}'", b64, safe_path);
+    let cmd = format!("bash -c \"{}\"", inner);
+    let (_, stderr, code) = session_exec_with_output(session, &cmd, 10).await?;
+    if code != 0 {
+        return Err(format!("Failed to write file via exec: {}", stderr.trim()));
+    }
     Ok(())
 }
 

@@ -780,7 +780,6 @@ impl SshManager {
     }
 
     pub async fn copy_file(&self, session_id: &str, src: &str, dst: &str, app_handle: &AppHandle) -> Result<(), String> {
-        let mut channel = self.open_channel(session_id).await?;
         let safe_src = src.replace('\'', "'\\''");
         let safe_dst = dst.replace('\'', "'\\''");
         let cmd = format!("cp -v '{}' '{}' 2>&1", safe_src, safe_dst);
@@ -791,10 +790,9 @@ impl SshManager {
             "status": "copying",
         }));
 
-        channel
-            .exec(true, cmd)
-            .await
-            .map_err(|e| format!("Exec failed: {}", e))?;
+        // 权限模型 v8：统一 sudo 包装
+        let session = self.get_session(session_id)?;
+        let (mut channel, _) = session_exec_channel(&session, &cmd).await?;
 
         let mut stderr = String::new();
         loop {
@@ -846,7 +844,6 @@ impl SshManager {
     }
 
     pub async fn copy_dir(&self, session_id: &str, src: &str, dst: &str, app_handle: &AppHandle) -> Result<(), String> {
-        let mut channel = self.open_channel(session_id).await?;
         let safe_src = src.replace('\'', "'\\''");
         let safe_dst = dst.replace('\'', "'\\''");
         // Use cp -rvT to copy directory contents directly (not into existing dir), verbose for progress
@@ -858,10 +855,9 @@ impl SshManager {
             "status": "copying",
         }));
 
-        channel
-            .exec(true, cmd)
-            .await
-            .map_err(|e| format!("Exec failed: {}", e))?;
+        // 权限模型 v8：统一 sudo 包装
+        let session = self.get_session(session_id)?;
+        let (mut channel, _) = session_exec_channel(&session, &cmd).await?;
 
         let mut stderr = String::new();
         loop {
@@ -913,12 +909,10 @@ impl SshManager {
     }
 
     pub async fn set_permissions(&self, session_id: &str, path: &str, mode: &str) -> Result<(), String> {
-        let mut channel = self.open_channel(session_id).await?;
         let cmd = format!("chmod {} '{}'", mode, path.replace('\'', "'\\''"));
-        channel
-            .exec(true, cmd)
-            .await
-            .map_err(|e| format!("Exec failed: {}", e))?;
+        // 权限模型 v8：统一 sudo 包装
+        let session = self.get_session(session_id)?;
+        let (mut channel, _) = session_exec_channel(&session, &cmd).await?;
 
         let mut stderr = String::new();
         let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(10);
@@ -1020,8 +1014,6 @@ impl SshManager {
         format: &str,
         app_handle: &AppHandle,
     ) -> Result<(), String> {
-        let mut channel = self.open_channel(session_id).await?;
-
         if paths.is_empty() {
             return Err("No paths to compress".to_string());
         }
@@ -1052,18 +1044,18 @@ impl SshManager {
             .collect();
         let names_str = safe_names.join(" ");
 
-        // Use -C to change to parent directory, then use relative names
+        // 权限模型 v8：tar 用 -C 单命令（sudo 前缀可直接作用于整条）；
+        // zip 无 -C 等价，用 bash -c 包装成单命令（sudo -S bash -c "..." 整条以 root 执行）
         let cmd = match format {
-            "tar.gz" => format!("cd '{}' && tar -czvf '{}' {} 2>&1", safe_parent, safe_output, names_str),
-            "zip" => format!("cd '{}' && zip -r '{}' {} 2>&1", safe_parent, safe_output, names_str),
-            "tar.bz2" => format!("cd '{}' && tar -cjvf '{}' {} 2>&1", safe_parent, safe_output, names_str),
+            "tar.gz" => format!("tar -czvf '{}' -C '{}' {} 2>&1", safe_output, safe_parent, names_str),
+            "zip" => format!("bash -c \"cd '{}' && zip -r '{}' {} 2>&1\"", safe_parent, safe_output, names_str),
+            "tar.bz2" => format!("tar -cjvf '{}' -C '{}' {} 2>&1", safe_output, safe_parent, names_str),
             _ => return Err(format!("Unsupported format: {}", format)),
         };
 
-        channel
-            .exec(true, cmd)
-            .await
-            .map_err(|e| format!("Exec failed: {}", e))?;
+        // 权限模型 v8：统一 sudo 包装
+        let session = self.get_session(session_id)?;
+        let (mut channel, _) = session_exec_channel(&session, &cmd).await?;
 
         let mut stderr = String::new();
         let deadline =
@@ -1131,8 +1123,6 @@ impl SshManager {
         dest_dir: &str,
         app_handle: &AppHandle,
     ) -> Result<(), String> {
-        let mut channel = self.open_channel(session_id).await?;
-
         let safe_archive = archive_path.replace('\'', "'\\' '");
         let safe_dest = dest_dir.replace('\'', "'\\' '");
 
@@ -1152,10 +1142,9 @@ impl SshManager {
         };
 
         // Execute extract command (tar/unzip will create dest dir if needed with -C/-d)
-        channel
-            .exec(true, cmd)
-            .await
-            .map_err(|e| format!("Exec failed: {}", e))?;
+        // 权限模型 v8：统一 sudo 包装
+        let session = self.get_session(session_id)?;
+        let (mut channel, _) = session_exec_channel(&session, &cmd).await?;
 
         let mut stderr = String::new();
         let mut exit_ok = true;
@@ -1234,7 +1223,6 @@ impl SshManager {
         dest: &str,
         app_handle: &AppHandle,
     ) -> Result<(), String> {
-        let mut channel = self.open_channel(session_id).await?;
         let safe_dest = dest.replace('\'', "'\\''");
         let safe_url = url.replace('\'', "'\\''");
         // Use -f to fail on HTTP errors, -S to show errors even with -s/-#
@@ -1242,7 +1230,9 @@ impl SshManager {
             "curl -L -f -S -# -o '{}' '{}'",
             safe_dest, safe_url
         );
-        channel.exec(true, cmd).await.map_err(|e| format!("Exec failed: {}", e))?;
+        // 权限模型 v8：统一 sudo 包装（curl 写远程目标目录可能需要 root）
+        let session = self.get_session(session_id)?;
+        let (mut channel, _) = session_exec_channel(&session, &cmd).await?;
 
         let mut stdout_buf = String::new();
         let mut stderr_buf = String::new();
@@ -1548,10 +1538,10 @@ pub async fn session_copy_files_batch(session: &SshSession, sources: &[String], 
 }
 
 pub async fn session_copy_file(session: &SshSession, session_id: &str, src: &str, dst: &str, app_handle: &AppHandle) -> Result<(), String> {
-    let mut channel = session_open_channel(session).await?;
     let cmd = format!("cp -v '{}' '{}' 2>&1", src.replace('\'', "'\\''"), dst.replace('\'', "'\\''"));
     let _ = app_handle.emit("copy-progress", serde_json::json!({"sessionId": session_id, "line": format!("$ {}", cmd), "status": "copying"}));
-    channel.exec(true, cmd).await.map_err(|e| format!("Exec failed: {}", e))?;
+    // 权限模型 v8：统一 sudo 包装
+    let (mut channel, _) = session_exec_channel(session, &cmd).await?;
     let mut stderr = String::new();
     loop {
         match channel.wait().await {
@@ -1586,10 +1576,10 @@ pub async fn session_copy_file(session: &SshSession, session_id: &str, src: &str
 }
 
 pub async fn session_copy_dir(session: &SshSession, session_id: &str, src: &str, dst: &str, app_handle: &AppHandle) -> Result<(), String> {
-    let mut channel = session_open_channel(session).await?;
     let cmd = format!("cp -rvT '{}' '{}' 2>&1", src.replace('\'', "'\\''"), dst.replace('\'', "'\\''"));
     let _ = app_handle.emit("copy-progress", serde_json::json!({"sessionId": session_id, "line": format!("$ {}", cmd), "status": "copying"}));
-    channel.exec(true, cmd).await.map_err(|e| format!("Exec failed: {}", e))?;
+    // 权限模型 v8：统一 sudo 包装
+    let (mut channel, _) = session_exec_channel(session, &cmd).await?;
     let mut stderr = String::new();
     loop {
         match channel.wait().await {

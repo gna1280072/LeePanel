@@ -1185,7 +1185,11 @@
       "site_delete": "删除站点",
       "server_reboot": "重启服务器",
       "software_action": "软件操作",
-      "custom_software_action": "自定义软件操作"
+      "custom_software_action": "自定义软件操作",
+      "tunnel_create": "隧道-创建",
+      "tunnel_close": "隧道-关闭",
+      "tunnel_delete": "隧道-删除",
+      "tunnel_restore": "隧道-恢复"
     }
   }
 }

@@ -27,6 +27,10 @@ const OP_LABELS: Record<string, string> = {
   server_reboot: 'server_reboot',
   software_action: 'software_action',
   custom_software_action: 'custom_software_action',
+  tunnel_create: 'tunnel_create',
+  tunnel_close: 'tunnel_close',
+  tunnel_delete: 'tunnel_delete',
+  tunnel_restore: 'tunnel_restore',
 }
 
 function formatTime(ts: number): string {

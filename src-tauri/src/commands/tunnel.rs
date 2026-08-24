@@ -14,6 +14,19 @@ fn server_key_of(session: &SshSession) -> String {
     format!("{}@{}:{}", ci.username, ci.host, ci.port)
 }
 
+/// 从 server_key（"user@host:port"）解析出 (username, host) 供审计记录。
+fn audit_server_of(key: &str) -> (String, String) {
+    if let Some(at) = key.rfind('@') {
+        let user = key[..at].to_string();
+        let rest = &key[at + 1..];
+        // 去掉尾部 :port（IPv6 host 含冒号时 rsplit 仍正确切掉最后的 :port）
+        let host = rest.rsplit_once(':').map(|(h, _)| h).unwrap_or(rest).to_string();
+        (user, host)
+    } else {
+        (String::new(), key.to_string())
+    }
+}
+
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -48,6 +61,7 @@ pub async fn tunnel_create(
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(&session_id)?;
     let server_key = server_key_of(&session);
+    let ci = session.connect_info.clone();
     drop(mgr);
 
     let tt = parse_tunnel_type(&tunnel_type)?;
@@ -70,6 +84,8 @@ pub async fn tunnel_create(
     }
 
     // Persist the configuration so it survives disconnects / app restarts.
+    // 审计描述在变量 move 进 SavedTunnel 之前构造
+    let audit_desc = format!("{} {}:{} -> {}:{}", tunnel_type, local_host, local_port, remote_host, remote_port);
     let conn = db.lock().map_err(|e| format!("DB lock failed: {}", e))?;
     TunnelStore::save(&conn, &SavedTunnel {
         id: tunnel_id.clone(),
@@ -82,6 +98,8 @@ pub async fn tunnel_create(
         created_at: now_ms(),
         note,
     })?;
+    // 审计：创建隧道
+    crate::audit::audit_log(&conn, &ci.host, &ci.username, "tunnel_create", &audit_desc, "success", "");
     drop(conn);
 
     Ok(tunnel_id)
@@ -90,25 +108,54 @@ pub async fn tunnel_create(
 #[tauri::command]
 pub async fn tunnel_close(
     tunnel_mgr: State<'_, Arc<AsyncMutex<TunnelManager>>>,
+    db: State<'_, DbPool>,
     tunnel_id: String,
 ) -> Result<(), String> {
     // Stop the running tunnel only; the persisted config stays (user can restore).
-    let tunnel_mgr = tunnel_mgr.lock().await;
-    tunnel_mgr.close_tunnel(&tunnel_id).await
+    let result = {
+        let tunnel_mgr = tunnel_mgr.lock().await;
+        tunnel_mgr.close_tunnel(&tunnel_id).await
+    };
+    // 审计：关闭隧道（从持久化配置反查目标服务器）
+    if let Ok(conn) = db.lock() {
+        if let Ok(Some(saved)) = TunnelStore::get(&conn, &tunnel_id) {
+            let (user, host) = audit_server_of(&saved.server_key);
+            crate::audit::audit_log(
+                &conn, &host, &user, "tunnel_close",
+                &format!("{} {}:{} -> {}:{}", saved.tunnel_type, saved.local_host, saved.local_port, saved.remote_host, saved.remote_port),
+                if result.is_ok() { "success" } else { "error" },
+                &result.as_ref().err().map(|e| e.to_string()).unwrap_or_default(),
+            );
+        }
+    }
+    result
 }
 
 #[tauri::command]
 pub async fn tunnel_close_batch(
     tunnel_mgr: State<'_, Arc<AsyncMutex<TunnelManager>>>,
+    db: State<'_, DbPool>,
     ids: Vec<String>,
 ) -> Result<(), String> {
     // Stop each running tunnel only; persisted configs stay (user can restore).
     // Block scopes keep the non-Send MutexGuard out of any await point.
     for id in &ids {
-        {
+        let r = {
             let tunnel_mgr = tunnel_mgr.lock().await;
-            tunnel_mgr.close_tunnel(id).await?;
+            tunnel_mgr.close_tunnel(id).await
+        };
+        if let Ok(conn) = db.lock() {
+            if let Ok(Some(saved)) = TunnelStore::get(&conn, id) {
+                let (user, host) = audit_server_of(&saved.server_key);
+                crate::audit::audit_log(
+                    &conn, &host, &user, "tunnel_close",
+                    &format!("{} {}:{} -> {}:{}", saved.tunnel_type, saved.local_host, saved.local_port, saved.remote_host, saved.remote_port),
+                    if r.is_ok() { "success" } else { "error" },
+                    &r.as_ref().err().map(|e| e.to_string()).unwrap_or_default(),
+                );
+            }
         }
+        r?;
     }
     Ok(())
 }
@@ -125,6 +172,15 @@ pub async fn tunnel_delete(
         tunnel_mgr.close_tunnel(&tunnel_id).await?;
     }
     let conn = db.lock().map_err(|e| format!("DB lock failed: {}", e))?;
+    // 审计：删除隧道（删除前反查目标服务器，delete 后查不到）
+    if let Ok(Some(saved)) = TunnelStore::get(&conn, &tunnel_id) {
+        let (user, host) = audit_server_of(&saved.server_key);
+        crate::audit::audit_log(
+            &conn, &host, &user, "tunnel_delete",
+            &format!("{} {}:{} -> {}:{}", saved.tunnel_type, saved.local_host, saved.local_port, saved.remote_host, saved.remote_port),
+            "success", "",
+        );
+    }
     TunnelStore::delete(&conn, &tunnel_id)?;
     drop(conn);
     Ok(())
@@ -145,6 +201,14 @@ pub async fn tunnel_delete_batch(
         }
         {
             let conn = db.lock().map_err(|e| format!("DB lock failed: {}", e))?;
+            if let Ok(Some(saved)) = TunnelStore::get(&conn, id) {
+                let (user, host) = audit_server_of(&saved.server_key);
+                crate::audit::audit_log(
+                    &conn, &host, &user, "tunnel_delete",
+                    &format!("{} {}:{} -> {}:{}", saved.tunnel_type, saved.local_host, saved.local_port, saved.remote_host, saved.remote_port),
+                    "success", "",
+                );
+            }
             TunnelStore::delete(&conn, id)?;
         }
     }
@@ -162,6 +226,7 @@ pub async fn tunnel_restore(
 ) -> Result<(), String> {
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(&session_id)?;
+    let ci = session.connect_info.clone();
     drop(mgr);
 
     let saved = {
@@ -169,6 +234,9 @@ pub async fn tunnel_restore(
         TunnelStore::get(&conn, &tunnel_id)?
             .ok_or_else(|| "Tunnel configuration not found".to_string())?
     };
+
+    // 审计描述在字段 move 进 config 之前构造
+    let audit_desc = format!("{} {}:{} -> {}:{}", saved.tunnel_type, saved.local_host, saved.local_port, saved.remote_host, saved.remote_port);
 
     let config = TunnelConfig {
         tunnel_type: parse_tunnel_type(&saved.tunnel_type)?,
@@ -180,11 +248,21 @@ pub async fn tunnel_restore(
     };
     let created_at = saved.created_at;
 
-    let tunnel_mgr = tunnel_mgr.lock().await;
-    tunnel_mgr
-        .create_tunnel(saved.id, session_id, session, config, app, Some(created_at))
-        .await?;
-    Ok(())
+    let result = {
+        let tunnel_mgr = tunnel_mgr.lock().await;
+        tunnel_mgr
+            .create_tunnel(saved.id, session_id, session, config, app, Some(created_at))
+            .await
+    };
+    // 审计：恢复隧道连接
+    if let Ok(conn) = db.lock() {
+        crate::audit::audit_log(
+            &conn, &ci.host, &ci.username, "tunnel_restore", &audit_desc,
+            if result.is_ok() { "success" } else { "error" },
+            &result.as_ref().err().map(|e| e.to_string()).unwrap_or_default(),
+        );
+    }
+    result.map(|_| ())
 }
 
 #[tauri::command]

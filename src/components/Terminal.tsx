@@ -4,7 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { ClipboardAddon } from '@xterm/addon-clipboard'
 import '@xterm/xterm/css/xterm.css'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '../sudoPrompt'
 import { listen } from '@tauri-apps/api/event'
 
 interface TerminalProps {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '../sudoPrompt'
 import { useTranslation } from 'react-i18next'
 
 interface AuditEntry {

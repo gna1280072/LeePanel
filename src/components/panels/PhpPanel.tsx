@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '../../sudoPrompt'
 import { invokeWithSudo } from '../../sudoPrompt'
 
 interface ServiceInfo {

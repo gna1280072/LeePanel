@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useImperativeHandle, forwardRef } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '../sudoPrompt'
 import { listen } from '@tauri-apps/api/event'
 
 import { useTranslation } from 'react-i18next'

@@ -1,6 +1,6 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '../sudoPrompt'
 import { systemToAppLocale } from './locale'
 import en from './en.json'
 import zhCN from './zh-CN.json'

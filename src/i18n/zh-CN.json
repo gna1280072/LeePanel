@@ -528,7 +528,8 @@
     "savedFile": "已保存: {{name}}",
     "saveFailedMsg": "保存失败: {{error}}",
     "compressingItems": "正在压缩 {{count}} 项...",
-    "extractingFile": "正在解压 {{name}}..."
+    "extractingFile": "正在解压 {{name}}...",
+    "noWritePermSudo": "该目录无写入权限。当前为提权模式，文件操作（SFTP）无法提权，请改用 Root 直连或选择其他目录"
   },
   "dashboard": {
     "title": "仪表盘",

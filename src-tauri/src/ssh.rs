@@ -969,11 +969,20 @@ impl SshManager {
     pub async fn check_space(&self, session_id: &str, path: &str) -> Result<String, String> {
         let mut channel = self.open_channel(session_id).await?;
         let safe = path.replace('\'', "'\\''");
+        // 权限模型 v8：附加第 4 段会话模式标记（SUDO_MODE / ROOT_MODE），
+        // 供前端在"无写入权限"时给出针对提权模式的解释性提示
+        let mode_flag = {
+            let session = self.get_session(session_id).ok();
+            match session {
+                Some(s) if s.connect_info.auth_mode == "sudo" && s.connect_info.username != "root" => "SUDO_MODE",
+                _ => "ROOT_MODE",
+            }
+        };
         // df -B1 gets available bytes; touch test checks write permission
         // find -printf '%f|%y' outputs filename|type directly (d=dir, f=file, l=link)
         let cmd = format!(
-            "df -B1 '{}' | tail -1 | awk '{{print $4}}'; echo '---'; touch '{}/.__wtest__' 2>&1 && rm '{}/.__wtest__' && echo 'OK' || echo 'DENIED'; echo '---'; find '{}' -maxdepth 1 -mindepth 1 -printf '%f|%y\n' | grep -v '^\\.|'",
-            safe, safe, safe, safe
+            "df -B1 '{}' | tail -1 | awk '{{print $4}}'; echo '---'; touch '{}/.__wtest__' 2>&1 && rm '{}/.__wtest__' && echo 'OK' || echo 'DENIED'; echo '---'; find '{}' -maxdepth 1 -mindepth 1 -printf '%f|%y\n' | grep -v '^\\.|'; echo '---'; echo '{}'",
+            safe, safe, safe, safe, mode_flag
         );
         channel.exec(true, cmd).await.map_err(|e| format!("Exec failed: {}", e))?;
 

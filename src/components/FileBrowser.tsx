@@ -369,6 +369,8 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       const parts = raw.split('---').map(s => s.trim())
       const availBytes = parseInt(parts[0]) || 0
       const writeOk = parts[1] === 'OK'
+      // 第 4 段：会话模式标记（SUDO_MODE / ROOT_MODE），旧后端无此段则按 ROOT_MODE 处理
+      const sudoMode = parts[3] === 'SUDO_MODE'
       // Parse file list with type code from find -printf '%y': d=dir, f=file, l=link, etc.
       const fileMap = new Map<string, 'file' | 'dir'>()
       ;(parts[2] || '').split('\n').filter(Boolean).forEach(line => {
@@ -381,7 +383,8 @@ export default forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrow
       })
 
       if (!writeOk) {
-        showToast(t('files.noWritePerm'), 'error')
+        // 提权模式：解释 SFTP 文件操作无法提权的协议边界，避免"为什么提权还不能写"的困惑
+        showToast(sudoMode ? t('files.noWritePermSudo') : t('files.noWritePerm'), 'error')
         return { ok: false, existingFiles: fileMap }
       }
       if (availBytes < 1024) {

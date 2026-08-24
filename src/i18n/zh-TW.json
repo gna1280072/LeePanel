@@ -528,7 +528,8 @@
     "savedFile": "已儲存: {{name}}",
     "saveFailedMsg": "儲存失敗: {{error}}",
     "compressingItems": "正在壓縮 {{count}} 項...",
-    "extractingFile": "正在解壓 {{name}}..."
+    "extractingFile": "正在解壓 {{name}}...",
+    "noWritePermSudo": "該目錄無寫入權限。目前為提權模式，檔案操作（SFTP）無法提權，請改用 Root 直連或選擇其他目錄"
   },
   "dashboard": {
     "title": "儀表板",
@@ -1185,7 +1186,11 @@
       "site_delete": "刪除站點",
       "server_reboot": "重啟伺服器",
       "software_action": "軟體操作",
-      "custom_software_action": "自訂軟體操作"
+      "custom_software_action": "自訂軟體操作",
+      "tunnel_create": "隧道-建立",
+      "tunnel_close": "隧道-關閉",
+      "tunnel_delete": "隧道-刪除",
+      "tunnel_restore": "隧道-恢復"
     }
   }
 }

@@ -528,7 +528,8 @@
     "savedFile": "Сохранено: {{name}}",
     "saveFailedMsg": "Ошибка сохранения: {{error}}",
     "compressingItems": "Сжатие {{count}} элемента...",
-    "extractingFile": "Распаковка {{name}}..."
+    "extractingFile": "Распаковка {{name}}...",
+    "noWritePermSudo": "Нет прав на запись в этот каталог. В режиме sudo операции с файлами (SFTP) не могут повышать привилегии — используйте прямое подключение Root или выберите другой каталог"
   },
   "dashboard": {
     "title": "Панель управления",
@@ -1185,7 +1186,11 @@
       "site_delete": "Удалить сайт",
       "server_reboot": "Перезагрузка сервера",
       "software_action": "Действие с ПО",
-      "custom_software_action": "Действие с кастомным ПО"
+      "custom_software_action": "Действие с кастомным ПО",
+      "tunnel_create": "Туннель создать",
+      "tunnel_close": "Туннель закрыть",
+      "tunnel_delete": "Туннель удалить",
+      "tunnel_restore": "Туннель восстановить"
     }
   }
 }

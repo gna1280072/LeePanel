@@ -528,7 +528,8 @@
     "savedFile": "حُفظ: {{name}}",
     "saveFailedMsg": "فشل الحفظ: {{error}}",
     "compressingItems": "ضغط {{count}} عنصر...",
-    "extractingFile": "استخراج {{name}}..."
+    "extractingFile": "استخراج {{name}}...",
+    "noWritePermSudo": "هذا الدليل غير قابل للكتابة. في وضع sudo، لا يمكن لعمليات الملفات (SFTP) رفع الصلاحيات — استخدم اتصال Root المباشر أو اختر دليلاً آخر"
   },
   "dashboard": {
     "title": "لوحة التحكم",
@@ -1185,7 +1186,11 @@
       "site_delete": "حذف الموقع",
       "server_reboot": "إعادة تشغيل الخادم",
       "software_action": "إجراء البرنامج",
-      "custom_software_action": "إجراء برنامج مخصص"
+      "custom_software_action": "إجراء برنامج مخصص",
+      "tunnel_create": "نفق إنشاء",
+      "tunnel_close": "نفق إغلاق",
+      "tunnel_delete": "نفق حذف",
+      "tunnel_restore": "نفق استعادة"
     }
   }
 }

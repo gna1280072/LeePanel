@@ -528,7 +528,8 @@
     "savedFile": "Salvo: {{name}}",
     "saveFailedMsg": "Falha ao salvar: {{error}}",
     "compressingItems": "Comprimindo {{count}} item...",
-    "extractingFile": "Extraindo {{name}}..."
+    "extractingFile": "Extraindo {{name}}...",
+    "noWritePermSudo": "Este diretório não é gravável. No modo sudo, as operações de arquivo (SFTP) não podem elevar privilégios — use a conexão Root direta ou escolha outro diretório"
   },
   "dashboard": {
     "title": "Painel",
@@ -1185,7 +1186,11 @@
       "site_delete": "Excluir site",
       "server_reboot": "Reiniciar servidor",
       "software_action": "Ação de software",
-      "custom_software_action": "Ação de software personalizado"
+      "custom_software_action": "Ação de software personalizado",
+      "tunnel_create": "Túnel criar",
+      "tunnel_close": "Túnel fechar",
+      "tunnel_delete": "Túnel excluir",
+      "tunnel_restore": "Túnel restaurar"
     }
   }
 }

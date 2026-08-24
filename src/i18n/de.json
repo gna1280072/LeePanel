@@ -528,7 +528,8 @@
     "savedFile": "Gespeichert: {{name}}",
     "saveFailedMsg": "Speichern fehlgeschlagen: {{error}}",
     "compressingItems": "{{count}} Element wird komprimiert...",
-    "extractingFile": "{{name}} wird extrahiert..."
+    "extractingFile": "{{name}} wird extrahiert...",
+    "noWritePermSudo": "Dieses Verzeichnis ist nicht beschreibbar. Im Sudo-Modus können Dateioperationen (SFTP) nicht erhöht werden — verwenden Sie Root-Direktverbindung oder wählen Sie ein anderes Verzeichnis"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1185,7 +1186,11 @@
       "site_delete": "Site löschen",
       "server_reboot": "Server neu starten",
       "software_action": "Software-Aktion",
-      "custom_software_action": "Benutzerdefinierte Software-Aktion"
+      "custom_software_action": "Benutzerdefinierte Software-Aktion",
+      "tunnel_create": "Tunnel erstellen",
+      "tunnel_close": "Tunnel schließen",
+      "tunnel_delete": "Tunnel löschen",
+      "tunnel_restore": "Tunnel wiederherstellen"
     }
   }
 }

@@ -528,7 +528,8 @@
     "savedFile": "Enregistré : {{name}}",
     "saveFailedMsg": "Échec de l'enregistrement : {{error}}",
     "compressingItems": "Compression de {{count}} élément...",
-    "extractingFile": "Extraction de {{name}}..."
+    "extractingFile": "Extraction de {{name}}...",
+    "noWritePermSudo": "Ce répertoire n'est pas accessible en écriture. En mode sudo, les opérations fichier (SFTP) ne peuvent pas s'élever — utilisez la connexion Root directe ou choisissez un autre répertoire"
   },
   "dashboard": {
     "title": "Tableau de bord",
@@ -1185,7 +1186,11 @@
       "site_delete": "Supprimer le site",
       "server_reboot": "Redémarrer le serveur",
       "software_action": "Action logiciel",
-      "custom_software_action": "Action logiciel personnalisé"
+      "custom_software_action": "Action logiciel personnalisé",
+      "tunnel_create": "Tunnel créer",
+      "tunnel_close": "Tunnel fermer",
+      "tunnel_delete": "Tunnel supprimer",
+      "tunnel_restore": "Tunnel restaurer"
     }
   }
 }

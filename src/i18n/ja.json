@@ -528,7 +528,8 @@
     "savedFile": "保存: {{name}}",
     "saveFailedMsg": "保存失敗: {{error}}",
     "compressingItems": "{{count}} 件を圧縮中...",
-    "extractingFile": "{{name}} を展開中..."
+    "extractingFile": "{{name}} を展開中...",
+    "noWritePermSudo": "このディレクトリは書き込み不可です。現在は昇格モードのため、ファイル操作（SFTP）は昇格できません。Root 直接接続を使うか、他のディレクトリを選択してください"
   },
   "dashboard": {
     "title": "ダッシュボード",
@@ -1185,7 +1186,11 @@
       "site_delete": "サイト削除",
       "server_reboot": "サーバー再起動",
       "software_action": "ソフトウェア操作",
-      "custom_software_action": "カスタムソフト操作"
+      "custom_software_action": "カスタムソフト操作",
+      "tunnel_create": "トンネル-作成",
+      "tunnel_close": "トンネル-閉じる",
+      "tunnel_delete": "トンネル-削除",
+      "tunnel_restore": "トンネル-復元"
     }
   }
 }

@@ -528,7 +528,8 @@
     "savedFile": "저장됨: {{name}}",
     "saveFailedMsg": "저장 실패: {{error}}",
     "compressingItems": "{{count}} 항목 압축 중...",
-    "extractingFile": "{{name}} 추출 중..."
+    "extractingFile": "{{name}} 추출 중...",
+    "noWritePermSudo": "이 디렉토리는 쓸 수 없습니다. 현재 권한 상승 모드에서는 파일 작업(SFTP)을 승격할 수 없습니다. Root 직접 연결을 사용하거나 다른 디렉토리를 선택하세요"
   },
   "dashboard": {
     "title": "대시보드",
@@ -1185,7 +1186,11 @@
       "site_delete": "사이트 삭제",
       "server_reboot": "서버 재부팅",
       "software_action": "소프트웨어 작업",
-      "custom_software_action": "사용자 정의 소프트웨어 작업"
+      "custom_software_action": "사용자 정의 소프트웨어 작업",
+      "tunnel_create": "터널-생성",
+      "tunnel_close": "터널-닫기",
+      "tunnel_delete": "터널-삭제",
+      "tunnel_restore": "터널-복원"
     }
   }
 }

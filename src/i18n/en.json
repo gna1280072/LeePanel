@@ -528,7 +528,8 @@
     "savedFile": "Saved: {{name}}",
     "saveFailedMsg": "Save failed: {{error}}",
     "compressingItems": "Compressing {{count}} item...",
-    "extractingFile": "Extracting {{name}}..."
+    "extractingFile": "Extracting {{name}}...",
+    "noWritePermSudo": "This directory is not writable. In sudo mode, file operations (SFTP) cannot elevate — use Root direct connection or choose another directory"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1185,7 +1186,11 @@
       "site_delete": "Delete site",
       "server_reboot": "Reboot server",
       "software_action": "Software action",
-      "custom_software_action": "Custom software action"
+      "custom_software_action": "Custom software action",
+      "tunnel_create": "Tunnel create",
+      "tunnel_close": "Tunnel close",
+      "tunnel_delete": "Tunnel delete",
+      "tunnel_restore": "Tunnel restore"
     }
   }
 }

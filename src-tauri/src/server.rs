@@ -4779,9 +4779,13 @@ echo "ACTION_SUCCESS"
         "status": "running",
     }));
 
-    // 权限模型 v8：流式 exec 走统一 sudo 包装（auth_mode='sudo' 时自动 sudo -S）
-    let info_cmd: String = format!("echo $$ > /tmp/leepanel-install.pid; echo '{}:{}' > /tmp/leepanel-install.info; > /tmp/leepanel-install.log; bash /tmp/software-action.sh >> /tmp/leepanel-install.log 2>&1; rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info", action, display_name);
-    let (mut channel, _) = crate::ssh::session_exec_channel(session, &info_cmd).await?;
+    // 权限模型 v8：复合命令整条写入运行脚本后整体 sudo 执行。
+    // 原因：sudo -S 前缀只提权命令链第一段，后续 `bash /tmp/software-action.sh`
+    // 会以普通用户运行导致安装失败（exit -1）；脚本文件方式让整条链以 root 执行，
+    // 且 $$/引号在文件内保持原样。
+    let run_script: String = format!("echo $$ > /tmp/leepanel-install.pid; echo '{}:{}' > /tmp/leepanel-install.info; > /tmp/leepanel-install.log; chmod 644 /tmp/leepanel-install.log; bash /tmp/software-action.sh >> /tmp/leepanel-install.log 2>&1; rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info", action, display_name);
+    crate::ssh::session_write_file(session, "/tmp/leepanel-run.sh", &run_script).await?;
+    let (mut channel, _) = crate::ssh::session_exec_channel(session, "bash /tmp/leepanel-run.sh").await?;
     // ponytail: tail the log file for real-time output display
     let mut tail_channel = crate::ssh::session_open_channel(session).await?;
     let _ = tail_channel.exec(true, "tail -f /tmp/leepanel-install.log").await;
@@ -5259,9 +5263,13 @@ pub async fn software_action(
         "status": "running",
     }));
 
-    // 权限模型 v8：流式 exec 走统一 sudo 包装（auth_mode='sudo' 时自动 sudo -S）
-    let info_cmd: String = format!("echo $$ > /tmp/leepanel-install.pid; echo '{}:{}' > /tmp/leepanel-install.info; > /tmp/leepanel-install.log; bash /tmp/software-action.sh >> /tmp/leepanel-install.log 2>&1; rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info", action, display_name);
-    let (mut channel, _) = crate::ssh::session_exec_channel(session, &info_cmd).await?;
+    // 权限模型 v8：复合命令整条写入运行脚本后整体 sudo 执行。
+    // 原因：sudo -S 前缀只提权命令链第一段，后续 `bash /tmp/software-action.sh`
+    // 会以普通用户运行导致安装失败（exit -1）；脚本文件方式让整条链以 root 执行，
+    // 且 $$/引号在文件内保持原样。
+    let run_script: String = format!("echo $$ > /tmp/leepanel-install.pid; echo '{}:{}' > /tmp/leepanel-install.info; > /tmp/leepanel-install.log; chmod 644 /tmp/leepanel-install.log; bash /tmp/software-action.sh >> /tmp/leepanel-install.log 2>&1; rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info", action, display_name);
+    crate::ssh::session_write_file(session, "/tmp/leepanel-run.sh", &run_script).await?;
+    let (mut channel, _) = crate::ssh::session_exec_channel(session, "bash /tmp/leepanel-run.sh").await?;
     // ponytail: tail the log file for real-time output display
     let mut tail_channel = crate::ssh::session_open_channel(session).await?;
     let _ = tail_channel.exec(true, "tail -f /tmp/leepanel-install.log").await;

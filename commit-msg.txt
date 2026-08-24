@@ -1,0 +1,22 @@
+fix(sudo): run install action chain as a sudo bash script, not a sudo prefix
+
+Follow-up to fe910ee: install now got past writing the script, but the
+action still failed (exit -1). Root cause: software_action /
+custom_software_action executed the action chain as one compound command
+
+    echo $$ > pid; echo info; > log; bash /tmp/software-action.sh >> log; rm ...
+
+through session_exec_channel, whose 'sudo -S' prefix only elevates the
+FIRST segment. The actual `bash /tmp/software-action.sh` ran as the login
+user -> nginx/apache installs failed on permission, and the channel exit
+code came from the last segment (rm), hence the meaningless -1.
+
+Fix: write the whole chain to /tmp/leepanel-run.sh (session_write_file,
+which already falls back to exec+base64 for root-owned leftovers), then run
+`bash /tmp/leepanel-run.sh` via session_exec_channel — the entire chain now
+executes as root, with $$/quotes preserved verbatim in the file. Also
+chmod 644 the log right after creation so the non-sudo `tail -f` can read
+it even under a 077 root umask.
+
+Applied to both software_action and custom_software_action (identical
+pattern, single replace). Verified: 74 cargo tests pass, tsc clean.

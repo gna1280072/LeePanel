@@ -1164,5 +1164,28 @@
     "incorrect": "Senha Sudo incorreta, tente novamente.",
     "password": "Senha Sudo",
     "passwordPlaceholder": "Digite a senha Sudo"
+  },
+  "audit": {
+    "title": "Registro de auditoria",
+    "empty": "Nenhum registro de auditoria ainda",
+    "clear": "Limpar",
+    "clearConfirm": "Limpar todos os registros?",
+    "success": "Sucesso",
+    "error": "Falha",
+    "op": {
+      "port_kill": "Encerrar processo",
+      "service_action": "Ação de serviço",
+      "firewall_add": "Firewall adicionar",
+      "firewall_remove": "Firewall remover",
+      "firewall_toggle": "Firewall alternar",
+      "docker_container_action": "Docker ação de contêiner",
+      "docker_container_remove": "Docker remover contêiner",
+      "docker_image_remove": "Docker remover imagem",
+      "site_toggle": "Site ativar/desativar",
+      "site_delete": "Excluir site",
+      "server_reboot": "Reiniciar servidor",
+      "software_action": "Ação de software",
+      "custom_software_action": "Ação de software personalizado"
+    }
   }
 }

@@ -1164,5 +1164,28 @@
     "incorrect": "Sudo 비밀번호가 올바르지 않습니다. 다시 시도하세요.",
     "password": "Sudo 비밀번호",
     "passwordPlaceholder": "Sudo 비밀번호 입력"
+  },
+  "audit": {
+    "title": "작업 로그",
+    "empty": "작업 기록이 없습니다",
+    "clear": "비우기",
+    "clearConfirm": "모든 로그를 비우시겠습니까?",
+    "success": "성공",
+    "error": "실패",
+    "op": {
+      "port_kill": "프로세스 종료",
+      "service_action": "서비스 작업",
+      "firewall_add": "방화벽-추가",
+      "firewall_remove": "방화벽-삭제",
+      "firewall_toggle": "방화벽-전환",
+      "docker_container_action": "Docker-컨테이너 작업",
+      "docker_container_remove": "Docker-컨테이너 삭제",
+      "docker_image_remove": "Docker-이미지 삭제",
+      "site_toggle": "사이트-활성/비활성",
+      "site_delete": "사이트 삭제",
+      "server_reboot": "서버 재부팅",
+      "software_action": "소프트웨어 작업",
+      "custom_software_action": "사용자 정의 소프트웨어 작업"
+    }
   }
 }

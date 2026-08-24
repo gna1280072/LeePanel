@@ -1164,5 +1164,28 @@
     "incorrect": "Sudo-Passwort falsch, bitte erneut versuchen.",
     "password": "Sudo-Passwort",
     "passwordPlaceholder": "Sudo-Passwort eingeben"
+  },
+  "audit": {
+    "title": "Prüfprotokoll",
+    "empty": "Noch keine Prüfeinträge",
+    "clear": "Leeren",
+    "clearConfirm": "Alle Protokolle leeren?",
+    "success": "Erfolg",
+    "error": "Fehlgeschlagen",
+    "op": {
+      "port_kill": "Prozess beenden",
+      "service_action": "Dienstaktion",
+      "firewall_add": "Firewall hinzufügen",
+      "firewall_remove": "Firewall entfernen",
+      "firewall_toggle": "Firewall umschalten",
+      "docker_container_action": "Docker Container-Aktion",
+      "docker_container_remove": "Docker Container entfernen",
+      "docker_image_remove": "Docker Image entfernen",
+      "site_toggle": "Site aktivieren/deaktivieren",
+      "site_delete": "Site löschen",
+      "server_reboot": "Server neu starten",
+      "software_action": "Software-Aktion",
+      "custom_software_action": "Benutzerdefinierte Software-Aktion"
+    }
   }
 }

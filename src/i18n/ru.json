@@ -1164,5 +1164,28 @@
     "incorrect": "Неверный пароль Sudo, попробуйте ещё раз.",
     "password": "Пароль Sudo",
     "passwordPlaceholder": "Введите пароль Sudo"
+  },
+  "audit": {
+    "title": "Журнал аудита",
+    "empty": "Записей аудита пока нет",
+    "clear": "Очистить",
+    "clearConfirm": "Очистить все записи?",
+    "success": "Успех",
+    "error": "Ошибка",
+    "op": {
+      "port_kill": "Завершить процесс",
+      "service_action": "Действие со службой",
+      "firewall_add": "Файрвол добавить",
+      "firewall_remove": "Файрвол удалить",
+      "firewall_toggle": "Файрвол переключить",
+      "docker_container_action": "Docker действие с контейнером",
+      "docker_container_remove": "Docker удалить контейнер",
+      "docker_image_remove": "Docker удалить образ",
+      "site_toggle": "Сайт вкл/выкл",
+      "site_delete": "Удалить сайт",
+      "server_reboot": "Перезагрузка сервера",
+      "software_action": "Действие с ПО",
+      "custom_software_action": "Действие с кастомным ПО"
+    }
   }
 }

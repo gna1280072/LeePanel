@@ -1164,5 +1164,28 @@
     "incorrect": "Mot de passe Sudo incorrect, veuillez réessayer.",
     "password": "Mot de passe Sudo",
     "passwordPlaceholder": "Entrez le mot de passe Sudo"
+  },
+  "audit": {
+    "title": "Journal d'audit",
+    "empty": "Aucun enregistrement d'audit",
+    "clear": "Effacer",
+    "clearConfirm": "Effacer tous les journaux ?",
+    "success": "Succès",
+    "error": "Échec",
+    "op": {
+      "port_kill": "Tuer le processus",
+      "service_action": "Action service",
+      "firewall_add": "Pare-feu ajouter",
+      "firewall_remove": "Pare-feu supprimer",
+      "firewall_toggle": "Pare-feu basculer",
+      "docker_container_action": "Docker action conteneur",
+      "docker_container_remove": "Docker supprimer conteneur",
+      "docker_image_remove": "Docker supprimer image",
+      "site_toggle": "Site activer/désactiver",
+      "site_delete": "Supprimer le site",
+      "server_reboot": "Redémarrer le serveur",
+      "software_action": "Action logiciel",
+      "custom_software_action": "Action logiciel personnalisé"
+    }
   }
 }

@@ -256,6 +256,20 @@ pub fn init_db() -> Result<Mutex<SqliteConn>, String> {
         let _ = conn.execute_batch("ALTER TABLE tunnels ADD COLUMN note TEXT NOT NULL DEFAULT '';");
     }
 
+    // v9: 审计日志表 —— 记录用户对服务器的管理操作（谁/何时/对哪台/执行了什么/结果）
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS op_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts INTEGER NOT NULL,
+            server_host TEXT NOT NULL,
+            server_username TEXT NOT NULL,
+            op TEXT NOT NULL,
+            command TEXT NOT NULL,
+            result TEXT NOT NULL DEFAULT 'success',
+            detail TEXT NOT NULL DEFAULT ''
+        );"
+    ).map_err(|e| format!("Failed to create op_log table: {}", e))?;
+
     // Update schema version to latest
     conn.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', '8')",

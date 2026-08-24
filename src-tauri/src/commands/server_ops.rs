@@ -62,6 +62,7 @@ pub async fn server_create_site(
 #[tauri::command]
 pub async fn server_toggle_site(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    db: tauri::State<'_, DbPool>,
     session_id: &str,
     config_path: &str,
     domain: &str,
@@ -73,14 +74,24 @@ pub async fn server_toggle_site(
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
+    let info = session.connect_info.clone();
     drop(mgr);
-    let msg = server::toggle_site(&session, &cache, session_id, config_path, domain, enable).await?;
-    Ok(msg)
+    let result = server::toggle_site(&session, &cache, session_id, config_path, domain, enable).await;
+    if let Ok(conn) = db.lock() {
+        crate::audit::audit_log(
+            &conn, &info.host, &info.username, "site_toggle",
+            &format!("site {} {}", if enable { "enable" } else { "disable" }, domain),
+            if result.is_ok() { "success" } else { "error" },
+            &result.as_ref().err().cloned().unwrap_or_default(),
+        );
+    }
+    result
 }
 
 #[tauri::command]
 pub async fn server_delete_site(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    db: tauri::State<'_, DbPool>,
     session_id: &str,
     domain: &str,
     remove_files: bool,
@@ -90,9 +101,18 @@ pub async fn server_delete_site(
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
+    let info = session.connect_info.clone();
     drop(mgr);
-    let msg = server::delete_site(&session, &cache, session_id, domain, remove_files).await?;
-    Ok(msg)
+    let result = server::delete_site(&session, &cache, session_id, domain, remove_files).await;
+    if let Ok(conn) = db.lock() {
+        crate::audit::audit_log(
+            &conn, &info.host, &info.username, "site_delete",
+            &format!("delete site {} (remove_files={})", domain, remove_files),
+            if result.is_ok() { "success" } else { "error" },
+            &result.as_ref().err().cloned().unwrap_or_default(),
+        );
+    }
+    result
 }
 
 #[tauri::command]
@@ -273,6 +293,7 @@ pub async fn server_firewall_list(
 #[tauri::command]
 pub async fn server_firewall_add(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    db: tauri::State<'_, DbPool>,
     session_id: &str,
     port: &str,
     protocol: &str,
@@ -286,15 +307,25 @@ pub async fn server_firewall_add(
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
+    let info = session.connect_info.clone();
     drop(mgr);
     let result = server::add_firewall_rule(&session, &cache, session_id, port, protocol, action, source.unwrap_or("")).await;
     cache.invalidate(session_id, &["firewall"]);
+    if let Ok(conn) = db.lock() {
+        crate::audit::audit_log(
+            &conn, &info.host, &info.username, "firewall_add",
+            &format!("firewall add {} {} {}", action, port, protocol),
+            if result.is_ok() { "success" } else { "error" },
+            &result.as_ref().err().cloned().unwrap_or_default(),
+        );
+    }
     result
 }
 
 #[tauri::command]
 pub async fn server_firewall_remove(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    db: tauri::State<'_, DbPool>,
     session_id: &str,
     port: &str,
     protocol: &str,
@@ -308,24 +339,43 @@ pub async fn server_firewall_remove(
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
+    let info = session.connect_info.clone();
     drop(mgr);
     let result = server::remove_firewall_rule(&session, &cache, session_id, port, protocol, action, source.unwrap_or("")).await;
     cache.invalidate(session_id, &["firewall"]);
+    if let Ok(conn) = db.lock() {
+        crate::audit::audit_log(
+            &conn, &info.host, &info.username, "firewall_remove",
+            &format!("firewall remove {} {} {}", action, port, protocol),
+            if result.is_ok() { "success" } else { "error" },
+            &result.as_ref().err().cloned().unwrap_or_default(),
+        );
+    }
     result
 }
 
 #[tauri::command]
 pub async fn server_firewall_toggle(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    db: tauri::State<'_, DbPool>,
     session_id: &str,
     enable: bool,
 ) -> Result<FirewallToggleResult, String> {
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
+    let info = session.connect_info.clone();
     drop(mgr);
     let result = server::toggle_firewall(&session, &cache, session_id, enable).await;
     cache.invalidate(session_id, &["firewall"]);
+    if let Ok(conn) = db.lock() {
+        crate::audit::audit_log(
+            &conn, &info.host, &info.username, "firewall_toggle",
+            &format!("firewall {}", if enable { "enable" } else { "disable" }),
+            if result.is_ok() { "success" } else { "error" },
+            &result.as_ref().err().cloned().unwrap_or_default(),
+        );
+    }
     result
 }
 
@@ -442,6 +492,14 @@ pub async fn server_software_action(
     let timeout_secs = timeout_mins * 60;
     let result = server::software_action(&session, &cache, session_id, software, action, options, display_name, &app, timeout_secs).await;
     cache.invalidate(session_id, &["software_list", "service_statuses", "lnmp_status", "docker_status"]);
+    if let Ok(conn) = db.lock() {
+        crate::audit::audit_log(
+            &conn, &session.connect_info.host, &session.connect_info.username, "software_action",
+            &format!("{} {}", action, software),
+            if result.is_ok() { "success" } else { "error" },
+            &result.as_ref().err().cloned().unwrap_or_default(),
+        );
+    }
     result
 }
 
@@ -450,15 +508,25 @@ pub async fn server_software_action(
 #[tauri::command]
 pub async fn server_reboot(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    db: tauri::State<'_, DbPool>,
     session_id: &str,
     force: bool,
 ) -> Result<String, String> {
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
+    let info = session.connect_info.clone();
     drop(mgr);
     let result = server::reboot_server(&session, &cache, session_id, force).await;
     cache.clear_session(session_id);
+    if let Ok(conn) = db.lock() {
+        crate::audit::audit_log(
+            &conn, &info.host, &info.username, "server_reboot",
+            if force { "reboot -f" } else { "reboot" },
+            if result.is_ok() { "success" } else { "error" },
+            &result.as_ref().err().cloned().unwrap_or_default(),
+        );
+    }
     result
 }
 
@@ -658,6 +726,7 @@ pub async fn server_docker_container_list(
 #[tauri::command]
 pub async fn server_docker_container_action(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    db: tauri::State<'_, DbPool>,
     session_id: &str,
     container_id: &str,
     action: &str,
@@ -668,13 +737,24 @@ pub async fn server_docker_container_action(
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
+    let info = session.connect_info.clone();
     drop(mgr);
-    server::docker_container_action(&session, &cache, session_id, container_id, action).await
+    let result = server::docker_container_action(&session, &cache, session_id, container_id, action).await;
+    if let Ok(conn) = db.lock() {
+        crate::audit::audit_log(
+            &conn, &info.host, &info.username, "docker_container_action",
+            &format!("docker {} {}", action, container_id),
+            if result.is_ok() { "success" } else { "error" },
+            &result.as_ref().err().cloned().unwrap_or_default(),
+        );
+    }
+    result
 }
 
 #[tauri::command]
 pub async fn server_docker_container_remove(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    db: tauri::State<'_, DbPool>,
     session_id: &str,
     container_id: &str,
     force: bool,
@@ -684,8 +764,18 @@ pub async fn server_docker_container_remove(
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
+    let info = session.connect_info.clone();
     drop(mgr);
-    server::docker_container_remove(&session, &cache, session_id, container_id, force).await
+    let result = server::docker_container_remove(&session, &cache, session_id, container_id, force).await;
+    if let Ok(conn) = db.lock() {
+        crate::audit::audit_log(
+            &conn, &info.host, &info.username, "docker_container_remove",
+            &format!("docker rm {}{}", if force { "-f " } else { "" }, container_id),
+            if result.is_ok() { "success" } else { "error" },
+            &result.as_ref().err().cloned().unwrap_or_default(),
+        );
+    }
+    result
 }
 
 #[tauri::command]
@@ -778,6 +868,7 @@ pub async fn server_docker_image_pull(
 #[tauri::command]
 pub async fn server_docker_image_remove(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    db: tauri::State<'_, DbPool>,
     session_id: &str,
     image_id: &str,
 ) -> Result<String, String> {
@@ -786,8 +877,18 @@ pub async fn server_docker_image_remove(
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
+    let info = session.connect_info.clone();
     drop(mgr);
-    server::docker_image_remove(&session, &cache, session_id, image_id).await
+    let result = server::docker_image_remove(&session, &cache, session_id, image_id).await;
+    if let Ok(conn) = db.lock() {
+        crate::audit::audit_log(
+            &conn, &info.host, &info.username, "docker_image_remove",
+            &format!("docker rmi {}", image_id),
+            if result.is_ok() { "success" } else { "error" },
+            &result.as_ref().err().cloned().unwrap_or_default(),
+        );
+    }
+    result
 }
 
 #[tauri::command]
@@ -937,7 +1038,16 @@ pub async fn custom_software_action(
             .ok().and_then(|v| v.parse().ok()).unwrap_or(30)
     };
     let timeout_secs = timeout_mins * 60;
-    server::custom_software_action(&session, &cache, session_id, package_name, action, display_name, &app, timeout_secs).await
+    let result = server::custom_software_action(&session, &cache, session_id, package_name, action, display_name, &app, timeout_secs).await;
+    if let Ok(conn) = db.lock() {
+        crate::audit::audit_log(
+            &conn, &session.connect_info.host, &session.connect_info.username, "custom_software_action",
+            &format!("{} {}", action, package_name),
+            if result.is_ok() { "success" } else { "error" },
+            &result.as_ref().err().cloned().unwrap_or_default(),
+        );
+    }
+    result
 }
 
 #[tauri::command]

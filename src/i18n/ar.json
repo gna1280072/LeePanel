@@ -1164,5 +1164,28 @@
     "incorrect": "كلمة مرور Sudo غير صحيحة، حاول مرة أخرى.",
     "password": "كلمة مرور Sudo",
     "passwordPlaceholder": "أدخل كلمة مرور Sudo"
+  },
+  "audit": {
+    "title": "سجل التدقيق",
+    "empty": "لا توجد سجلات تدقيق بعد",
+    "clear": "مسح",
+    "clearConfirm": "مسح جميع السجلات؟",
+    "success": "نجاح",
+    "error": "فشل",
+    "op": {
+      "port_kill": "إنهاء العملية",
+      "service_action": "إجراء الخدمة",
+      "firewall_add": "جدار الحماية إضافة",
+      "firewall_remove": "جدار الحماية حذف",
+      "firewall_toggle": "جدار الحماية تبديل",
+      "docker_container_action": "Docker إجراء الحاوية",
+      "docker_container_remove": "Docker حذف الحاوية",
+      "docker_image_remove": "Docker حذف الصورة",
+      "site_toggle": "الموقع تمكين/تعطيل",
+      "site_delete": "حذف الموقع",
+      "server_reboot": "إعادة تشغيل الخادم",
+      "software_action": "إجراء البرنامج",
+      "custom_software_action": "إجراء برنامج مخصص"
+    }
   }
 }

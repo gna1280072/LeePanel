@@ -1,3 +1,4 @@
+mod audit;
 mod config;
 mod credentials;
 mod db;
@@ -163,6 +164,8 @@ pub fn run() {
             commands::tunnel::tunnel_restore_batch,
             // Port Management
             commands::port::port_list, commands::port::port_query, commands::port::port_kill,
+            // Audit Log
+            commands::audit::audit_list, commands::audit::audit_clear, commands::audit::audit_count,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use tokio::sync::Mutex as AsyncMutex;
-use crate::{ssh, ssh::SshManager, server};
+use crate::{audit, ssh, ssh::SshManager, server, DbPool};
 use server::*;
 
 // ===== Server Commands =====
@@ -45,6 +45,7 @@ pub async fn server_get_service_info(
 #[tauri::command]
 pub async fn server_service_action(
     ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
+    db: tauri::State<'_, DbPool>,
     session_id: &str,
     service: &str,
     action: &str,
@@ -55,14 +56,23 @@ pub async fn server_service_action(
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
+    let info = session.connect_info.clone();
     drop(mgr);
     let cmd = format!("systemctl {} {}", action, service);
     let (_, stderr, code) = ssh::session_exec_with_output(&session, &cmd, 30).await?;
     // ponytail: invalidate service/software cache after start/stop/restart
     cache.invalidate(session_id, &["service_statuses", "software_list"]);
     if code != 0 && !stderr.is_empty() {
+        // 审计：服务操作失败
+        if let Ok(conn) = db.lock() {
+            audit::audit_log(&conn, &info.host, &info.username, "service_action", &cmd, "error", stderr.trim());
+        }
         Err(format!("{} failed: {}", service, stderr.trim()))
     } else {
+        // 审计：服务操作成功
+        if let Ok(conn) = db.lock() {
+            audit::audit_log(&conn, &info.host, &info.username, "service_action", &cmd, "success", "");
+        }
         Ok(format!("{} {} OK", service, action))
     }
 }

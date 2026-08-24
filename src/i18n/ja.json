@@ -1164,5 +1164,28 @@
     "incorrect": "Sudo パスワードが正しくありません。もう一度お試しください。",
     "password": "Sudo パスワード",
     "passwordPlaceholder": "Sudo パスワードを入力"
+  },
+  "audit": {
+    "title": "操作ログ",
+    "empty": "操作記録はまだありません",
+    "clear": "クリア",
+    "clearConfirm": "すべてのログをクリアしますか？",
+    "success": "成功",
+    "error": "失敗",
+    "op": {
+      "port_kill": "プロセス終了",
+      "service_action": "サービス操作",
+      "firewall_add": "ファイアウォール-追加",
+      "firewall_remove": "ファイアウォール-削除",
+      "firewall_toggle": "ファイアウォール-切替",
+      "docker_container_action": "Docker-コンテナ操作",
+      "docker_container_remove": "Docker-コンテナ削除",
+      "docker_image_remove": "Docker-イメージ削除",
+      "site_toggle": "サイト-有効/無効",
+      "site_delete": "サイト削除",
+      "server_reboot": "サーバー再起動",
+      "software_action": "ソフトウェア操作",
+      "custom_software_action": "カスタムソフト操作"
+    }
   }
 }

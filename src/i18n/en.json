@@ -1164,5 +1164,28 @@
     "incorrect": "Incorrect Sudo password, please try again.",
     "password": "Sudo password",
     "passwordPlaceholder": "Enter Sudo password"
+  },
+  "audit": {
+    "title": "Audit log",
+    "empty": "No audit records yet",
+    "clear": "Clear",
+    "clearConfirm": "Clear all logs?",
+    "success": "Success",
+    "error": "Failed",
+    "op": {
+      "port_kill": "Kill process",
+      "service_action": "Service action",
+      "firewall_add": "Firewall add",
+      "firewall_remove": "Firewall remove",
+      "firewall_toggle": "Firewall toggle",
+      "docker_container_action": "Docker container action",
+      "docker_container_remove": "Docker remove container",
+      "docker_image_remove": "Docker remove image",
+      "site_toggle": "Site enable/disable",
+      "site_delete": "Delete site",
+      "server_reboot": "Reboot server",
+      "software_action": "Software action",
+      "custom_software_action": "Custom software action"
+    }
   }
 }

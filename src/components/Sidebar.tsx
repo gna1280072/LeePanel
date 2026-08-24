@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useTranslation } from 'react-i18next'
+import AuditLogDialog from './AuditLogDialog'
 
 interface Connection {
   id: string
@@ -75,6 +76,7 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
   const [showCreatePassphrase, setShowCreatePassphrase] = useState(false)
   const [hasCheckedEmpty, setHasCheckedEmpty] = useState(false)
   const [langDropdownOpen, setLangDropdownOpen] = useState(false)
+  const [showAudit, setShowAudit] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const langRef = useRef<HTMLDivElement>(null)
 
@@ -301,13 +303,19 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
         })}
       </div>
 
-      {onManageHostKeys && (
-        <div className="sidebar-footer">
+      <div className="sidebar-footer">
+        {onManageHostKeys && (
           <button className="btn-host-keys" onClick={onManageHostKeys}>
             🔐 {t('sidebar.hostKeys')}
           </button>
-        </div>
-      )}
+        )}
+        <button className="btn-host-keys" onClick={() => setShowAudit(true)} title={t('audit.title')}>
+          📋 {t('audit.title')}
+        </button>
+      </div>
+
+      {/* Audit Log Dialog */}
+      <AuditLogDialog open={showAudit} onClose={() => setShowAudit(false)} />
 
       {/* Context Menu */}
       {contextMenu && (

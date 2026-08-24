@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, emit } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-shell'
 import { useTranslation } from 'react-i18next'
+import { invokeWithSudo } from '../../sudoPrompt'
 
 interface SiteInfo {
   domain: string
@@ -96,7 +97,7 @@ export default function SslPanel({ sessionId }: SslPanelProps) {
       [domain]: { domain, lines: [t('ssl.startingSetup', { domain })], status: 'installing' }
     }))
     try {
-      await invoke<string>('server_setup_ssl', { sessionId, domain })
+      await invokeWithSudo(() => invoke<string>('server_setup_ssl', { sessionId, domain }), sessionId)
       // Notify other panels to refresh their site lists
       await emit('ssl-installed', { sessionId, domain })
     } catch (e) {

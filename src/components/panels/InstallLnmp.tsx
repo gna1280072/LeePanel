@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useTranslation } from 'react-i18next'
+import { invokeWithSudo } from '../../sudoPrompt'
 
 interface LnmpStatus {
   nginx_installed: boolean
@@ -104,13 +105,13 @@ export default function InstallLnmp({ sessionId, onInstallationComplete }: Insta
     setError('')
 
     try {
-      await invoke('server_install_lnmp', {
+      await invokeWithSudo(() => invoke('server_install_lnmp', {
         sessionId,
         config: {
           install_nginx: installNginx,
           install_php: installPhp,
         },
-      })
+      }), sessionId)
       setState('done')
       // Notify parent to reconnect after successful installation
       onInstallationComplete?.()

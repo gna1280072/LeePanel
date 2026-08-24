@@ -578,11 +578,8 @@ pub async fn install_lnmp(
 
     // Make it executable and run it
     // Use a shell channel to stream output
-    let mut channel = crate::ssh::session_open_channel(session).await?;
-    channel
-        .exec(true, "bash /tmp/lnmp-install.sh")
-        .await
-        .map_err(|e| format!("Failed to start install script: {}", e))?;
+    // 权限模型 v8：流式 exec 走统一 sudo 包装（auth_mode='sudo' 时自动 sudo -S）
+    let (mut channel, _) = crate::ssh::session_exec_channel(session, "bash /tmp/lnmp-install.sh").await?;
 
     let mut full_output = String::new();
     let mut exit_code: i32 = -1;
@@ -3355,10 +3352,8 @@ pub async fn setup_ssl(
         } else {
             "yum install -y --nogpgcheck --assumeyes certbot python3-certbot-nginx || dnf install -y --nogpgcheck --assumeyes certbot python3-certbot-nginx"
         };
-        // Stream certbot install output
-        let mut install_channel = crate::ssh::session_open_channel(session).await?;
-        install_channel.exec(true, install_cmd).await
-            .map_err(|e| format!("Failed to install certbot: {}", e))?;
+        // Stream certbot install output (权限模型 v8：统一 sudo 包装)
+        let (mut install_channel, _) = crate::ssh::session_exec_channel(session, install_cmd).await?;
         let install_deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(180);
         loop {
             tokio::select! {
@@ -3418,9 +3413,7 @@ pub async fn setup_ssl(
     );
     emit(&format!("Running: {}", cmd), "installing");
 
-    let mut channel = crate::ssh::session_open_channel(session).await?;
-    channel.exec(true, cmd.as_str()).await
-        .map_err(|e| format!("Failed to start certbot: {}", e))?;
+    let (mut channel, _) = crate::ssh::session_exec_channel(session, cmd.as_str()).await?;
 
     let mut full_output = String::new();
     let mut exit_code: i32 = -1;
@@ -4786,12 +4779,9 @@ echo "ACTION_SUCCESS"
         "status": "running",
     }));
 
-    let mut channel = crate::ssh::session_open_channel(session).await?;
-    // ponytail: redirect output to log file (not SSH channel) so install survives disconnect
-    // write action info for recovery: "action:display_name"
+    // 权限模型 v8：流式 exec 走统一 sudo 包装（auth_mode='sudo' 时自动 sudo -S）
     let info_cmd: String = format!("echo $$ > /tmp/leepanel-install.pid; echo '{}:{}' > /tmp/leepanel-install.info; > /tmp/leepanel-install.log; bash /tmp/software-action.sh >> /tmp/leepanel-install.log 2>&1; rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info", action, display_name);
-    channel.exec(true, info_cmd).await
-        .map_err(|e| format!("Failed to start script: {}", e))?;
+    let (mut channel, _) = crate::ssh::session_exec_channel(session, &info_cmd).await?;
     // ponytail: tail the log file for real-time output display
     let mut tail_channel = crate::ssh::session_open_channel(session).await?;
     let _ = tail_channel.exec(true, "tail -f /tmp/leepanel-install.log").await;
@@ -5096,12 +5086,8 @@ fi
     // Write script to remote server
     crate::ssh::session_write_file(session, "/tmp/clean-sources.sh", cmd).await?;
     
-    // Execute with streaming output
-    let mut channel = crate::ssh::session_open_channel(session).await?;
-    channel
-        .exec(true, "bash /tmp/clean-sources.sh")
-        .await
-        .map_err(|e| format!("Failed to start script: {}", e))?;
+    // Execute with streaming output (权限模型 v8：统一 sudo 包装)
+    let (mut channel, _) = crate::ssh::session_exec_channel(session, "bash /tmp/clean-sources.sh").await?;
     
     let event_name = "sources-action-progress";
     let mut full_output = String::new();
@@ -5273,14 +5259,9 @@ pub async fn software_action(
         "status": "running",
     }));
 
-    let mut channel = crate::ssh::session_open_channel(session).await?;
-    // ponytail: redirect output to log file (not SSH channel) so install survives disconnect
-    // write action info for recovery: "action:display_name"
+    // 权限模型 v8：流式 exec 走统一 sudo 包装（auth_mode='sudo' 时自动 sudo -S）
     let info_cmd: String = format!("echo $$ > /tmp/leepanel-install.pid; echo '{}:{}' > /tmp/leepanel-install.info; > /tmp/leepanel-install.log; bash /tmp/software-action.sh >> /tmp/leepanel-install.log 2>&1; rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info", action, display_name);
-    channel
-        .exec(true, info_cmd)
-        .await
-        .map_err(|e| format!("Failed to start script: {}", e))?;
+    let (mut channel, _) = crate::ssh::session_exec_channel(session, &info_cmd).await?;
     // ponytail: tail the log file for real-time output display
     let mut tail_channel = crate::ssh::session_open_channel(session).await?;
     let _ = tail_channel.exec(true, "tail -f /tmp/leepanel-install.log").await;
@@ -7046,11 +7027,8 @@ async fn docker_stream_exec(
     timeout_secs: u64,
     app_handle: &AppHandle,
 ) -> Result<String, String> {
-    let mut channel = crate::ssh::session_open_channel(session).await?;
-    channel
-        .exec(true, cmd)
-        .await
-        .map_err(|e| format!("Failed to execute command: {}", e))?;
+    // 权限模型 v8：统一 sudo 包装
+    let (mut channel, _) = crate::ssh::session_exec_channel(session, cmd).await?;
 
     let mut full_output = String::new();
     let mut exit_code: i32 = -1;
@@ -7122,11 +7100,8 @@ async fn stream_ssh_command(
     app_handle: &AppHandle,
     event_name: &str,
 ) -> Result<(String, i32), String> {
-    let mut channel = crate::ssh::session_open_channel(session).await?;
-    channel
-        .exec(true, cmd)
-        .await
-        .map_err(|e| format!("Failed to execute command: {}", e))?;
+    // 权限模型 v8：统一 sudo 包装
+    let (mut channel, _) = crate::ssh::session_exec_channel(session, cmd).await?;
 
     let mut full_output = String::new();
     let mut exit_code: i32 = -1;

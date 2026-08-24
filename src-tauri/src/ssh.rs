@@ -1731,6 +1731,37 @@ pub async fn session_open_channel(session: &SshSession) -> Result<russh::Channel
     rx.await.map_err(|_| "Failed to open channel".to_string())
 }
 
+/// 权限模型 v8：打开 exec channel 并执行命令（流式输出场景）。
+/// auth_mode='sudo' 且非 root 时自动包装 `sudo -S` 并喂入会话级 sudo 密码
+/// （密码经 stdin，不进进程列表）。返回 channel 供调用方流式读取进度。
+/// 第二项返回值标记本次是否走了 sudo（调用方可据此判断错误语义）。
+pub async fn session_exec_channel(
+    session: &SshSession,
+    cmd: &str,
+) -> Result<(russh::Channel<client::Msg>, bool), String> {
+    let needs_sudo = session.connect_info.auth_mode == "sudo"
+        && session.connect_info.username != "root";
+    let mut channel = session_open_channel(session).await?;
+    if needs_sudo {
+        let pw = session.sudo_password.lock().await.clone();
+        if pw.is_none() {
+            return Err("SUDO_PASSWORD_REQUIRED".to_string());
+        }
+        let wrapped = format!("sudo -S {}", cmd);
+        channel.exec(true, wrapped.as_str()).await.map_err(|e| format!("Exec failed: {}", e))?;
+        if let Some(pw) = pw {
+            let mut data = pw.into_bytes();
+            data.push(b'\n');
+            let mut cursor = Cursor::new(&data);
+            let _ = channel.data(&mut cursor).await;
+            let _ = channel.eof().await;
+        }
+    } else {
+        channel.exec(true, cmd).await.map_err(|e| format!("Exec failed: {}", e))?;
+    }
+    Ok((channel, needs_sudo))
+}
+
 pub async fn session_exec_with_output(
     session: &SshSession,
     cmd: &str,

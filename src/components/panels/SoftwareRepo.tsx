@@ -253,13 +253,13 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
     setActionLabel(`${action === 'install' ? 'Installing' : 'Uninstalling'} ${sw.display_name}`)
 
     try {
-      await invoke('server_software_action', {
+      await invokeWithSudo(() => invoke('server_software_action', {
         sessionId,
         software: sw.name,
         action,
         options: opts,
         displayName: sw.display_name,
-      })
+      }), sessionId)
       setLogStatus('done')
     } catch (e) {
       const msg = String(e)
@@ -360,7 +360,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
     setCleanLogs([t('software.cleaningSources')])
     setCleanLogStatus('running')
     try {
-      await invoke('server_clean_and_update_sources', { sessionId })
+      await invokeWithSudo(() => invoke('server_clean_and_update_sources', { sessionId }), sessionId)
       setCleanLogStatus('done')
     } catch (e) {
       const msg = String(e)
@@ -379,13 +379,13 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
     setLogStatus('running')
     setActionLabel(`${sourceCompile ? t('software.compilingPHPSource', { version: selectedVersion }) : t('software.installingPHPVersion', { version: selectedVersion })}`)
     try {
-      await invoke('server_software_action', {
+      await invokeWithSudo(() => invoke('server_software_action', {
         sessionId,
         software: 'php',
         action: 'install',
         options: opts,
         displayName: `PHP ${selectedVersion}`,
-      })
+      }), sessionId)
       setLogStatus('done')
     } catch (e) {
       const msg = String(e)
@@ -427,13 +427,13 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
     setLogStatus('running')
     setActionLabel(t('software.installingMysqlVersion', { version: `${displayName} ${versionStr}` }))
     try {
-      await invoke('server_software_action', {
+      await invokeWithSudo(() => invoke('server_software_action', {
         sessionId,
         software: 'mysql',
         action: 'install',
         options: selectedMysqlVersion,
         displayName: `${displayName} ${versionStr}`,
-      })
+      }), sessionId)
       setLogStatus('done')
     } catch (e) {
       const msg = String(e)
@@ -483,12 +483,12 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
     setLogStatus('running')
     setActionLabel(`${action === 'install' ? 'Installing' : 'Uninstalling'} ${sw.display_name}`)
     try {
-      await invoke('custom_software_action', {
+      await invokeWithSudo(() => invoke('custom_software_action', {
         sessionId,
         packageName: sw.name,
         action,
         displayName: sw.display_name,
-      })
+      }), sessionId)
       setLogStatus('done')
     } catch (e) {
       const msg = String(e)

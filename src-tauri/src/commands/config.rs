@@ -18,6 +18,12 @@ pub fn config_list(db: tauri::State<'_, DbPool>) -> Vec<Connection> {
 
 #[tauri::command]
 pub fn config_save(db: tauri::State<'_, DbPool>, connection: Connection) -> Result<(), String> {
+    // 防御：id 为空/空白时后端生成唯一主键（避免前端同毫秒 Date.now() 碰撞导致
+    // 多个连接共用同一 configId、会话互相覆盖；正常路径前端已用 crypto.randomUUID()）
+    let mut connection = connection;
+    if connection.id.trim().is_empty() {
+        connection.id = uuid::Uuid::new_v4().to_string();
+    }
     // 1. 凭据 → 系统钥匙串（明文绝不落库）
     //    语义：None=保持不变 | Some("")=清空 | Some(值)=覆盖（新建连接均为"覆盖"）
     if connection.remember_me {

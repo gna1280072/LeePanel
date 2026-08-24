@@ -487,7 +487,9 @@ function App() {
 
   const handleCreateConnection = async (data: { name: string; host: string; port: number; username: string; auth_type: string; key_path?: string; password?: string; passphrase?: string; remember_me?: boolean }) => {
     // Save the new connection
-    const newId = Date.now().toString()
+    // 权限模型修复：id 用 crypto.randomUUID()（原 Date.now() 同毫秒创建会碰撞，
+    // 导致两个连接共用同一 configId、tab/session 互相覆盖）
+    const newId = crypto.randomUUID()
     await invoke('config_save', {
       connection: {
         id: newId,
@@ -902,6 +904,15 @@ function App() {
       if (detail?.conn) {
         // Keep edited passphrase in session memory (not persisted) so immediate connect works
         if (detail.conn.passphrase) passphraseCacheRef.current.set(detail.conn.id, detail.conn.passphrase)
+        // 权限模型修复：编辑后点"连接"必须强制重连——若该连接仍在线，旧会话的
+        // 身份/auth_mode 与新配置不匹配（此前 isConnected 短路只切 tab，导致
+        // "改成 root 后连接实际还在普通用户 session"之类的权限错乱）
+        const existing = sessions.find(s => s.configId === detail.conn.id)
+        if (existing && connectedConfigIds.has(detail.conn.id)) {
+          manualDisconnectRef.current = true
+          invoke('ssh_disconnect', { sessionId: existing.sessionId }).catch(() => {})
+          markDisconnected(detail.conn.id)
+        }
         handleDirectConnect(detail.conn)
       }
     }

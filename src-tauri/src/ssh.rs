@@ -1639,9 +1639,16 @@ pub async fn session_set_permissions_batch(session: &SshSession, paths: &[String
 pub async fn session_check_space(session: &SshSession, path: &str) -> Result<String, String> {
     let mut channel = session_open_channel(session).await?;
     let safe = path.replace('\'', "'\\''");
+    // 权限模型 v8：附加第 4 段会话模式标记（SUDO_MODE / ROOT_MODE），
+    // 供前端在"无写入权限"时给出针对提权模式的解释性提示
+    let mode_flag = if session.connect_info.auth_mode == "sudo" && session.connect_info.username != "root" {
+        "SUDO_MODE"
+    } else {
+        "ROOT_MODE"
+    };
     let cmd = format!(
-        "df -B1 '{}' | tail -1 | awk '{{print $4}}'; echo '---'; touch '{}/.__wtest__' 2>&1 && rm '{}/.__wtest__' && echo 'OK' || echo 'DENIED'; echo '---'; find '{}' -maxdepth 1 -mindepth 1 -printf '%f|%y\n' | grep -v '^\\.|'",
-        safe, safe, safe, safe
+        "df -B1 '{}' | tail -1 | awk '{{print $4}}'; echo '---'; touch '{}/.__wtest__' 2>&1 && rm '{}/.__wtest__' && echo 'OK' || echo 'DENIED'; echo '---'; find '{}' -maxdepth 1 -mindepth 1 -printf '%f|%y\n' | grep -v '^\\.|'; echo '---'; echo '{}'",
+        safe, safe, safe, safe, mode_flag
     );
     channel.exec(true, cmd).await.map_err(|e| format!("Exec failed: {}", e))?;
     let mut output = String::new();

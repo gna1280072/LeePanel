@@ -1917,14 +1917,17 @@ pub async fn session_write_file_bytes(session: &SshSession, path: &str, content:
             // SFTP 会话打不开 → 落到 exec 兜底
         }
     }
-    // 2) 兜底：exec + base64 解码写文件。
-    //    auth_mode='sudo' 时 session_exec_with_output 注入 sudo -S，整条经
-    //    `bash -c` 以 root 执行（不能只 sudo 前缀——管道后段会以原用户身份
-    //    执行，依旧无写权限）。解决"普通用户覆盖 root 属主残留文件"问题。
+    // 2) 兜底：base64 解码写入唯一临时文件后 mv 覆盖目标。
+    //    mv/rename 只要求目标【目录】可写（/tmp 等对所有用户可写），不检查
+    //    目标文件属主/权限 → 即使执行者非 root 也能覆盖 root 属主残留，
+    //    且不依赖 sudoers 白名单放行 bash/base64。
     use base64::Engine as _;
     let b64 = base64::engine::general_purpose::STANDARD.encode(content);
     let safe_path = path.replace('\'', "'\\''");
-    let inner = format!("echo {} | base64 -d > '{}'", b64, safe_path);
+    let inner = format!(
+        "echo {} | base64 -d > '/tmp/.leepanel-write-$$' && mv -f '/tmp/.leepanel-write-$$' '{}' || rm -f '/tmp/.leepanel-write-$$'",
+        b64, safe_path
+    );
     let cmd = format!("bash -c \"{}\"", inner);
     let (_, stderr, code) = session_exec_with_output(session, &cmd, 10).await?;
     if code != 0 {

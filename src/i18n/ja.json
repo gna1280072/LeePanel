@@ -148,7 +148,10 @@
     "sudoPasswordAsk": "毎回入力",
     "sudoPasswordKeyring": "キーリングに保存",
     "sudoPassword": "Sudo パスワード",
-    "enterSudoPassword": "Sudo パスワードを入力"
+    "enterSudoPassword": "Sudo パスワードを入力",
+    "tfaEnabled": "2FA 認証（ログインにコードが必要）",
+    "tfaCode": "認証コード",
+    "tfaCodePlaceholder": "6桁のコードを入力（この接続のみ）"
   },
   "nav": {
     "dashboard": "ダッシュボード",
@@ -169,7 +172,8 @@
     "docker": "Docker",
     "update": "アップデート",
     "settings": "設定",
-    "discussions": "ディスカッション"
+    "discussions": "ディスカッション",
+    "2fa": "2FA 認証"
   },
   "quickCommands": {
     "manage": "管理",
@@ -1165,5 +1169,39 @@
       "tunnel_delete": "トンネル-削除",
       "tunnel_restore": "トンネル-復元"
     }
+  },
+  "tfa": {
+    "enabledHint": "有効: SSH ログインにパスワード + コードが必要",
+    "disabledHint": "無効: パスワード/鍵のみ",
+    "rootRequired": "2FA 設定には root 直続（direct_root）が必要です。sudo モードのサーバーは未対応のため、接続方式を変更するか手動で設定してください。",
+    "depInstalled": "コンポーネント導入済み",
+    "pamConfigured": "PAM 設定済み",
+    "sshdConfigured": "sshd 設定済み",
+    "secretReady": "シークレット初期化済み",
+    "install": "コンポーネントを導入",
+    "installing": "導入中…",
+    "configure": "設定を書き込み",
+    "configuring": "設定中…",
+    "enroll": "シークレットを生成",
+    "enrolling": "生成中…",
+    "scanStep": "認証アプリでスキャンし、6桁のコードを入力して有効化",
+    "manualKey": "手動でキーを入力（コピー可）:",
+    "backupCodes": "バックアップコード（アプリ紛失時の緊急用）",
+    "verifyAndEnable": "検証して有効化",
+    "disable": "2FA を無効化",
+    "disableConfirmMsg": "無効化すると SSH はパスワード/鍵のみに戻ります。無効化しますか？",
+    "confirmDisable": "無効化を確定",
+    "disabling": "無効化中…",
+    "codeMismatch": "コードが正しくありません。再試行してください",
+    "codeRequired": "認証コードが必要です",
+    "codeRequiredHint": "サーバー {{host}} は 2FA が有効です。現在のコードを入力してください:",
+    "safetyTitle": "安全上の注意（ロックアウト防止）",
+    "safetyHint1": "変更は新しい SSH 接続にのみ影響し、現在のセッションは切断されません。",
+    "safetyHint2": "変更前に自動バックアップします。接続できなくなった場合はサーバー上で /etc/leepanel-tfa-backups を復元してください。",
+    "safetyHint3": "このウィンドウを閉じる前に、認証アプリでコードが生成されることを確認してください。",
+    "enabledLightHint": "有効（ライト）: SSH ログインに鍵 + パスワードが必要",
+    "lightTitle": "ライト 2FA（鍵 + パスワード）",
+    "lightDesc": "コンポーネントや TOTP アプリ不要: SSH ログインに公開鍵とパスワードの両方を必須にします。",
+    "enableLight": "ライトモードを有効化"
   }
 }

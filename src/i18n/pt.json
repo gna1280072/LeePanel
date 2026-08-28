@@ -148,7 +148,10 @@
     "sudoPasswordAsk": "Perguntar sempre",
     "sudoPasswordKeyring": "Salvar no chaveiro",
     "sudoPassword": "Senha Sudo",
-    "enterSudoPassword": "Digite a senha Sudo"
+    "enterSudoPassword": "Digite a senha Sudo",
+    "tfaEnabled": "Autenticação 2FA (código exigido no login)",
+    "tfaCode": "Código de verificação",
+    "tfaCodePlaceholder": "Digite o código de 6 dígitos (apenas esta conexão)"
   },
   "nav": {
     "dashboard": "Painel",
@@ -169,7 +172,8 @@
     "docker": "Docker",
     "update": "Atualização",
     "settings": "Configurações",
-    "discussions": "Discussões"
+    "discussions": "Discussões",
+    "2fa": "2FA"
   },
   "quickCommands": {
     "manage": "Gerenciar",
@@ -1165,5 +1169,39 @@
       "tunnel_delete": "Túnel excluir",
       "tunnel_restore": "Túnel restaurar"
     }
+  },
+  "tfa": {
+    "enabledHint": "Ativado: login SSH exige senha + código",
+    "disabledHint": "Desativado: apenas senha/chave",
+    "rootRequired": "A configuração 2FA requer root (direct_root). Servidores em modo sudo ainda não são suportados; altere o modo de conexão ou configure manualmente.",
+    "depInstalled": "Componente instalado",
+    "pamConfigured": "PAM configurado",
+    "sshdConfigured": "sshd configurado",
+    "secretReady": "Segredo inicializado",
+    "install": "Instalar componente",
+    "installing": "Instalando…",
+    "configure": "Gravar configuração",
+    "configuring": "Configurando…",
+    "enroll": "Gerar segredo",
+    "enrolling": "Gerando…",
+    "scanStep": "Escaneie com um app autenticador e digite o código de 6 dígitos para confirmar",
+    "manualKey": "Ou digite a chave manualmente (copiável):",
+    "backupCodes": "Códigos de reserva (guarde caso perca o app)",
+    "verifyAndEnable": "Verificar e ativar",
+    "disable": "Desativar 2FA",
+    "disableConfirmMsg": "O SSH voltará a usar apenas senha/chave. Desativar 2FA?",
+    "confirmDisable": "Confirmar desativação",
+    "disabling": "Desativando…",
+    "codeMismatch": "Código incorreto, tente novamente",
+    "codeRequired": "Código de verificação necessário",
+    "codeRequiredHint": "O servidor {{host}} tem 2FA ativado. Digite o código atual:",
+    "safetyTitle": "Notas de segurança (prevenção de bloqueio)",
+    "safetyHint1": "As alterações afetam apenas novas conexões SSH; as sessões atuais permanecem.",
+    "safetyHint2": "A configuração é salva antes das alterações; se ficar bloqueado, restaure /etc/leepanel-tfa-backups no servidor.",
+    "safetyHint3": "Escaneie o QR e confirme que o código funciona no app antes de fechar esta janela.",
+    "enabledLightHint": "Ativado (leve): login SSH exige chave + senha",
+    "lightTitle": "2FA leve (chave + senha)",
+    "lightDesc": "Sem componentes ou app TOTP: o login SSH passa a exigir chave pública e senha ao mesmo tempo.",
+    "enableLight": "Ativar modo leve"
   }
 }

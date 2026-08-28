@@ -148,7 +148,10 @@
     "sudoPasswordAsk": "Ask each time",
     "sudoPasswordKeyring": "Save to keyring",
     "sudoPassword": "Sudo password",
-    "enterSudoPassword": "Enter Sudo password"
+    "enterSudoPassword": "Enter Sudo password",
+    "tfaEnabled": "2FA authentication (code required on login)",
+    "tfaCode": "Verification code",
+    "tfaCodePlaceholder": "Enter 6-digit code (this connection only)"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -169,7 +172,8 @@
     "docker": "Docker",
     "update": "Update",
     "settings": "Settings",
-    "discussions": "Discussions"
+    "discussions": "Discussions",
+    "2fa": "2FA"
   },
   "quickCommands": {
     "manage": "Manage",
@@ -1165,5 +1169,39 @@
       "tunnel_delete": "Tunnel delete",
       "tunnel_restore": "Tunnel restore"
     }
+  },
+  "tfa": {
+    "enabledHint": "On: SSH login requires password + code",
+    "disabledHint": "Off: password/key only",
+    "rootRequired": "2FA setup requires root (direct_root). Sudo-mode servers are not supported yet; switch the connection mode or configure manually.",
+    "depInstalled": "Component installed",
+    "pamConfigured": "PAM configured",
+    "sshdConfigured": "sshd configured",
+    "secretReady": "Secret initialized",
+    "install": "Install component",
+    "installing": "Installing…",
+    "configure": "Write config",
+    "configuring": "Configuring…",
+    "enroll": "Generate secret",
+    "enrolling": "Generating…",
+    "scanStep": "Scan with an authenticator app, then enter the 6-digit code to confirm",
+    "manualKey": "Or enter the key manually (copyable):",
+    "backupCodes": "Backup codes (save these in case you lose the app)",
+    "verifyAndEnable": "Verify & enable",
+    "disable": "Disable 2FA",
+    "disableConfirmMsg": "SSH will revert to password/key only. Disable 2FA?",
+    "confirmDisable": "Confirm disable",
+    "disabling": "Disabling…",
+    "codeMismatch": "Incorrect code, please retry",
+    "codeRequired": "Verification code required",
+    "codeRequiredHint": "Server {{host}} has 2FA enabled. Enter the current code:",
+    "safetyTitle": "Safety notes (lockout prevention)",
+    "safetyHint1": "Changes only affect new SSH connections; current sessions stay connected.",
+    "safetyHint2": "Config is backed up before changes; if you get locked out, restore /etc/leepanel-tfa-backups on the server.",
+    "safetyHint3": "Scan the QR and confirm the code works in your app before closing this window.",
+    "enabledLightHint": "On (light): SSH login requires key + password",
+    "lightTitle": "Light 2FA (key + password)",
+    "lightDesc": "No component or TOTP app needed: SSH login is forced to require both a public key and a password.",
+    "enableLight": "Enable light mode"
   }
 }

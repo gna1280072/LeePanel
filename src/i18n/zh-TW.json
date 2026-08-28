@@ -148,7 +148,10 @@
     "sudoPasswordAsk": "每次輸入",
     "sudoPasswordKeyring": "保存到鑰匙圈",
     "sudoPassword": "Sudo 密碼",
-    "enterSudoPassword": "輸入 Sudo 密碼"
+    "enterSudoPassword": "輸入 Sudo 密碼",
+    "tfaEnabled": "2FA 認證（登入需驗證碼）",
+    "tfaCode": "驗證碼",
+    "tfaCodePlaceholder": "輸入 6 位驗證碼（僅本次連線）"
   },
   "nav": {
     "dashboard": "儀表板",
@@ -169,7 +172,8 @@
     "docker": "Docker",
     "update": "更新",
     "settings": "設定",
-    "discussions": "討論"
+    "discussions": "討論",
+    "2fa": "2FA 認證"
   },
   "quickCommands": {
     "manage": "管理",
@@ -1165,5 +1169,39 @@
       "tunnel_delete": "隧道-刪除",
       "tunnel_restore": "隧道-恢復"
     }
+  },
+  "tfa": {
+    "enabledHint": "已開啟：SSH 登入需密碼 + 驗證碼",
+    "disabledHint": "未開啟：僅密碼/金鑰認證",
+    "rootRequired": "2FA 設定需要 root 直連（direct_root）。sudo 模式伺服器暫不支援，請切換連線方式或手動設定。",
+    "depInstalled": "元件已安裝",
+    "pamConfigured": "PAM 已設定",
+    "sshdConfigured": "sshd 已設定",
+    "secretReady": "金鑰已初始化",
+    "install": "安裝元件",
+    "installing": "安裝中…",
+    "configure": "寫入設定",
+    "configuring": "設定中…",
+    "enroll": "產生金鑰",
+    "enrolling": "產生中…",
+    "scanStep": "用認證 App 掃碼，然後輸入 6 位驗證碼確認生效",
+    "manualKey": "手動輸入金鑰（可複製）：",
+    "backupCodes": "備用驗證碼（請保存，App 遺失時可應急）",
+    "verifyAndEnable": "驗證並開啟",
+    "disable": "關閉 2FA",
+    "disableConfirmMsg": "關閉後 SSH 將恢復為僅密碼/金鑰認證。確認關閉？",
+    "confirmDisable": "確認關閉",
+    "disabling": "關閉中…",
+    "codeMismatch": "驗證碼不正確，請重試",
+    "codeRequired": "需要驗證碼",
+    "codeRequiredHint": "伺服器 {{host}} 已開啟 2FA，請輸入目前驗證碼：",
+    "safetyTitle": "安全提示（防止鎖死）",
+    "safetyHint1": "設定只影響新建立的 SSH 連線，不會中斷目前工作階段。",
+    "safetyHint2": "修改設定前會自動備份；若設定後無法連線，可在伺服器上還原 /etc/leepanel-tfa-backups 中的備份。",
+    "safetyHint3": "請先掃碼並在認證 App 中確認驗證碼可正常產生，再關閉本視窗。",
+    "enabledLightHint": "已開啟（輕量）：SSH 登入需金鑰 + 密碼",
+    "lightTitle": "輕量雙因素（金鑰 + 密碼）",
+    "lightDesc": "無需安裝元件或 TOTP App：強制 SSH 登入必須同時提供公鑰和密碼。",
+    "enableLight": "開啟輕量模式"
   }
 }

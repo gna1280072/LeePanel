@@ -11,6 +11,7 @@ import SslPanel from './panels/SslPanel'
 import MonitorPanel from './panels/MonitorPanel'
 import FirewallPanel from './panels/FirewallPanel'
 import PortPanel from './panels/PortPanel'
+import TwoFaPanel from './panels/TwoFaPanel'
 import SoftwareRepo from './panels/SoftwareRepo'
 import ServerSettingsPanel from './panels/ServerSettingsPanel'
 import UpdatePanel from './panels/UpdatePanel'
@@ -25,7 +26,7 @@ import type { TerminalHandle } from './Terminal'
 import QuickCommandsBar from './QuickCommandsBar'
 import FileBrowser, { type FileBrowserHandle } from './FileBrowser'
 
-type PanelSection = 'dashboard' | 'terminal' | 'files' | 'software' | 'nginx' | 'php' | 'sites' | 'logs' | 'ssl' | 'monitor' | 'firewall' | 'port' | 'tunnel' | 'bbr' | 'docker' | 'database' | 'redis' | 'update' | 'settings' | 'discussions'
+type PanelSection = 'dashboard' | 'terminal' | 'files' | 'software' | 'nginx' | 'php' | 'sites' | 'logs' | 'ssl' | 'monitor' | 'firewall' | 'port' | '2fa' | 'tunnel' | 'bbr' | 'docker' | 'database' | 'redis' | 'update' | 'settings' | 'discussions'
 
 interface AppSettings {
   auto_reconnect: boolean
@@ -42,6 +43,7 @@ interface AppSettings {
 
 interface ServerPanelProps {
   sessionId: string | null
+  connId?: string
   connHost?: string
   connUsername?: string
   initialSection?: string
@@ -73,6 +75,7 @@ const NAV_ITEMS: { key: PanelSection; labelKey: string; icon: string }[] = [
   { key: 'monitor', labelKey: 'nav.monitor', icon: '📈' },
   { key: 'firewall', labelKey: 'nav.firewall', icon: '🧱' },
   { key: 'port', labelKey: 'nav.port', icon: '🔌' },
+  { key: '2fa', labelKey: 'nav.2fa', icon: '🔐' },
   { key: 'tunnel', labelKey: 'nav.tunnel', icon: '🔗' },
   { key: 'bbr', labelKey: 'nav.bbr', icon: '🚀' },
   { key: 'update', labelKey: 'nav.update', icon: '🔄' },
@@ -80,7 +83,7 @@ const NAV_ITEMS: { key: PanelSection; labelKey: string; icon: string }[] = [
   { key: 'discussions', labelKey: 'nav.discussions', icon: '💬' },
 ]
 
-export default function ServerPanel({ sessionId, connHost, connUsername, initialSection = 'dashboard', jumpToPath, setJumpToPath, termRef, onStartUpload, onUploadComplete, appSettings, onToggleAutoReconnect, onUpdateSettings, onShowToast }: ServerPanelProps) {
+export default function ServerPanel({ sessionId, connId, connHost, connUsername, initialSection = 'dashboard', jumpToPath, setJumpToPath, termRef, onStartUpload, onUploadComplete, appSettings, onToggleAutoReconnect, onUpdateSettings, onShowToast }: ServerPanelProps) {
   const { t } = useTranslation()
   const [activeSection, setActiveSectionRaw] = useState<PanelSection>((initialSection && NAV_ITEMS.some(s => s.key === initialSection) ? initialSection : 'dashboard') as PanelSection)
   const cdHereRef = useRef<string | null>(null)
@@ -170,6 +173,8 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
         return <FirewallPanel sessionId={sessionId} />
       case 'port':
         return <PortPanel sessionId={sessionId} />
+      case '2fa':
+        return <TwoFaPanel sessionId={sessionId} connId={connId} />
       // case 'software': removed - always mounted below
       case 'bbr':
         return <BbrPanel sessionId={sessionId} />

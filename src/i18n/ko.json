@@ -148,7 +148,10 @@
     "sudoPasswordAsk": "매번 입력",
     "sudoPasswordKeyring": "키링에 저장",
     "sudoPassword": "Sudo 비밀번호",
-    "enterSudoPassword": "Sudo 비밀번호 입력"
+    "enterSudoPassword": "Sudo 비밀번호 입력",
+    "tfaEnabled": "2FA 인증 (로그인 시 코드 필요)",
+    "tfaCode": "인증 코드",
+    "tfaCodePlaceholder": "6자리 코드 입력 (이번 연결만)"
   },
   "nav": {
     "dashboard": "대시보드",
@@ -169,7 +172,8 @@
     "docker": "Docker",
     "update": "업데이트",
     "settings": "설정",
-    "discussions": "토론"
+    "discussions": "토론",
+    "2fa": "2FA 인증"
   },
   "quickCommands": {
     "manage": "관리",
@@ -1165,5 +1169,39 @@
       "tunnel_delete": "터널-삭제",
       "tunnel_restore": "터널-복원"
     }
+  },
+  "tfa": {
+    "enabledHint": "켜짐: SSH 로그인 시 비밀번호 + 코드 필요",
+    "disabledHint": "꺼짐: 비밀번호/키만 사용",
+    "rootRequired": "2FA 설정에는 root 직결(direct_root)이 필요합니다. sudo 모드 서버는 아직 지원하지 않으므로 연결 방식을 변경하거나 수동으로 설정하세요.",
+    "depInstalled": "구성 요소 설치됨",
+    "pamConfigured": "PAM 구성됨",
+    "sshdConfigured": "sshd 구성됨",
+    "secretReady": "비밀 키 초기화됨",
+    "install": "구성 요소 설치",
+    "installing": "설치 중…",
+    "configure": "구성 작성",
+    "configuring": "구성 중…",
+    "enroll": "비밀 키 생성",
+    "enrolling": "생성 중…",
+    "scanStep": "인증 앱으로 스캔한 뒤 6자리 코드를 입력하여 활성화",
+    "manualKey": "키 수동 입력 (복사 가능):",
+    "backupCodes": "백업 코드 (앱 분실 시 대비)",
+    "verifyAndEnable": "확인 후 활성화",
+    "disable": "2FA 비활성화",
+    "disableConfirmMsg": "비활성화하면 SSH가 비밀번호/키 전용으로 돌아갑니다. 비활성화하시겠습니까?",
+    "confirmDisable": "비활성화 확인",
+    "disabling": "비활성화 중…",
+    "codeMismatch": "코드가 올바르지 않습니다. 다시 시도하세요",
+    "codeRequired": "인증 코드 필요",
+    "codeRequiredHint": "서버 {{host}}에 2FA가 활성화되어 있습니다. 현재 코드를 입력하세요:",
+    "safetyTitle": "안전 안내 (잠금 방지)",
+    "safetyHint1": "변경 사항은 새 SSH 연결에만 적용되며 현재 세션은 유지됩니다.",
+    "safetyHint2": "변경 전에 자동 백업합니다. 연결이 안 되면 서버에서 /etc/leepanel-tfa-backups를 복원하세요.",
+    "safetyHint3": "창을 닫기 전에 인증 앱에서 코드가 정상 생성되는지 확인하세요.",
+    "enabledLightHint": "켜짐 (라이트): SSH 로그인 시 키 + 비밀번호 필요",
+    "lightTitle": "라이트 2FA (키 + 비밀번호)",
+    "lightDesc": "구성 요소나 TOTP 앱 불필요: SSH 로그인 시 공개키와 비밀번호를 모두 요구합니다.",
+    "enableLight": "라이트 모드 활성화"
   }
 }

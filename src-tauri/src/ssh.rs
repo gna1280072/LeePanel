@@ -266,6 +266,10 @@ pub struct SshSession {
     /// - 否则为 None，首次 sudo 命令需要密码时由前端弹窗输入（ask 模式）；
     /// - 明文只在本进程内流转，随会话销毁即释放。
     pub sudo_password: Arc<tokio::sync::Mutex<Option<String>>>,
+    /// 方案 A：连接生命周期内探测到的"免密 sudo 可用"标记（sudoers NOPASSWD 或
+    /// 终端 sudo 凭证缓存 ts 有效）。true 时 sudo 命令走 `sudo -n` 免密路径，
+    /// 不弹窗；ts 过期后 sudo -n 失败会自动重置为 false 并回退密码弹窗。
+    pub sudo_nopass: Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// Controls pause/stop for active file transfers (save-to-local).
@@ -525,6 +529,7 @@ impl SshManager {
             sftp_cache: Arc::new(tokio::sync::Mutex::new(None)),
             forwarded_reg,
             sudo_password: Arc::new(tokio::sync::Mutex::new(sudo_password)),
+            sudo_nopass: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         };
         Ok(session)
     }
@@ -1466,31 +1471,77 @@ pub async fn session_list_dir(session: &SshSession, path: &str) -> Result<String
 }
 
 pub async fn session_stat_file(session: &SshSession, path: &str) -> Result<serde_json::Value, String> {
-    let sftp = session_open_sftp(session).await?;
-    let meta = sftp.metadata(path).await
-        .map_err(|e| format!("Path does not exist: {}", e))?;
-    let is_dir = meta.is_dir();
-    let is_symlink = meta.is_symlink();
-    let is_file = !is_dir && !is_symlink;
+    // 1) 首选 SFTP stat（快）
+    if let Ok(sftp) = session_open_sftp(session).await {
+        if let Ok(meta) = sftp.metadata(path).await {
+            let is_dir = meta.is_dir();
+            let is_symlink = meta.is_symlink();
+            let is_file = !is_dir && !is_symlink;
+            return Ok(serde_json::json!({
+                "exists": true, "isDir": is_dir, "isFile": is_file,
+                "isSymlink": is_symlink, "size": meta.len(),
+            }));
+        }
+    }
+    // 2) 兜底：exec `stat`（走 session_exec_with_output，auth_mode=sudo 时自动提权）
+    let safe = path.replace('\'', "'\\''");
+    let cmd = format!(
+        "if [ -e '{}' ] || [ -L '{}' ]; then echo EXISTS; if [ -d '{}' ]; then echo DIR; elif [ -L '{}' ]; then echo SYMLINK; else echo FILE; fi; stat -c %s '{}' 2>/dev/null || echo 0; else echo MISSING; fi",
+        safe, safe, safe, safe, safe
+    );
+    let (stdout, _, code) = session_exec_with_output(session, &cmd, 10).await?;
+    if code != 0 {
+        return Err(format!("Failed to stat path: {}", stdout.trim()));
+    }
+    let lines: Vec<&str> = stdout.lines().map(|l| l.trim()).collect();
+    let exists = lines.first().map(|l| *l == "EXISTS").unwrap_or(false);
+    if !exists {
+        return Ok(serde_json::json!({ "exists": false }));
+    }
+    let kind = lines.get(1).copied().unwrap_or("FILE");
+    let size: u64 = lines.get(2).and_then(|s| s.parse().ok()).unwrap_or(0);
     Ok(serde_json::json!({
-        "exists": true, "isDir": is_dir, "isFile": is_file,
-        "isSymlink": is_symlink, "size": meta.len(),
+        "exists": true,
+        "isDir": kind == "DIR",
+        "isFile": kind == "FILE",
+        "isSymlink": kind == "SYMLINK",
+        "size": size,
     }))
 }
 
 pub async fn session_read_file(session: &SshSession, path: &str) -> Result<String, String> {
-    let sftp = session_open_sftp(session).await?;
     use tokio::io::AsyncReadExt;
-    let mut file = sftp.open(path).await
-        .map_err(|e| format!("Failed to open file: {}", e))?;
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf).await
-        .map_err(|e| format!("Failed to read file: {}", e))?;
-    if buf.len() > 1024 * 1024 {
-        Ok(String::from_utf8_lossy(&buf[..1024 * 1024]).to_string())
-    } else {
-        Ok(String::from_utf8_lossy(&buf).to_string())
+    // 1) 首选 SFTP 直读（快、无额外依赖）
+    let sftp = match session_open_sftp(session).await {
+        Ok(s) => s,
+        Err(_) => return session_read_file_exec(session, path).await,
+    };
+    let open = sftp.open(path).await;
+    if let Ok(mut file) = open {
+        let mut buf = Vec::new();
+        if file.read_to_end(&mut buf).await.is_ok() {
+            if buf.len() > 1024 * 1024 {
+                return Ok(String::from_utf8_lossy(&buf[..1024 * 1024]).to_string());
+            }
+            return Ok(String::from_utf8_lossy(&buf).to_string());
+        }
+        // 读失败 → 落到 exec 兜底
     }
+    // 2) 兜底：exec `cat` 读取（走 session_exec_with_output，auth_mode=sudo 时自动提权）
+    session_read_file_exec(session, path).await
+}
+
+/// SFTP 不可用时经 exec 读取文件内容（可提权）。输出限制 1MB 与 SFTP 路径一致。
+/// 用 `head -c` 直接读文件而非 cat|head 管道——管道会吞掉 cat 的退出码，
+/// 权限失败时无法区分"空文件"与"无权限"。
+async fn session_read_file_exec(session: &SshSession, path: &str) -> Result<String, String> {
+    let safe = path.replace('\'', "'\\''");
+    let cmd = format!("head -c 1048576 '{}' 2>&1", safe);
+    let (stdout, _, code) = session_exec_with_output(session, &cmd, 15).await?;
+    if code != 0 {
+        return Err(format!("Failed to read file: {}", stdout.trim()));
+    }
+    Ok(stdout)
 }
 
 pub async fn session_delete_file(session: &SshSession, path: &str, is_dir: bool) -> Result<String, String> {
@@ -1520,8 +1571,19 @@ pub async fn session_create_dir(session: &SshSession, path: &str) -> Result<(), 
 }
 
 pub async fn session_rename_file(session: &SshSession, old_path: &str, new_path: &str) -> Result<(), String> {
-    let sftp = session_open_sftp(session).await?;
-    sftp.rename(old_path, new_path).await.map_err(|e| format!("Failed to rename: {}", e))
+    // ponytail: use exec `mv` instead of SFTP rename — SFTP 无法提权，
+    // 且与批量重命名（session_rename_files_batch 走 mv）保持一致；
+    // mv 走 session_exec_with_output 自动获得 sudo（auth_mode=sudo 时）。
+    let cmd = format!(
+        "mv '{}' '{}'",
+        old_path.replace('\'', "'\\''"),
+        new_path.replace('\'', "'\\''")
+    );
+    let (_, stderr, code) = session_exec_with_output(session, &cmd, 10).await?;
+    if code != 0 {
+        return Err(format!("Rename failed: {}", stderr.trim()));
+    }
+    Ok(())
 }
 
 pub async fn session_rename_files_batch(session: &SshSession, renames: &[(String, String)]) -> Result<(), String> {
@@ -1737,6 +1799,45 @@ pub async fn session_open_channel(session: &SshSession) -> Result<russh::Channel
     rx.await.map_err(|_| "Failed to open channel".to_string())
 }
 
+/// 方案 A：探测当前会话是否可免密 sudo（sudoers NOPASSWD 或 sudo 凭证缓存 ts 有效）。
+/// 用独立 channel 执行 `sudo -n true`，不经 session_exec_with_output（避免递归）。
+/// 结果缓存到会话级 sudo_nopass 标记，连接生命周期内复用；ts 过期后由
+/// 调用方在 `sudo -n` 失败时重置（见 session_exec_with_output）。
+async fn session_try_sudo_nopass(session: &SshSession) -> bool {
+    if session.sudo_nopass.load(std::sync::atomic::Ordering::Relaxed) {
+        return true;
+    }
+    let mut channel = match session_open_channel(session).await {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    if channel.exec(true, "sudo -n true").await.is_err() {
+        return false;
+    }
+    let mut exit_code: i32 = -1;
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(5);
+    loop {
+        tokio::select! {
+            msg = channel.wait() => {
+                match msg {
+                    Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
+                        exit_code = exit_status as i32;
+                    }
+                    Some(russh::ChannelMsg::Close) | None => break,
+                    _ => {}
+                }
+            }
+            _ = tokio::time::sleep_until(deadline) => break,
+        }
+    }
+    if exit_code == 0 {
+        session.sudo_nopass.store(true, std::sync::atomic::Ordering::Relaxed);
+        true
+    } else {
+        false
+    }
+}
+
 /// 权限模型 v8：打开 exec channel 并执行命令（流式输出场景）。
 /// auth_mode='sudo' 且非 root 时自动包装 `sudo -S` 并喂入会话级 sudo 密码
 /// （密码经 stdin，不进进程列表）。返回 channel 供调用方流式读取进度。
@@ -1751,16 +1852,23 @@ pub async fn session_exec_channel(
     if needs_sudo {
         let pw = session.sudo_password.lock().await.clone();
         if pw.is_none() {
-            return Err("SUDO_PASSWORD_REQUIRED".to_string());
-        }
-        let wrapped = format!("sudo -S {}", cmd);
-        channel.exec(true, wrapped.as_str()).await.map_err(|e| format!("Exec failed: {}", e))?;
-        if let Some(pw) = pw {
-            let mut data = pw.into_bytes();
-            data.push(b'\n');
-            let mut cursor = Cursor::new(&data);
-            let _ = channel.data(&mut cursor).await;
-            let _ = channel.eof().await;
+            // 方案 A：密码未配置时先探测免密 sudo（NOPASSWD / 凭证缓存），
+            // 可用则走 sudo -n（不弹窗）；不可用再回退弹窗流程。
+            if !session_try_sudo_nopass(session).await {
+                return Err("SUDO_PASSWORD_REQUIRED".to_string());
+            }
+            let wrapped = format!("sudo -n {}", cmd);
+            channel.exec(true, wrapped.as_str()).await.map_err(|e| format!("Exec failed: {}", e))?;
+        } else {
+            let wrapped = format!("sudo -S {}", cmd);
+            channel.exec(true, wrapped.as_str()).await.map_err(|e| format!("Exec failed: {}", e))?;
+            if let Some(pw) = pw {
+                let mut data = pw.into_bytes();
+                data.push(b'\n');
+                let mut cursor = Cursor::new(&data);
+                let _ = channel.data(&mut cursor).await;
+                let _ = channel.eof().await;
+            }
         }
     } else {
         channel.exec(true, cmd).await.map_err(|e| format!("Exec failed: {}", e))?;
@@ -1773,31 +1881,43 @@ pub async fn session_exec_with_output(
     cmd: &str,
     timeout_secs: u64,
 ) -> Result<(String, String, i32), String> {
-    // 权限模型 v8：auth_mode='sudo' 且非 root 身份 → 命令经 sudo -S 执行。
+    // 权限模型 v8：auth_mode='sudo' 且非 root 身份 → 命令经 sudo 执行。
     // 密码经 channel stdin 喂入（不拼进命令行，避免出现在远程 ps 进程列表）。
+    // 方案 A：sudo 密码未配置时，先探测免密 sudo（NOPASSWD / 凭证缓存 ts），
+    // 可用则走 `sudo -n` 免密路径；不可用才返回 SUDO_PASSWORD_REQUIRED 弹窗。
     let needs_sudo = session.connect_info.auth_mode == "sudo"
         && session.connect_info.username != "root";
     let sudo_pw: Option<String> = if needs_sudo {
         let pw = session.sudo_password.lock().await.clone();
         if pw.is_none() {
             // 约定错误码：前端捕获后弹窗输入 sudo 密码，再调用 ssh_set_sudo_password 重试
-            return Err("SUDO_PASSWORD_REQUIRED".to_string());
+            if !session_try_sudo_nopass(session).await {
+                return Err("SUDO_PASSWORD_REQUIRED".to_string());
+            }
+            None
+        } else {
+            pw
         }
-        pw
     } else {
         None
     };
+    let used_sudo_nopass = needs_sudo && sudo_pw.is_none();
 
     let mut channel = session_open_channel(session).await?;
     if needs_sudo {
-        let wrapped = format!("sudo -S {}", cmd);
-        channel.exec(true, wrapped.as_str()).await.map_err(|e| format!("Exec failed: {}", e))?;
-        if let Some(pw) = sudo_pw {
-            let mut data = pw.into_bytes();
-            data.push(b'\n');
-            let mut cursor = Cursor::new(&data);
-            let _ = channel.data(&mut cursor).await;
-            let _ = channel.eof().await;
+        if used_sudo_nopass {
+            let wrapped = format!("sudo -n {}", cmd);
+            channel.exec(true, wrapped.as_str()).await.map_err(|e| format!("Exec failed: {}", e))?;
+        } else {
+            let wrapped = format!("sudo -S {}", cmd);
+            channel.exec(true, wrapped.as_str()).await.map_err(|e| format!("Exec failed: {}", e))?;
+            if let Some(pw) = sudo_pw {
+                let mut data = pw.into_bytes();
+                data.push(b'\n');
+                let mut cursor = Cursor::new(&data);
+                let _ = channel.data(&mut cursor).await;
+                let _ = channel.eof().await;
+            }
         }
     } else {
         channel.exec(true, cmd).await.map_err(|e| format!("Exec failed: {}", e))?;
@@ -1837,6 +1957,11 @@ pub async fn session_exec_with_output(
     // sudo 密码错误的典型信号：sudo 把提示/错误写到 stderr（如 "incorrect password"）
     if needs_sudo && exit_code != 0 && stderr.to_lowercase().contains("incorrect password") {
         return Err("SUDO_PASSWORD_INCORRECT".to_string());
+    }
+    // 方案 A：sudo -n 因凭证缓存过期/未配置 NOPASSWD 而失败 → 重置免密标记并回退弹窗
+    if used_sudo_nopass && exit_code != 0 && stderr.to_lowercase().contains("a password is required") {
+        session.sudo_nopass.store(false, std::sync::atomic::Ordering::Relaxed);
+        return Err("SUDO_PASSWORD_REQUIRED".to_string());
     }
 
     Ok((stdout, stderr, exit_code))

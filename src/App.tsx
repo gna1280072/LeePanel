@@ -47,6 +47,10 @@ interface SidebarConnection {
   auth_mode?: string
   sudo_password_mode?: string
   has_sudo_password?: boolean
+  // SSH 2FA（v9）：服务器已开启双因素认证
+  tfa_enabled?: boolean
+  tfa_type?: string
+  tfa_code?: string
 }
 
 interface Settings {
@@ -85,6 +89,9 @@ function App() {
   const termRefMap = useRef(new Map<string, TerminalHandle | null>())
   const activeTermRef = useRef<TerminalHandle | null>(null)
   const [errorDialog, setErrorDialog] = useState<{ visible: boolean; type: 'auth' | 'network' | 'connection' | 'key' | 'hostKey' | 'hostKeyChanged' | 'other'; messageKey?: string; params?: Record<string, string>; message?: string } | null>(null)
+  // SSH 2FA（v9）：连接已开启 2FA 的服务器时，需要用户输入 TOTP 验证码
+  const [tfaDialog, setTfaDialog] = useState<{ conn: SidebarConnection } | null>(null)
+  const [tfaCodeInput, setTfaCodeInput] = useState('')
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null)
   // TOFU host-key verification (first-contact confirmation / key-changed warning)
   const [hostKeyPrompt, setHostKeyPrompt] = useState<{ sessionId: string; host: string; port: number; keyType: string; fingerprint: string } | null>(null)
@@ -799,7 +806,7 @@ function App() {
     handleDirectConnect(conn)
   }
 
-  const handleDirectConnect = useCallback(async (conn: SidebarConnection) => {
+  const handleDirectConnect = useCallback(async (conn: SidebarConnection, tfaCodeOverride?: string) => {
     // ponytail: multi-session — if already connected, just switch tab
     const existing = sessions.find(s => s.configId === conn.id)
     const isConnected = existing !== undefined && connectedConfigIds.has(conn.id)
@@ -808,7 +815,7 @@ function App() {
       return
     }
 
-    const doConnect = (username: string, password?: string, keyPath?: string, passphrase?: string, configId?: string) => {
+    const doConnect = (username: string, password?: string, keyPath?: string, passphrase?: string, configId?: string, tfaCode?: string) => {
       setConnectingServerId(conn.id)
       setError('')
       const hostKey = `${conn.host}_${conn.port}`
@@ -819,6 +826,7 @@ function App() {
       // ponytail: parallel SSH + DB read → no flash, correct page rendered immediately
       // 凭据策略：前端显式传入的 password/passphrase 为会话级覆盖（优先）；
       // 未传入时 Rust 端按 configId 从系统钥匙串读取（已保存凭据不进前端）
+      // SSH 2FA（v9）：tfaEnabled 驱动后端走 keyboard-interactive 认证；tfaCode 仅本次会话使用
       // NOTE: no client-side timeout here — the backend splits TCP connect (8s) from the
       // SSH handshake (90s), and the handshake may pause on first-contact host-key confirmation.
       Promise.all([
@@ -830,6 +838,8 @@ function App() {
             configId: configId || undefined,
             authMode: conn.auth_mode || 'direct_root',
             sudoPasswordMode: conn.sudo_password_mode || 'ask',
+            tfaEnabled: conn.tfa_enabled || false,
+            tfaCode: tfaCode || conn.tfa_code || undefined,
             cols: estCols, rows: estRows,
           },
         }),
@@ -894,7 +904,13 @@ function App() {
       return
     }
 
-    doConnect(conn.username, password, keyPath, passphrase, configId)
+    // SSH 2FA（v9）：服务器已开启 2FA 且本次连接未提供验证码 → 先弹窗收集 TOTP
+    if (conn.tfa_enabled && !(tfaCodeOverride || conn.tfa_code)) {
+      setTfaCodeInput('')
+      setTfaDialog({ conn })
+      return
+    }
+    doConnect(conn.username, password, keyPath, passphrase, configId, tfaCodeOverride || conn.tfa_code)
   }, [sessions, connectedConfigIds])
 
   // Listen for reconnect-after-edit from Sidebar (Connect button)
@@ -1015,6 +1031,46 @@ function App() {
           </div>
         )}
 
+        {/* SSH 2FA（v9）：TOTP 验证码输入弹窗 */}
+        {tfaDialog && (
+          <div className="error-dialog-overlay" onClick={() => setTfaDialog(null)}>
+            <div className="error-dialog" onClick={(e) => e.stopPropagation()}>
+              <button className="error-dialog-close" onClick={() => setTfaDialog(null)}>×</button>
+              <div className="error-dialog-icon">🔐</div>
+              <div className="error-dialog-title">{t('tfa.codeRequired')}</div>
+              <div className="error-dialog-message">{t('tfa.codeRequiredHint', { host: tfaDialog.conn.name || tfaDialog.conn.host })}</div>
+              <input
+                className="sidebar-edit-input"
+                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 12, textAlign: 'center', letterSpacing: 4, fontSize: 16 }}
+                value={tfaCodeInput}
+                onChange={(e) => setTfaCodeInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="••••••"
+                autoFocus
+                autoComplete="off"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && tfaCodeInput.length >= 6) {
+                    const conn = tfaDialog.conn
+                    setTfaDialog(null)
+                    handleDirectConnect(conn, tfaCodeInput)
+                  }
+                }}
+              />
+              <div className="error-dialog-actions">
+                <button
+                  className="error-dialog-btn primary"
+                  disabled={tfaCodeInput.length < 6}
+                  onClick={() => {
+                    const conn = tfaDialog.conn
+                    setTfaDialog(null)
+                    handleDirectConnect(conn, tfaCodeInput)
+                  }}
+                >{t('common.connect')}</button>
+                <button className="error-dialog-btn secondary" onClick={() => setTfaDialog(null)}>{t('common.cancel')}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* First-contact host key confirmation (TOFU) */}
         {hostKeyPrompt && (
           <div className="error-dialog-overlay" onClick={rejectHostKey}>
@@ -1100,6 +1156,7 @@ function App() {
               <div key={s.configId + s.sessionId} style={{ display: s.configId === activeConfigId ? 'block' : 'none', height: '100%' }}>
                 <ServerPanel
                   sessionId={s.sessionId}
+                  connId={s.configId}
                   connHost={s.hostKey}
                   connUsername={s.username}
                   initialSection={s.initialSection}

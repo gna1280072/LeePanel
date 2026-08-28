@@ -93,7 +93,7 @@ export default function Dashboard({ sessionId, onNavigate }: DashboardProps) {
   useEffect(() => {
     fetchData()
     // Auto-refresh every 30s only when tab is visible
-    let interval: number | undefined
+    let interval: ReturnType<typeof setInterval> | undefined
     
     const handleVisibilityChange = () => {
       if (document.hidden) {

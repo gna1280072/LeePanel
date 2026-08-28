@@ -23,6 +23,11 @@ interface Connection {
   sudo_password_mode?: string
   sudo_password?: string
   has_sudo_password?: boolean
+  // SSH 2FA（v9）：服务器已开启双因素认证
+  tfa_enabled?: boolean
+  tfa_type?: string
+  // 会话级 TOTP 验证码（仅本次连接使用，不落库）
+  tfa_code?: string
 }
 
 interface NewConnectionData {
@@ -41,6 +46,9 @@ interface NewConnectionData {
   sudo_password_mode?: string
   sudo_password?: string
   has_sudo_password?: boolean
+  tfa_enabled?: boolean
+  tfa_type?: string
+  tfa_code?: string
 }
 
 interface SidebarProps {
@@ -511,6 +519,29 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
                   </div>
                 </div>
               )}
+              {/* SSH 2FA（v9）：服务器已开启双因素认证 */}
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={editing.tfa_enabled || false}
+                    onChange={(e) => setEditing({ ...editing, tfa_enabled: e.target.checked })}
+                  />
+                  <span>{t('sidebar.tfaEnabled')}</span>
+                </label>
+              </div>
+              {editing.tfa_enabled && (
+                <div className="form-group">
+                  <label>{t('sidebar.tfaCode')}</label>
+                  <input
+                    className="sidebar-edit-input"
+                    value={editing.tfa_code || ''}
+                    onChange={(e) => setEditing({ ...editing, tfa_code: e.target.value })}
+                    placeholder={t('sidebar.tfaCodePlaceholder')}
+                    autoComplete="off"
+                  />
+                </div>
+              )}
             </div>
             <div className="sidebar-confirm-actions">
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginRight: 'auto' }} title={t('sidebar.rememberMeTooltip')}>
@@ -652,6 +683,29 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
                     />
                     <button className="sidebar-edit-action-btn" onClick={() => setShowCreateSudoPassword(!showCreateSudoPassword)} title={showCreateSudoPassword ? t('sidebar.hidePassword') : t('sidebar.showPassword')}>{showCreateSudoPassword ? '🙈' : '👁'}</button>
                   </div>
+                </div>
+              )}
+              {/* SSH 2FA（v9）：服务器已开启双因素认证 */}
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={creating.tfa_enabled || false}
+                    onChange={(e) => setCreating({ ...creating, tfa_enabled: e.target.checked })}
+                  />
+                  <span>{t('sidebar.tfaEnabled')}</span>
+                </label>
+              </div>
+              {creating.tfa_enabled && (
+                <div className="form-group">
+                  <label>{t('sidebar.tfaCode')}</label>
+                  <input
+                    className="sidebar-edit-input"
+                    value={creating.tfa_code || ''}
+                    onChange={(e) => setCreating({ ...creating, tfa_code: e.target.value })}
+                    placeholder={t('sidebar.tfaCodePlaceholder')}
+                    autoComplete="off"
+                  />
                 </div>
               )}
             </div>

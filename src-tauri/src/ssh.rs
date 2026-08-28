@@ -246,6 +246,10 @@ pub struct ConnectInfo {
     pub rows: u32,
     /// 权限模型 v8：'direct_root'（root 直连）/ 'sudo'（普通用户 + sudo）。
     pub auth_mode: String,
+    /// SSH 2FA（v9）：服务器已开启双因素 → 认证走 keyboard-interactive 统一流程。
+    pub tfa_enabled: bool,
+    /// 预填 TOTP 验证码（连接表单输入；认证循环中按需应答）。
+    pub tfa_code: Option<String>,
 }
 
 struct ChannelOpen {
@@ -306,11 +310,13 @@ impl SshManager {
         passphrase: Option<String>,
         auth_mode: String,
         sudo_password: Option<String>,
+        tfa_enabled: bool,
+        tfa_code: Option<String>,
         app_handle: AppHandle,
         cols: u32,
         rows: u32,
     ) -> Result<(), String> {
-        let session = Self::do_connect(session_id.clone(), host, port, username, password, key_path, passphrase, auth_mode, sudo_password, app_handle.clone(), cols, rows).await?;
+        let session = Self::do_connect(session_id.clone(), host, port, username, password, key_path, passphrase, auth_mode, sudo_password, tfa_enabled, tfa_code, app_handle.clone(), cols, rows).await?;
         self.sessions.write().unwrap().insert(session_id, session);
         Ok(())
     }
@@ -348,6 +354,8 @@ impl SshManager {
         passphrase: Option<String>,
         auth_mode: String,
         sudo_password: Option<String>,
+        tfa_enabled: bool,
+        tfa_code: Option<String>,
         app_handle: AppHandle,
         cols: u32,
         rows: u32,
@@ -393,7 +401,68 @@ impl SshManager {
         .map_err(|e| format!("Connection failed: {}", e))?;
 
         // Authenticate
-        if let Some(ref kp) = key_path {
+        // SSH 2FA（v9）：服务器标记 tfa_enabled 时走 keyboard-interactive 统一流程。
+        // 背景：russh 的 authenticate_password 内部 wait_recv_reply 只认 Success/Failure，
+        // 服务器配 AuthenticationMethods password,keyboard-interactive 后密码通过会回
+        // AuthInfoRequest 而非 SUCCESS → 该路径会死等到握手超时。因此 2FA 服务器必须
+        // 显式走 keyboard-interactive 多轮问答（密码/验证码逐 prompt 应答）。
+        if tfa_enabled {
+            use russh::client::KeyboardInteractiveAuthResponse;
+            let mut response = sh
+                .authenticate_keyboard_interactive_start(&username, None::<String>)
+                .await
+                .map_err(|e| format!("2FA auth error: {}", e))?;
+            let mut attempts = 0u32;
+            loop {
+                match response {
+                    KeyboardInteractiveAuthResponse::Success => break,
+                    KeyboardInteractiveAuthResponse::Failure => {
+                        return Err("2FA auth failed: incorrect password or verification code".to_string());
+                    }
+                    KeyboardInteractiveAuthResponse::InfoRequest {
+                        name: _,
+                        instructions: _,
+                        prompts,
+                    } => {
+                        attempts += 1;
+                        if attempts > 8 {
+                            return Err("2FA auth failed: too many prompts from server".to_string());
+                        }
+                        let mut answers: Vec<String> = Vec::with_capacity(prompts.len());
+                        for p in &prompts {
+                            let lower = p.prompt.to_lowercase();
+                            if lower.contains("password") || lower.contains("passcode") {
+                                match &password {
+                                    Some(pw) => answers.push(pw.clone()),
+                                    None => {
+                                        return Err("2FA auth requires a password but none was provided".to_string());
+                                    }
+                                }
+                            } else if lower.contains("verification")
+                                || lower.contains("code")
+                                || lower.contains("otp")
+                                || lower.contains("totp")
+                                || lower.contains("authenticator")
+                            {
+                                match &tfa_code {
+                                    Some(c) => answers.push(c.clone()),
+                                    None => {
+                                        return Err("2FA auth requires a verification code but none was provided".to_string());
+                                    }
+                                }
+                            } else {
+                                // 未知 prompt（echo=true 的空提示等）：应答空串
+                                answers.push(String::new());
+                            }
+                        }
+                        response = sh
+                            .authenticate_keyboard_interactive_respond(answers)
+                            .await
+                            .map_err(|e| format!("2FA auth respond error: {}", e))?;
+                    }
+                }
+            }
+        } else if let Some(ref kp) = key_path {
             // Pre-check: if the key is passphrase-encrypted and no passphrase was provided,
             // fail fast with a clear message (instead of russh's raw "The key is encrypted")
             let key_encrypted = key_file_is_encrypted(kp)
@@ -518,6 +587,8 @@ impl SshManager {
             cols,
             rows,
             auth_mode: auth_mode.clone(),
+            tfa_enabled,
+            tfa_code: tfa_code.clone(),
         };
 
         let session = SshSession {
@@ -1438,6 +1509,8 @@ impl SshManager {
             info.passphrase,
             info.auth_mode,
             sudo_password,
+            info.tfa_enabled,
+            info.tfa_code,
             app_handle,
             info.cols,
             info.rows,

@@ -52,6 +52,11 @@ pub async fn ssh_connect(
     }
     let cols = config["cols"].as_u64().unwrap_or(80) as u32;
     let rows = config["rows"].as_u64().unwrap_or(24) as u32;
+    // SSH 2FA（v9）：服务器标记 tfa_enabled → 认证走 keyboard-interactive；
+    // tfaCode 为连接表单预填的 TOTP 验证码（不落库，仅本次连接使用）。
+    let tfa_enabled = config["tfaEnabled"].as_bool().unwrap_or(false);
+    let tfa_code = config["tfaCode"].as_str().map(|s| s.to_string())
+        .filter(|c| !c.is_empty());
     // 权限模型 v8：连接模式 + sudo 密码（auth_mode='sudo' 且 sudo_password_mode='keyring' 时
     // 从系统钥匙串自动加载到会话缓存；ask 模式由前端在首次 sudo 时弹窗输入）
     let auth_mode = config["authMode"].as_str().unwrap_or("direct_root").to_string();
@@ -64,7 +69,7 @@ pub async fn ssh_connect(
         }
     }
     // ponytail: network operations without lock — only acquire briefly to insert session
-    let session = SshManager::do_connect(session_id.clone(), host, port, username, password, key_path, passphrase, auth_mode, sudo_password, app.clone(), cols, rows).await?;
+    let session = SshManager::do_connect(session_id.clone(), host, port, username, password, key_path, passphrase, auth_mode, sudo_password, tfa_enabled, tfa_code, app.clone(), cols, rows).await?;
     let mgr = ssh_mgr.lock().await;
     mgr.insert_session(session_id.clone(), session, app);
     drop(mgr);

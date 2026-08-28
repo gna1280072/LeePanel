@@ -39,17 +39,24 @@ pub struct Connection {
     /// 标记：钥匙串中是否已保存 sudo 密码。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub has_sudo_password: Option<bool>,
+    /// SSH 2FA（v9）：该服务器已开启双因素认证（连接时要求 TOTP 验证码）。
+    #[serde(default)]
+    pub tfa_enabled: bool,
+    /// 2FA 类型：'totp'（TOTP/PAM，默认）/ 'keypass'（轻量双因素：密钥+密码强制）。
+    #[serde(default = "default_tfa_type")]
+    pub tfa_type: String,
 }
 
 fn default_auth_mode() -> String { "direct_root".to_string() }
 fn default_sudo_password_mode() -> String { "ask".to_string() }
+fn default_tfa_type() -> String { "totp".to_string() }
 
 pub struct ConfigManager;
 
 impl ConfigManager {
     pub fn list(conn: &SqliteConn) -> Vec<Connection> {
         let mut stmt = conn
-            .prepare("SELECT id, name, host, port, username, auth_type, key_path, password, passphrase, remember_me, has_password, has_passphrase, COALESCE(auth_mode,'direct_root'), COALESCE(sudo_password_mode,'ask'), COALESCE(has_sudo_password,0) FROM connections ORDER BY name")
+            .prepare("SELECT id, name, host, port, username, auth_type, key_path, password, passphrase, remember_me, has_password, has_passphrase, COALESCE(auth_mode,'direct_root'), COALESCE(sudo_password_mode,'ask'), COALESCE(has_sudo_password,0), COALESCE(tfa_enabled,0), COALESCE(tfa_type,'totp') FROM connections ORDER BY name")
             .expect("prepare connections list");
         stmt.query_map([], |row| {
             // 标记列优先（新数据）；明文列仅作迁移前旧数据兼容推导，永不返回明文
@@ -78,6 +85,8 @@ impl ConfigManager {
                 auth_mode: row.get(12)?,
                 sudo_password_mode: row.get(13)?,
                 has_sudo_password: Some(row.get::<_, i64>(14)? == 1),
+                tfa_enabled: row.get::<_, Option<i64>>(15)?.map(|v| v == 1).unwrap_or(false),
+                tfa_type: row.get(16)?,
             })
         })
         .expect("query connections")
@@ -92,9 +101,10 @@ impl ConfigManager {
         let has_password = if c.has_password.unwrap_or(false) { 1 } else { 0 };
         let has_passphrase = if c.has_passphrase.unwrap_or(false) { 1 } else { 0 };
         let has_sudo_password = if c.has_sudo_password.unwrap_or(false) { 1 } else { 0 };
+        let tfa_enabled = if c.tfa_enabled { 1 } else { 0 };
         conn.execute(
-            "INSERT OR REPLACE INTO connections (id, name, host, port, username, auth_type, key_path, password, passphrase, remember_me, has_password, has_passphrase, auth_mode, sudo_password_mode, has_sudo_password) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
-            params![c.id, c.name, c.host, c.port as i64, c.username, c.auth_type, c.key_path, None::<String>, None::<String>, remember_me, has_password, has_passphrase, c.auth_mode, c.sudo_password_mode, has_sudo_password],
+            "INSERT OR REPLACE INTO connections (id, name, host, port, username, auth_type, key_path, password, passphrase, remember_me, has_password, has_passphrase, auth_mode, sudo_password_mode, has_sudo_password, tfa_enabled, tfa_type) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+            params![c.id, c.name, c.host, c.port as i64, c.username, c.auth_type, c.key_path, None::<String>, None::<String>, remember_me, has_password, has_passphrase, c.auth_mode, c.sudo_password_mode, has_sudo_password, tfa_enabled, c.tfa_type],
         ).map_err(|e| format!("Save connection failed: {}", e))?;
         Ok(())
     }
@@ -305,7 +315,9 @@ mod tests {
                 has_password INTEGER DEFAULT 0, has_passphrase INTEGER DEFAULT 0,
                 auth_mode TEXT NOT NULL DEFAULT 'direct_root',
                 sudo_password_mode TEXT NOT NULL DEFAULT 'ask',
-                has_sudo_password INTEGER DEFAULT 0
+                has_sudo_password INTEGER DEFAULT 0,
+                tfa_enabled INTEGER DEFAULT 0,
+                tfa_type TEXT NOT NULL DEFAULT 'totp'
             );
             CREATE TABLE favorites (path TEXT PRIMARY KEY, name TEXT NOT NULL);
             CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
@@ -324,6 +336,7 @@ mod tests {
             key_path: None, password: Some("pass".into()), passphrase: None, remember_me: false,
             has_password: None, has_passphrase: None,
             sudo_password: None, auth_mode: "direct_root".into(), sudo_password_mode: "ask".into(), has_sudo_password: None,
+            tfa_enabled: false, tfa_type: "totp".into(),
         };
         ConfigManager::save(&conn, &c).unwrap();
         let list = ConfigManager::list(&conn);
@@ -341,6 +354,7 @@ mod tests {
             key_path: None, password: None, passphrase: None, remember_me: false,
             has_password: None, has_passphrase: None,
             sudo_password: None, auth_mode: "direct_root".into(), sudo_password_mode: "ask".into(), has_sudo_password: None,
+            tfa_enabled: false, tfa_type: "totp".into(),
         };
         ConfigManager::save(&conn, &c).unwrap();
         ConfigManager::delete(&conn, "1").unwrap();
@@ -357,6 +371,7 @@ mod tests {
             // save() 的 has_* 标记由 command 层（config_save）根据钥匙串状态计算后传入
             has_password: Some(false), has_passphrase: Some(true),
             sudo_password: None, auth_mode: "direct_root".into(), sudo_password_mode: "ask".into(), has_sudo_password: None,
+            tfa_enabled: false, tfa_type: "totp".into(),
         };
         ConfigManager::save(&conn, &c).unwrap();
         let list = ConfigManager::list(&conn);
@@ -376,6 +391,7 @@ mod tests {
             key_path: None, password: None, passphrase: None, remember_me: false,
             has_password: None, has_passphrase: None,
             sudo_password: None, auth_mode: "direct_root".into(), sudo_password_mode: "ask".into(), has_sudo_password: None,
+            tfa_enabled: false, tfa_type: "totp".into(),
         };
         ConfigManager::save(&conn, &c).unwrap();
         ConfigManager::save_credentials(&conn, "1", "admin", "key", Some("/key"), None, Some("pp"), true).unwrap();

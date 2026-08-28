@@ -256,7 +256,7 @@ pub fn init_db() -> Result<Mutex<SqliteConn>, String> {
         let _ = conn.execute_batch("ALTER TABLE tunnels ADD COLUMN note TEXT NOT NULL DEFAULT '';");
     }
 
-    // v9: 审计日志表 —— 记录用户对服务器的管理操作（谁/何时/对哪台/执行了什么/结果）
+    // 审计日志表 —— 记录用户对服务器的管理操作（谁/何时/对哪台/执行了什么/结果）
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS op_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -270,9 +270,35 @@ pub fn init_db() -> Result<Mutex<SqliteConn>, String> {
         );"
     ).map_err(|e| format!("Failed to create op_log table: {}", e))?;
 
+    // v9: SSH 2FA —— per-server 双因素认证标记（驱动客户端 keyboard-interactive 认证流程）
+    // tfa_enabled: 该服务器已开启 2FA（连接时要求 TOTP 验证码）
+    // tfa_type: 'totp'（默认，TOTP/PAM）/ 'keypass'（轻量双因素：密钥+密码强制）
+    let has_tfa_enabled: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('connections') WHERE name='tfa_enabled'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_tfa_enabled {
+        let _ = conn.execute_batch("ALTER TABLE connections ADD COLUMN tfa_enabled INTEGER DEFAULT 0;");
+    }
+    let has_tfa_type: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('connections') WHERE name='tfa_type'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_tfa_type {
+        let _ = conn.execute_batch("ALTER TABLE connections ADD COLUMN tfa_type TEXT NOT NULL DEFAULT 'totp';");
+    }
+
     // Update schema version to latest
     conn.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', '8')",
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', '9')",
         [],
     ).map_err(|e| format!("Failed to update schema_version: {}", e))?;
 

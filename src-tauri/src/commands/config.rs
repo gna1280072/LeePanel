@@ -84,6 +84,25 @@ pub fn config_delete(db: tauri::State<'_, DbPool>, id: &str) -> Result<(), Strin
     ConfigManager::delete(&conn, id)
 }
 
+/// SSH 2FA（v9）：更新连接的 2FA 标记（驱动客户端 keyboard-interactive 认证流程）。
+/// 由 2FA 页面在"校验通过生效 / 卸载完成"时调用；tfa_type: 'totp' / 'keypass'。
+#[tauri::command]
+pub fn config_set_tfa_enabled(
+    db: tauri::State<'_, DbPool>,
+    config_id: String,
+    enabled: bool,
+    tfa_type: Option<String>,
+) -> Result<(), String> {
+    let conn = db.lock().unwrap();
+    let flag = if enabled { 1 } else { 0 };
+    let tfa_type = tfa_type.unwrap_or_else(|| "totp".to_string());
+    conn.execute(
+        "UPDATE connections SET tfa_enabled = ?1, tfa_type = ?2 WHERE id = ?3",
+        rusqlite::params![flag, tfa_type, config_id],
+    ).map_err(|e| format!("Set tfa flag failed: {}", e))?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn config_save_credentials(
     db: tauri::State<'_, DbPool>,

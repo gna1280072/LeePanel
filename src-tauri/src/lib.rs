@@ -78,7 +78,7 @@ pub fn run() {
             // SSH 2FA（v9）
             commands::tfa::tfa_get_status, commands::tfa::tfa_install,
             commands::tfa::tfa_configure, commands::tfa::tfa_configure_light,
-            commands::tfa::tfa_enroll, commands::tfa::tfa_disable,
+            commands::tfa::tfa_enroll, commands::tfa::tfa_read_secret, commands::tfa::tfa_disable,
             // Known hosts (SSH server identity, TOFU)
             commands::config::known_hosts_list, commands::config::known_hosts_delete,
             commands::config::known_hosts_add, commands::config::known_hosts_import_from_ssh,

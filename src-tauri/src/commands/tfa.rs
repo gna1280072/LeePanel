@@ -170,7 +170,12 @@ if ! grep -Eq "^[[:space:]]*KbdInteractiveAuthentication[[:space:]]+yes|^[[:spac
   fi
 fi
 sed -i '/^[[:space:]]*AuthenticationMethods/d' /etc/ssh/sshd_config
-printf '%s\n' 'AuthenticationMethods password,keyboard-interactive' >> /etc/ssh/sshd_config
+# 认证路径（2026-08-28 修正）：
+#   publickey,keyboard-interactive  → 密钥用户：先公钥、后验证码
+#   keyboard-interactive            → 密码用户：PAM 完整栈（密码+验证码）直接经 keyboard-interactive
+# 之前用 `password,keyboard-interactive` 要求"先密码成功"才能尝试 keyboard-interactive，
+# 客户端直接发起 keyboard-interactive 会被服务端顺序检查拒绝（认证失败）。
+printf '%s\n' 'AuthenticationMethods publickey,keyboard-interactive keyboard-interactive' >> /etc/ssh/sshd_config
 
 if ! sshd -t 2>/tmp/leepanel-sshd-t.err; then
   cp "$BK/sshd.pam.$TS" /etc/pam.d/sshd
@@ -250,13 +255,15 @@ pub async fn tfa_enroll(
     let username = session.connect_info.username.clone();
     drop(mgr);
 
+    // 方案 B（2026-08-28）：
+    // - `< /dev/null`：stdin 立即 EOF，避免 google-authenticator 交互阻塞（此前 15s 超时根因）
+    // - `-C`（--no-confirm）：跳过"Enter code from app"验证码确认——无 TTY 下该步骤
+    //   读 /dev/tty 失败（getline(): Inappropriate ioctl for device）导致退出码非 0
+    // - `-Q none`：不输出终端二维码（前端自己绘制），避免 ANSI/UTF8 乱码
     let script = r#"
-google-authenticator -t -d -f -r 3 -R 30 -w 3 2>&1
+google-authenticator -t -d -f -r 3 -R 30 -w 3 -C -Q none < /dev/null 2>&1
 "#;
-    let (stdout, _, code) = ssh::session_exec_with_output(&session, script, 15).await?;
-    if code != 0 {
-        return Err(format!("2FA enroll failed: {}", stdout.trim()));
-    }
+    let (stdout, _, code) = ssh::session_exec_with_output(&session, script, 30).await?;
     // 解析：第一行 "Your new secret key is: <BASE32>"；emergency scratch codes 其后 5 个
     let mut secret = String::new();
     let mut backup_codes: Vec<String> = Vec::new();
@@ -280,6 +287,12 @@ google-authenticator -t -d -f -r 3 -R 30 -w 3 2>&1
             }
         }
     }
+    // 退出码检查放在解析之后：secret 写入 ~/.google_authenticator 发生在 ask_code 之前，
+    // 即使旧版本 google-authenticator 不支持 -C 导致验证步骤失败（退出码非 0），
+    // 只要 secret 已成功解析（文件已落盘）就视为成功。
+    if code != 0 && secret.is_empty() {
+        return Err(format!("2FA enroll failed: {}", stdout.trim()));
+    }
     if secret.is_empty() {
         return Err(format!("Failed to parse TOTP secret from output: {}", stdout.trim()));
     }
@@ -288,6 +301,52 @@ google-authenticator -t -d -f -r 3 -R 30 -w 3 2>&1
         username, host, secret
     );
     audit_log(&db.lock().unwrap(), &host, &username, "tfa_enroll", "generate TOTP secret", "success", "");
+    Ok(TfaEnrollResult { secret, otpauth_uri, backup_codes })
+}
+
+/// 读取已初始化的 TOTP secret 与备用码（~/.google_authenticator）。
+/// 用于"查看备用码"与"继续用已有密钥"（向导检测到服务器已有 secret 时重建二维码）。
+/// secret 仅经加密通道回传前端展示，不落库、不进日志。
+#[tauri::command]
+pub async fn tfa_read_secret(
+    ssh_mgr: State<'_, Arc<AsyncMutex<SshManager>>>,
+    session_id: String,
+) -> Result<TfaEnrollResult, String> {
+    let mgr = ssh_mgr.lock().await;
+    let session = mgr.get_session(&session_id)?;
+    let host = session.connect_info.host.clone();
+    let username = session.connect_info.username.clone();
+    drop(mgr);
+
+    let script = r#"
+if [ -f ~/.google_authenticator ]; then cat ~/.google_authenticator; else echo "NO_SECRET_FILE"; fi
+"#;
+    let (stdout, _, code) = ssh::session_exec_with_output(&session, script, 10).await?;
+    if code != 0 {
+        return Err(format!("Failed to read secret file: {}", stdout.trim()));
+    }
+    if stdout.trim() == "NO_SECRET_FILE" {
+        return Err("NO_SECRET_FILE".to_string());
+    }
+    // 文件格式：第一行 base32 secret；以 '"' 开头的为配置行（RATE_LIMIT 等）；其余为备用码
+    let mut secret = String::new();
+    let mut backup_codes: Vec<String> = Vec::new();
+    for (i, line) in stdout.lines().enumerate() {
+        let t = line.trim();
+        if i == 0 {
+            secret = t.to_string();
+        } else if !t.is_empty() && !t.starts_with('"') {
+            backup_codes.push(t.to_string());
+        }
+    }
+    // base32 合法性校验（A-Z2-7）
+    if secret.is_empty() || !secret.chars().all(|c| c.is_ascii_uppercase() || ('2'..='7').contains(&c)) {
+        return Err(format!("Invalid secret file format: {}", stdout.trim()));
+    }
+    let otpauth_uri = format!(
+        "otpauth://totp/LeePanel:{}@{}?secret={}&issuer=LeePanel&period=30&digits=6&algorithm=SHA1",
+        username, host, secret
+    );
     Ok(TfaEnrollResult { secret, otpauth_uri, backup_codes })
 }
 

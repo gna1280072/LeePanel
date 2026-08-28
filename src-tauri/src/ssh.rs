@@ -413,11 +413,21 @@ impl SshManager {
                 .await
                 .map_err(|e| format!("2FA auth error: {}", e))?;
             let mut attempts = 0u32;
+            // 记录最近一轮服务端 prompt，认证失败时附上便于诊断（如未知 prompt 导致空串应答）
+            let mut last_prompts: Vec<String> = Vec::new();
             loop {
                 match response {
                     KeyboardInteractiveAuthResponse::Success => break,
                     KeyboardInteractiveAuthResponse::Failure => {
-                        return Err("2FA auth failed: incorrect password or verification code".to_string());
+                        let prompts_summary = if last_prompts.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" (server prompts: {})", last_prompts.join(" | "))
+                        };
+                        return Err(format!(
+                            "2FA auth failed: incorrect password or verification code{}",
+                            prompts_summary
+                        ));
                     }
                     KeyboardInteractiveAuthResponse::InfoRequest {
                         name: _,
@@ -428,6 +438,7 @@ impl SshManager {
                         if attempts > 8 {
                             return Err("2FA auth failed: too many prompts from server".to_string());
                         }
+                        last_prompts = prompts.iter().map(|p| p.prompt.clone()).collect();
                         let mut answers: Vec<String> = Vec::with_capacity(prompts.len());
                         for p in &prompts {
                             let lower = p.prompt.to_lowercase();
@@ -2022,7 +2033,16 @@ pub async fn session_exec_with_output(
                 }
             }
             _ = tokio::time::sleep_until(deadline) => {
-                return Err(format!("Command timed out after {}s", timeout_secs));
+                // 附上已收集的部分输出，便于诊断"命令挂起"类问题（如交互式命令等待 stdin）
+                let out = stdout.trim();
+                let err = stderr.trim();
+                if out.is_empty() && err.is_empty() {
+                    return Err(format!("Command timed out after {}s", timeout_secs));
+                }
+                return Err(format!(
+                    "Command timed out after {}s\nstdout: {}\nstderr: {}",
+                    timeout_secs, out, err
+                ));
             }
         }
     }

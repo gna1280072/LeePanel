@@ -3,8 +3,6 @@ import { invoke } from '../sudoPrompt'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-shell'
 import Dashboard from './panels/Dashboard'
-// ponytail: InstallLnmp removed
-// import InstallLnmp from './panels/InstallLnmp'
 import NginxPanel from './panels/NginxPanel'
 // ponytail: PhpPanel not yet wired up
 // import PhpPanel from './panels/PhpPanel'
@@ -158,8 +156,6 @@ export default function ServerPanel({ sessionId, connHost, connUsername, initial
     switch (activeSection) {
       case 'dashboard':
         return <Dashboard sessionId={sessionId} onNavigate={handleNavigate} />
-      // case 'install':
-      //   return <InstallLnmp sessionId={sessionId} onInstallationComplete={onReconnect} />
       case 'nginx':
         return <NginxPanel sessionId={sessionId} />
       // case 'php':

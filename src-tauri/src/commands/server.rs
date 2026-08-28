@@ -642,34 +642,3 @@ pub async fn server_redis_list_backups(
     server::redis_list_backups(&session, &cache, session_id).await
 }
 
-// ===== LNMP =====
-
-#[tauri::command]
-pub async fn server_check_lnmp(
-    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
-    session_id: &str,
-) -> Result<LnmpStatus, String> {
-    let mgr = ssh_mgr.lock().await;
-    let session = mgr.get_session(session_id)?;
-    let cache = mgr.cache.clone();
-    drop(mgr);
-    server::check_lnmp_status(&session, &cache, session_id).await
-}
-
-#[tauri::command]
-pub async fn server_install_lnmp(
-    ssh_mgr: tauri::State<'_, Arc<AsyncMutex<SshManager>>>,
-    app: tauri::AppHandle,
-    session_id: &str,
-    config: LnmpInstallConfig,
-) -> Result<String, String> {
-    let mgr = ssh_mgr.lock().await;
-    let session = mgr.get_session(session_id)?;
-    let cache = mgr.cache.clone();
-    drop(mgr);
-    let result = server::install_lnmp(&session, &cache, session_id, &config, &app).await;
-    cache.invalidate(session_id, &[
-        "lnmp_status", "service_statuses", "software_list", "php_versions", "docker_status",
-    ]);
-    result
-}

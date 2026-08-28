@@ -110,7 +110,6 @@ pub fn run() {
             commands::server::server_redis_dbsize_all, commands::server::server_redis_scan_keys,
             commands::server::server_redis_set_key, commands::server::server_redis_del_key,
             commands::server::server_redis_flushdb, commands::server::server_redis_save_backup, commands::server::server_redis_list_backups,
-            commands::server::server_check_lnmp, commands::server::server_install_lnmp,
             // Sites
             commands::server_ops::server_list_sites, commands::server_ops::server_create_site,
             commands::server_ops::server_toggle_site,

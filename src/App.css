@@ -8720,3 +8720,79 @@ body.dragging-files * {
   color: var(--danger);
   word-break: break-all;
 }
+
+/* ===== 2FA Panel（独立页面美化，主题变量明暗自适应） ===== */
+.tfa-status { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+.tfa-status-icon { width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; transition: background 0.15s; }
+.tfa-status-icon.on { background: var(--green-soft); color: var(--green); }
+.tfa-status-icon.off { background: var(--bg-subtle); color: var(--text-muted); }
+.tfa-status-title { font-size: 15px; font-weight: 600; color: var(--text); }
+.tfa-status-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.tfa-status-spin { font-size: 12px; color: var(--text-faint); }
+
+.tfa-warn-line { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 14px; padding: 10px 12px; border-radius: 8px; font-size: 12px; line-height: 1.6; background: var(--yellow-soft); border: 1px solid var(--yellow-soft-strong); color: var(--yellow); }
+
+.tfa-mode-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+.tfa-mode-card { flex: 1 1 220px; min-width: 200px; border-radius: 12px; padding: 16px; border: 1px solid var(--border); background: var(--bg-panel); transition: border-color 0.15s, transform 0.15s; }
+.tfa-mode-card:hover { border-color: var(--text-faint); transform: translateY(-1px); }
+.tfa-mode-card.feat { border: 2px solid var(--accent); background: var(--accent-soft); }
+.tfa-badge { display: inline-block; font-size: 11px; padding: 1px 10px; border-radius: 999px; }
+.tfa-badge.reco { background: var(--accent-soft-strong); color: var(--accent); }
+.tfa-badge.light { background: var(--bg-subtle); color: var(--text-muted); }
+.tfa-mode-title { font-size: 14px; font-weight: 600; color: var(--text); margin: 10px 0 4px; }
+.tfa-mode-desc { font-size: 12px; color: var(--text-dim); line-height: 1.6; margin-bottom: 12px; }
+
+.tfa-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.tfa-stepper { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+.tfa-step { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.tfa-step.active { color: var(--text); font-weight: 600; }
+.tfa-step-dot { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+.tfa-step-dot.done { background: var(--green-soft); color: var(--green); }
+.tfa-step-dot.active { background: var(--accent-soft-strong); color: var(--accent); }
+.tfa-step-dot.todo { background: var(--bg-subtle); color: var(--text-muted); }
+.tfa-step-line { flex: 1; height: 1px; background: var(--border); min-width: 12px; }
+
+.tfa-prepare-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 10px; margin-bottom: 8px; background: var(--bg-panel); border: 1px solid var(--border); }
+.tfa-prepare-state { width: 18px; text-align: center; flex-shrink: 0; }
+.tfa-prepare-state.done { color: var(--green); }
+.tfa-prepare-state.failed { color: var(--red); }
+.tfa-prepare-state.running { color: var(--accent); }
+.tfa-prepare-state.todo { color: var(--text-faint); }
+.tfa-prepare-name { font-size: 13px; color: var(--text); }
+.tfa-prepare-status { font-size: 12px; margin-left: auto; color: var(--text-dim); }
+
+.tfa-bind { display: flex; gap: 18px; align-items: flex-start; }
+.tfa-qr-wrap { flex-shrink: 0; padding: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 14px; }
+.tfa-qr-img { display: block; width: 180px; height: 180px; border-radius: 10px; }
+.tfa-qr-ph { width: 180px; height: 180px; display: flex; align-items: center; justify-content: center; color: var(--text-faint); font-size: 12px; }
+.tfa-secret-label { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+.tfa-secret-box { display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 12px; background: var(--bg-subtle); color: var(--text); padding: 6px 10px; border-radius: 6px; user-select: all; }
+.tfa-backup-label { margin: 12px 0 4px; font-size: 12px; color: var(--red); }
+.tfa-backup-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.tfa-backup-chip { font-family: 'JetBrains Mono', monospace; font-size: 12px; background: var(--bg-subtle); color: var(--text-muted); padding: 3px 9px; border-radius: 6px; }
+.tfa-saved-row { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--text); margin-top: 14px; cursor: pointer; }
+
+.tfa-wizard-foot { margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+.tfa-alert { border-radius: 10px; padding: 12px 14px; font-size: 12px; line-height: 1.6; margin-bottom: 14px; }
+.tfa-alert.warn { background: var(--yellow-soft); border: 1px solid var(--yellow-soft-strong); color: var(--yellow); }
+.tfa-alert.warn .t { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+.tfa-alert.danger { background: var(--red-soft); border: 1px solid var(--red-soft-strong); color: var(--red); }
+.tfa-alert.info { background: var(--accent-soft); border: 1px solid var(--accent-soft-strong); color: var(--accent); }
+
+.tfa-success { display: flex; align-items: center; gap: 12px; padding: 24px 0; }
+.tfa-success-check { font-size: 24px; color: var(--green); }
+.tfa-success-text { font-size: 15px; font-weight: 600; color: var(--text); }
+
+.tfa-diag { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 10px; }
+.tfa-diag-toggle { font-size: 12px; color: var(--text-faint); cursor: pointer; user-select: none; transition: color 0.15s; }
+.tfa-diag-toggle:hover { color: var(--text-muted); }
+.tfa-diag-body { margin-top: 10px; }
+.tfa-chip { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); margin-right: 8px; margin-bottom: 8px; display: inline-block; }
+.tfa-chip.ok { color: var(--green); border-color: var(--green-soft-strong); background: var(--green-soft); }
+.tfa-chip.no { color: var(--text-faint); }
+.tfa-diag-note { font-size: 12px; line-height: 1.7; color: var(--text-dim); }
+
+.tfa-error { color: var(--red); font-size: 13px; margin-top: 14px; white-space: pre-wrap; word-break: break-all; }
+.tfa-notice { font-size: 12px; color: var(--text-dim); margin-top: 8px; }

@@ -807,6 +807,16 @@ function App() {
   }
 
   const handleDirectConnect = useCallback(async (conn: SidebarConnection, tfaCodeOverride?: string) => {
+    // SSH 2FA 实时状态（v9）：关闭/开启 2FA 后 Sidebar 的连接数据可能过期（config_list 旧结果），
+    // 连接前按 configId 拉取最新 tfa_enabled，避免"已关闭仍弹验证码输入框 / 已开启却不提示"。
+    let liveTfaEnabled = conn.tfa_enabled ?? false
+    if (conn.id) {
+      try {
+        const list = await invoke<SidebarConnection[]>('config_list')
+        const fresh = list.find(c => c.id === conn.id)
+        if (fresh) liveTfaEnabled = fresh.tfa_enabled ?? false
+      } catch { /* 查询失败时沿用传入值 */ }
+    }
     // ponytail: multi-session — if already connected, just switch tab
     const existing = sessions.find(s => s.configId === conn.id)
     const isConnected = existing !== undefined && connectedConfigIds.has(conn.id)
@@ -838,7 +848,7 @@ function App() {
             configId: configId || undefined,
             authMode: conn.auth_mode || 'direct_root',
             sudoPasswordMode: conn.sudo_password_mode || 'ask',
-            tfaEnabled: conn.tfa_enabled || false,
+            tfaEnabled: liveTfaEnabled,
             tfaCode: tfaCode || conn.tfa_code || undefined,
             cols: estCols, rows: estRows,
           },
@@ -905,7 +915,7 @@ function App() {
     }
 
     // SSH 2FA（v9）：服务器已开启 2FA 且本次连接未提供验证码 → 先弹窗收集 TOTP
-    if (conn.tfa_enabled && !(tfaCodeOverride || conn.tfa_code)) {
+    if (liveTfaEnabled && !(tfaCodeOverride || conn.tfa_code)) {
       setTfaCodeInput('')
       setTfaDialog({ conn })
       return
@@ -935,6 +945,13 @@ function App() {
     window.addEventListener('sidebar-reconnect-after-edit', handler)
     return () => window.removeEventListener('sidebar-reconnect-after-edit', handler)
   }, [handleDirectConnect])
+
+  // SSH 2FA 状态变更（开启/关闭/轻量）：刷新 Sidebar 连接列表，使 tfa_enabled 标记即时同步
+  useEffect(() => {
+    const handler = () => setSidebarRefreshKey(k => k + 1)
+    window.addEventListener('tfa-status-changed', handler)
+    return () => window.removeEventListener('tfa-status-changed', handler)
+  }, [])
 
   return (
     <div className="app">

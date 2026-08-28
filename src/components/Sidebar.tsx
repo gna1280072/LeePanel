@@ -519,29 +519,6 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
                   </div>
                 </div>
               )}
-              {/* SSH 2FA（v9）：服务器已开启双因素认证 */}
-              <div className="form-group">
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={editing.tfa_enabled || false}
-                    onChange={(e) => setEditing({ ...editing, tfa_enabled: e.target.checked })}
-                  />
-                  <span>{t('sidebar.tfaEnabled')}</span>
-                </label>
-              </div>
-              {editing.tfa_enabled && (
-                <div className="form-group">
-                  <label>{t('sidebar.tfaCode')}</label>
-                  <input
-                    className="sidebar-edit-input"
-                    value={editing.tfa_code || ''}
-                    onChange={(e) => setEditing({ ...editing, tfa_code: e.target.value })}
-                    placeholder={t('sidebar.tfaCodePlaceholder')}
-                    autoComplete="off"
-                  />
-                </div>
-              )}
             </div>
             <div className="sidebar-confirm-actions">
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginRight: 'auto' }} title={t('sidebar.rememberMeTooltip')}>
@@ -683,29 +660,6 @@ export default function Sidebar({ onSelect, onConnect, onNew, onCreateConnection
                     />
                     <button className="sidebar-edit-action-btn" onClick={() => setShowCreateSudoPassword(!showCreateSudoPassword)} title={showCreateSudoPassword ? t('sidebar.hidePassword') : t('sidebar.showPassword')}>{showCreateSudoPassword ? '🙈' : '👁'}</button>
                   </div>
-                </div>
-              )}
-              {/* SSH 2FA（v9）：服务器已开启双因素认证 */}
-              <div className="form-group">
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={creating.tfa_enabled || false}
-                    onChange={(e) => setCreating({ ...creating, tfa_enabled: e.target.checked })}
-                  />
-                  <span>{t('sidebar.tfaEnabled')}</span>
-                </label>
-              </div>
-              {creating.tfa_enabled && (
-                <div className="form-group">
-                  <label>{t('sidebar.tfaCode')}</label>
-                  <input
-                    className="sidebar-edit-input"
-                    value={creating.tfa_code || ''}
-                    onChange={(e) => setCreating({ ...creating, tfa_code: e.target.value })}
-                    placeholder={t('sidebar.tfaCodePlaceholder')}
-                    autoComplete="off"
-                  />
                 </div>
               )}
             </div>

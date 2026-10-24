@@ -3,6 +3,7 @@ pub mod config;
 pub mod credentials;
 pub mod server;
 pub mod server_ops;
+pub mod ssl;
 pub mod fb;
 pub mod tunnel;
 pub mod port;

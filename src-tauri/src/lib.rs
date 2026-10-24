@@ -5,6 +5,7 @@ mod db;
 mod permissions;
 mod server;
 mod ssh;
+mod ssl_cert;
 mod tunnel;
 mod commands;
 
@@ -134,6 +135,10 @@ pub fn run() {
             commands::server_ops::server_save_site_config, commands::server_ops::server_set_hotlink_protection, commands::server_ops::server_set_reverse_proxy,
             commands::server_ops::server_list_php_versions, commands::server_ops::server_list_subdirs,
             commands::server_ops::server_setup_ssl, commands::server_ops::server_get_monitor_data,
+            // SSL custom certificates
+            commands::ssl::server_ssl_site_infos, commands::ssl::server_ssl_precheck,
+            commands::ssl::server_ssl_install_custom, commands::ssl::server_ssl_generate_self_signed,
+            commands::ssl::server_ssl_remove_custom,
             // Firewall
             commands::server_ops::server_firewall_list, commands::server_ops::server_firewall_add,
             commands::server_ops::server_firewall_remove, commands::server_ops::server_firewall_toggle,

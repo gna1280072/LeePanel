@@ -2200,6 +2200,59 @@ pub async fn session_write_file_bytes(session: &SshSession, path: &str, content:
     Ok(())
 }
 
+/// 以指定权限位创建/覆盖远端文件（敏感内容专用，例如 SSL 私钥）。
+///
+/// 与 `session_write_file_bytes` 的差异：
+/// - 走 SFTP `open_with_flags_and_attributes`，**创建时就带上 mode**（如 0600），
+///   不存在"先 644 再 chmod"的窗口期；
+/// - SFTP 不可用时**拒绝**回退到 exec（exec 兜底会把内容 base64 拼进命令行，
+///   私钥会短暂出现在远端 ps 里），只有非敏感文件（mode 含 group/other 可读）才允许回退。
+pub async fn session_write_file_bytes_mode(
+    session: &SshSession,
+    path: &str,
+    content: &[u8],
+    mode: u32,
+) -> Result<(), String> {
+    use russh_sftp::protocol::{FileAttributes, OpenFlags};
+    use tokio::io::AsyncWriteExt;
+
+    if let Ok(sftp) = session_open_sftp(session).await {
+        let attrs = FileAttributes {
+            permissions: Some(mode),
+            ..FileAttributes::empty()
+        };
+        let flags = OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE;
+        if let Ok(mut file) = sftp.open_with_flags_and_attributes(path, flags, attrs).await {
+            let written = file.write_all(content).await;
+            let flushed = file.shutdown().await;
+            if written.is_ok() && flushed.is_ok() {
+                return Ok(());
+            }
+        }
+    }
+    if mode & 0o077 == 0 {
+        return Err(
+            "SFTP is unavailable: refusing to write a sensitive file through the shell fallback"
+                .to_string(),
+        );
+    }
+    session_write_file_bytes(session, path, content).await
+}
+
+/// 通过 SFTP 创建目录（已存在视为成功）。
+pub async fn session_mkdir_sftp(session: &SshSession, path: &str) -> Result<(), String> {
+    let sftp = session_open_sftp(session)
+        .await
+        .map_err(|e| format!("SFTP unavailable: {}", e))?;
+    if sftp.create_dir(path).await.is_ok() {
+        return Ok(());
+    }
+    if sftp.try_exists(path).await.unwrap_or(false) {
+        return Ok(());
+    }
+    Err(format!("Failed to create remote directory: {}", path))
+}
+
 pub async fn session_disconnect(session: &SshSession) -> Result<(), String> {
     let h = session.handle.clone();
     let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async {

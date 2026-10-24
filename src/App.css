@@ -6540,6 +6540,240 @@ body.dragging-files * {
   color: var(--text);
 }
 
+/* ----- 证书来源 / 到期状态 ----- */
+.ssl-panel .sites-grid {
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+
+.ssl-panel .site-card-actions {
+  flex-wrap: wrap;
+}
+
+.site-ssl-badge.no-ssl {
+  background: var(--yellow-soft);
+  color: var(--yellow);
+}
+
+.ssl-source-badge {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+}
+
+.ssl-source-badge.letsencrypt {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.ssl-source-badge.custom {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.ssl-source-badge.selfsigned {
+  background: var(--yellow-soft);
+  color: var(--yellow);
+}
+
+.ssl-expiry.soon {
+  color: var(--yellow);
+  font-weight: 600;
+}
+
+.ssl-expiry.expired {
+  color: var(--red);
+  font-weight: 600;
+}
+
+/* ----- 证书弹窗 ----- */
+.ssl-modal {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  width: 680px;
+  max-width: 92vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  animation: slideUp 0.2s ease;
+}
+
+.ssl-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 10px 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.ssl-textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  box-sizing: border-box;
+}
+
+.ssl-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.ssl-file-btn {
+  align-self: flex-start;
+  margin-top: 6px;
+}
+
+.ssl-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin-top: 2px;
+}
+
+.ssl-checkbox-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1.5;
+}
+
+.ssl-checkbox-row input {
+  margin-top: 2px;
+  flex: none;
+}
+
+.ssl-check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--bg);
+}
+
+.ssl-check-item {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.ssl-check-mark {
+  width: 12px;
+  flex: none;
+  text-align: center;
+  font-weight: 700;
+}
+
+.ssl-check-item.ok .ssl-check-mark {
+  color: var(--green);
+}
+
+.ssl-check-item.warn .ssl-check-mark {
+  color: var(--yellow);
+}
+
+.ssl-check-item.warn {
+  color: var(--text-muted);
+}
+
+.ssl-check-item.error {
+  color: var(--red);
+}
+
+.ssl-check-item.error .ssl-check-mark {
+  color: var(--red);
+}
+
+.ssl-check-verdict {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ssl-check-verdict.ok {
+  color: var(--green);
+}
+
+.ssl-check-verdict.error {
+  color: var(--red);
+}
+
+.ssl-detail-row {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--bg-subtle);
+}
+
+.ssl-detail-row:last-child {
+  border-bottom: none;
+}
+
+.ssl-detail-label {
+  min-width: 120px;
+  flex: none;
+  color: var(--text-faint);
+}
+
+.ssl-detail-value {
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+.ssl-warning-text {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--yellow);
+  background: var(--yellow-soft);
+  border: 1px solid var(--yellow-soft-strong);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.ssl-error {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--red);
+  background: var(--red-soft);
+  border: 1px solid var(--red-soft-strong);
+  border-radius: 6px;
+  padding: 8px 10px;
+  word-break: break-all;
+}
+
+.ssl-modal-log {
+  max-height: 140px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
 /* ===== Server Settings Panel ===== */
 
 .settings-panel {

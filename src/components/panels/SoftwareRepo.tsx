@@ -88,6 +88,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
   const [addSourceName, setAddSourceName] = useState('')
   const [addSourceUrl, setAddSourceUrl] = useState('')
   const [addSourceGpgKey, setAddSourceGpgKey] = useState('')
+  const [addSourceAllowUnsigned, setAddSourceAllowUnsigned] = useState(false)
   const [addSourceLoading, setAddSourceLoading] = useState(false)
   const [addSourceError, setAddSourceError] = useState('')
 
@@ -319,10 +320,10 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
   const handleRemoveSelectedSources = async () => {
     if (!sessionId || selectedSources.length === 0) return
     try {
-      await invoke<string>('server_remove_sources', {
+      await invokeWithSudo(() => invoke<string>('server_remove_sources', {
         sessionId,
         sourceNames: selectedSources,
-      })
+      }), sessionId)
       setSourcesModalOpen(false)
       setTimeout(() => handleManageSourcesClick(), 500)
     } catch (e) {
@@ -330,22 +331,30 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
     }
   }
 
-  // Add new source
+  // Add new source (GPG key required unless the unsigned escape hatch is ticked)
   const handleAddSource = async () => {
     if (!sessionId || !addSourceName.trim() || !addSourceUrl.trim()) return
+    const gpgKey = addSourceGpgKey.trim()
+    if (!gpgKey && !addSourceAllowUnsigned) return
     setAddSourceLoading(true)
     setAddSourceError('')
     try {
-      await invoke<string>('server_add_source', {
+      await invokeWithSudo(() => invoke<string>('server_add_source', {
         sessionId,
         name: addSourceName.trim(),
         url: addSourceUrl.trim(),
-        gpgKey: addSourceGpgKey.trim() || null,
-      })
+        gpgKey: gpgKey || null,
+        allowUnsigned: addSourceAllowUnsigned,
+      }), sessionId)
       setAddSourceModalOpen(false)
       setAddSourceName('')
       setAddSourceUrl('')
       setAddSourceGpgKey('')
+      setAddSourceAllowUnsigned(false)
+      // 新源文件会出现在可移除列表中，刷新一次让用户看到结果
+      if (sourcesModalOpen) {
+        setTimeout(() => handleManageSourcesClick(), 300)
+      }
     } catch (e) {
       setAddSourceError(String(e).slice(0, 300))
     } finally {
@@ -686,6 +695,13 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
               disabled={cleaningSources}
             >
               {cleaningSources ? t('software.updatingSources') : t('software.cleanSources')}
+            </button>
+            <button
+              className="sw-action-btn small"
+              onClick={handleManageSourcesClick}
+              disabled={cleaningSources}
+            >
+              {t('software.manageSources')}
             </button>
           </div>
         </div>
@@ -1095,6 +1111,13 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
 
             <div className="sw-confirm-actions">
               <button
+                className="sw-action-btn primary"
+                onClick={() => setAddSourceModalOpen(true)}
+                disabled={sourcesLoading}
+              >
+                {t('software.addSource')}
+              </button>
+              <button
                 className="sw-action-btn"
                 onClick={() => setSourcesModalOpen(false)}
                 disabled={sourcesLoading}
@@ -1147,6 +1170,9 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                     background: 'var(--bg-panel)', color: 'var(--text)',
                   }}
                 />
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px', lineHeight: 1.5 }}>
+                  {t('software.sourceUrlHint')}
+                </div>
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>{t('software.sourceGpgKey')}</label>
@@ -1161,7 +1187,24 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
                     background: 'var(--bg-panel)', color: 'var(--text)',
                   }}
                 />
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px', lineHeight: 1.5 }}>
+                  {t('software.sourceGpgKeyHint')}
+                </div>
               </div>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={addSourceAllowUnsigned}
+                  onChange={e => setAddSourceAllowUnsigned(e.target.checked)}
+                  style={{ marginTop: '3px' }}
+                />
+                <span style={{ fontSize: '13px', lineHeight: 1.5 }}>{t('software.allowUnsignedSource')}</span>
+              </label>
+              {addSourceAllowUnsigned && (
+                <div className="sw-confirm-warning" style={{ marginTop: '-4px' }}>
+                  {t('software.allowUnsignedWarning')}
+                </div>
+              )}
             </div>
 
             {addSourceError && (
@@ -1179,7 +1222,7 @@ export default function SoftwareRepo({ sessionId }: SoftwareRepoProps) {
               <button
                 className="sw-action-btn primary"
                 onClick={handleAddSource}
-                disabled={addSourceLoading || !addSourceName.trim() || !addSourceUrl.trim()}
+                disabled={addSourceLoading || !addSourceName.trim() || !addSourceUrl.trim() || (!addSourceGpgKey.trim() && !addSourceAllowUnsigned)}
               >
                 {addSourceLoading ? t('software.addingSource') : t('software.addSource')}
               </button>

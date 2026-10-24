@@ -189,6 +189,118 @@ pub fn validate_container_action(a: &str) -> Result<(), String> {
     Ok(())
 }
 
+// ===== 软件源 / 软件安装 参数校验（GPG 校验加固） =====
+
+/// 内部：严格 http(s) URL 校验。
+/// 仅允许 `A-Za-z0-9` 与 `:/?=._-%~+,@[]`，必须以 `http://` 或 `https://` 开头。
+/// 空白、引号、反引号、`$`、`;`、`&`、`|`、反斜杠一律拒绝 —— 该值可能进入 shell 上下文。
+fn check_https_url(u: &str, max: usize) -> Result<(), String> {
+    if u.is_empty() || u.len() > max {
+        return Err("empty or too long".to_string());
+    }
+    if !(u.starts_with("http://") || u.starts_with("https://")) {
+        return Err("must start with http:// or https://".to_string());
+    }
+    if !u.chars().all(|c| c.is_ascii_alphanumeric() || ":/?=._-%~+,@[]".contains(c)) {
+        return Err("contains disallowed characters".to_string());
+    }
+    Ok(())
+}
+
+/// 软件源标识名：`[A-Za-z0-9_-]`，1-64 字符。
+/// 用作 `/etc/apt/sources.list.d/<name>.list` 或 `/etc/yum.repos.d/<name>.repo` 的文件名，
+/// 以及 yum repo 的 section 名（`[<name>]`）。
+pub fn validate_source_name(s: &str) -> Result<(), String> {
+    if s.is_empty() || s.len() > 64
+        || !s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-')) {
+        return reject(s, "source name");
+    }
+    Ok(())
+}
+
+/// GPG 公钥 URL：必须是 http(s) 且不含 shell 元字符。
+pub fn validate_gpg_key_url(s: &str) -> Result<(), String> {
+    check_https_url(s, 512).map_err(|_| format!("Invalid GPG key URL: '{}'", s))
+}
+
+/// 软件源定位符：完整 `deb` / `deb-src` 源行（如 `deb https://x.io/deb jammy main`），
+/// 或裸 http(s) URL（由服务端补全 suite/component）。
+/// 全字符集禁引号 / 反引号 / `$` / 反斜杠 / `;` / `&` / `|` / `<>`，防注入。
+pub fn validate_source_locator(s: &str) -> Result<(), String> {
+    if s.is_empty() || s.len() > 512 {
+        return reject(s, "source URL");
+    }
+    if s.chars().any(|c| {
+        c.is_control()
+            || matches!(
+                c,
+                '\'' | '"' | '`' | '$' | '\\' | ';' | '&' | '|' | '<' | '>' | '#' | '!' | '*' | '{' | '}'
+            )
+    }) {
+        return reject(s, "source URL");
+    }
+    let first = s.split_whitespace().next().unwrap_or("");
+    if first == "deb" || first == "deb-src" {
+        let url = s
+            .split_whitespace()
+            .find(|t| t.starts_with("http://") || t.starts_with("https://"))
+            .ok_or_else(|| format!("Invalid source line (missing http(s) URL): '{}'", s))?;
+        return check_https_url(url, 512)
+            .map_err(|e| format!("Invalid source line: '{}' ({})", s, e));
+    }
+    check_https_url(s, 512).map_err(|e| format!("Invalid source URL: '{}' ({})", s, e))
+}
+
+/// 软件标识 / 安装目标名：字母数字开头，可含 `. + - _`，≤64 字符。
+/// 覆盖内建标识（nginx/redis/php/mysql…）与 `php8.3` 形式。
+pub fn validate_software_name(s: &str) -> Result<(), String> {
+    if s.is_empty() || s.len() > 64 {
+        return reject(s, "software name");
+    }
+    if !s.chars().next().map(|c| c.is_ascii_alphanumeric()).unwrap_or(false)
+        || !s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '+' | '-' | '_')) {
+        return reject(s, "software name");
+    }
+    Ok(())
+}
+
+/// 软件安装动作：install / uninstall。
+pub fn validate_software_action(a: &str) -> Result<(), String> {
+    if !matches!(a, "install" | "uninstall") {
+        return reject(a, "software action");
+    }
+    Ok(())
+}
+
+/// 软件安装选项：空、仓库变体（`aliyun` / `mariadb` / `mysql`）、PHP 版本（`8.2`）、
+/// 源码编译模式（`source:8.3`）。仅允许 `[A-Za-z0-9.+:_-]`，≤32 字符。
+pub fn validate_software_options(s: &str) -> Result<(), String> {
+    if s.len() > 32 {
+        return reject(s, "software options");
+    }
+    if !s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '+' | ':' | '-' | '_')) {
+        return reject(s, "software options");
+    }
+    Ok(())
+}
+
+/// 展示标签净化：`display_name` 会被插值进远端 shell 的单引号内
+/// （`echo '<action>:<display_name>' > /tmp/leepanel-install.info`），
+/// 因此剔除控制字符与引号 / 反引号 / `$` / 反斜杠 / `;` / `&` / `|` / `<>` 等元字符，
+/// 并截断至 64 字符。净化而非拒绝，避免历史自定义条目因个别字符无法安装。
+pub fn sanitize_label(s: &str) -> String {
+    s.chars()
+        .filter(|c| {
+            !c.is_control()
+                && !matches!(
+                    c,
+                    '\'' | '"' | '`' | '$' | '\\' | ';' | '&' | '|' | '<' | '>' | '#' | '!' | '{' | '}'
+                )
+        })
+        .take(64)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,5 +409,81 @@ mod tests {
         assert!(validate_container_action("start").is_ok());
         assert!(validate_container_action("restart").is_ok());
         assert!(validate_container_action("rm -rf /").is_err());
+    }
+
+    #[test]
+    fn source_name_ok() {
+        assert!(validate_source_name("my-repo").is_ok());
+        assert!(validate_source_name("remi_8").is_ok());
+        assert!(validate_source_name("").is_err());
+        assert!(validate_source_name("a/b").is_err());
+        assert!(validate_source_name("a b").is_err());
+        assert!(validate_source_name("../etc/passwd").is_err());
+        assert!(validate_source_name("a;rm -rf /").is_err());
+    }
+
+    #[test]
+    fn gpg_key_url_ok() {
+        assert!(validate_gpg_key_url("https://packages.example.com/gpg.key").is_ok());
+        assert!(validate_gpg_key_url("http://mirrors.aliyun.com/key").is_ok());
+        assert!(validate_gpg_key_url("ftp://example.com/key").is_err());
+        assert!(validate_gpg_key_url("example.com/key").is_err());
+        assert!(validate_gpg_key_url("https://x.io/k'ey").is_err());
+        assert!(validate_gpg_key_url("https://x.io/k$(id)").is_err());
+        assert!(validate_gpg_key_url("").is_err());
+    }
+
+    #[test]
+    fn source_locator_ok() {
+        assert!(validate_source_locator("https://packages.example.com/debian").is_ok());
+        assert!(validate_source_locator("deb [arch=amd64] https://x.io/deb jammy main").is_ok());
+        assert!(validate_source_locator("deb-src https://x.io/deb jammy main").is_ok());
+        assert!(validate_source_locator("deb https://x.io/deb jammy").is_ok());
+        assert!(validate_source_locator("https://x.io/deb; rm -rf /").is_err());
+        assert!(validate_source_locator("https://x.io/deb' $(id) '").is_err());
+        assert!(validate_source_locator("deb jammy main").is_err());
+        assert!(validate_source_locator("file:///srv/deb").is_err());
+        assert!(validate_source_locator("").is_err());
+    }
+
+    #[test]
+    fn software_name_ok() {
+        assert!(validate_software_name("nginx").is_ok());
+        assert!(validate_software_name("php8.3").is_ok());
+        assert!(validate_software_name("gcc-c++").is_ok());
+        assert!(validate_software_name("-flag").is_err());
+        assert!(validate_software_name("nginx; rm -rf /").is_err());
+        assert!(validate_software_name("a b").is_err());
+        assert!(validate_software_name("").is_err());
+    }
+
+    #[test]
+    fn software_action_ok() {
+        assert!(validate_software_action("install").is_ok());
+        assert!(validate_software_action("uninstall").is_ok());
+        assert!(validate_software_action("INSTALL").is_err());
+        assert!(validate_software_action("install; rm -rf /").is_err());
+    }
+
+    #[test]
+    fn software_options_ok() {
+        assert!(validate_software_options("").is_ok());
+        assert!(validate_software_options("8.2").is_ok());
+        assert!(validate_software_options("source:8.3").is_ok());
+        assert!(validate_software_options("aliyun").is_ok());
+        assert!(validate_software_options("8.2\"; rm -rf /").is_err());
+        assert!(validate_software_options("$(id)").is_err());
+        assert!(validate_software_options(&"x".repeat(33)).is_err());
+    }
+
+    #[test]
+    fn sanitize_label_strips_metachars() {
+        assert_eq!(sanitize_label("Nginx Web Server"), "Nginx Web Server");
+        assert_eq!(sanitize_label("Redis (Cache)"), "Redis (Cache)");
+        assert_eq!(sanitize_label("x'; rm -rf /; echo '"), "x rm -rf / echo ");
+        assert_eq!(sanitize_label("a`id`b"), "aidb");
+        assert_eq!(sanitize_label("a$(id)b"), "a(id)b");
+        assert_eq!(sanitize_label("a\nb"), "ab");
+        assert!(sanitize_label(&"y".repeat(200)).len() <= 64);
     }
 }

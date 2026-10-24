@@ -433,6 +433,10 @@ pub async fn server_remove_sources(
     session_id: &str,
     source_names: Vec<String>,
 ) -> Result<String, String> {
+    // 权限模型 v8：参数白名单校验，防源名注入（源名会拼进远端 rm 路径）
+    for n in &source_names {
+        crate::permissions::validate_source_name(n)?;
+    }
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
@@ -460,12 +464,24 @@ pub async fn server_add_source(
     name: &str,
     url: &str,
     gpg_key: Option<&str>,
+    allow_unsigned: Option<bool>,
 ) -> Result<String, String> {
+    // 权限模型 v8：参数白名单校验（name / 源定位符 / 公钥 URL）。
+    // allow_unsigned 缺省为 false —— 未显式声明的未签名源一律拒绝（fail-closed）。
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
     drop(mgr);
-    server::add_source(&session, &cache, session_id, name, url, gpg_key).await
+    server::add_source(
+        &session,
+        &cache,
+        session_id,
+        name,
+        url,
+        gpg_key,
+        allow_unsigned.unwrap_or(false),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -479,6 +495,11 @@ pub async fn server_software_action(
     options: &str,
     display_name: &str,
 ) -> Result<String, String> {
+    // 权限模型 v8：参数白名单校验（software / action / options 均会进入远端脚本；
+    // display_name 由 server::software_action 内部净化）
+    crate::permissions::validate_software_name(software)?;
+    crate::permissions::validate_software_action(action)?;
+    crate::permissions::validate_software_options(options)?;
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();
@@ -997,11 +1018,19 @@ pub async fn custom_software_add(
     display_name: &str,
     category: &str,
 ) -> Result<(), String> {
+    // 权限模型 v8：包名白名单校验 + 展示名净化，避免把危险字符写入库中
+    crate::permissions::validate_package_name(package_name)?;
+    let safe_display = crate::permissions::sanitize_label(display_name);
+    let safe_display = if safe_display.trim().is_empty() {
+        package_name.to_string()
+    } else {
+        safe_display
+    };
     let mgr = ssh_mgr.lock().await;
     let host = mgr.get_host(session_id).unwrap_or_default();
     drop(mgr);
     let conn = db.lock().map_err(|e| e.to_string())?;
-    db::CustomSoftwareManager::add(&conn, &host, package_name, display_name, category)
+    db::CustomSoftwareManager::add(&conn, &host, package_name, &safe_display, category)
 }
 
 #[tauri::command]
@@ -1028,6 +1057,9 @@ pub async fn custom_software_action(
     action: &str,
     display_name: &str,
 ) -> Result<String, String> {
+    // 权限模型 v8：参数白名单校验（ASCII 严格包名，比 server.rs 内联校验更严）
+    crate::permissions::validate_package_name(package_name)?;
+    crate::permissions::validate_software_action(action)?;
     let mgr = ssh_mgr.lock().await;
     let session = mgr.get_session(session_id)?;
     let cache = mgr.cache.clone();

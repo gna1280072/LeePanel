@@ -3087,13 +3087,19 @@ pub async fn setup_ssl(
             emit("Installing certbot-nginx plugin...", "installing");
         }
         let os = detect_os(session, cache, session_id).await?;
-        let install_cmd = if os.family == "debian" {
-            "apt-get install -y certbot python3-certbot-nginx"
+        let install_cmd: String = if os.family == "debian" {
+            "apt-get install -y certbot python3-certbot-nginx".to_string()
         } else {
-            "yum install -y --nogpgcheck --assumeyes certbot python3-certbot-nginx || dnf install -y --nogpgcheck --assumeyes certbot python3-certbot-nginx"
+            // RHEL：certbot 来自 EPEL / AppStream，gpgcheck 默认为 1，需先导入 EPEL 公钥。
+            // 整条用 bash -c 包装：auth_mode='sudo' 时 `sudo -S` 只提权命令链第一段，
+            // 不包装会让 `|| dnf ...` 回退分支以普通用户执行而失败。
+            format!(
+                "bash -c '{} ; yum install -y --assumeyes certbot python3-certbot-nginx || dnf install -y --assumeyes certbot python3-certbot-nginx'",
+                RHEL_EPEL_KEY_ONELINE
+            )
         };
         // Stream certbot install output (权限模型 v8：统一 sudo 包装)
-        let (mut install_channel, _) = crate::ssh::session_exec_channel(session, install_cmd).await?;
+        let (mut install_channel, _) = crate::ssh::session_exec_channel(session, &install_cmd).await?;
         let install_deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(180);
         loop {
             tokio::select! {
@@ -4456,6 +4462,7 @@ pub async fn custom_software_action(
     }
 
     let script = format!(r#"#!/bin/bash
+{epel_key_fn}
 echo "=== {} {} ==="
 if [ -f /etc/os-release ]; then
   . /etc/os-release
@@ -4473,7 +4480,9 @@ if [ "{}" = "install" ]; then
     apt-get update -q --allow-releaseinfo-change 2>&1 || true
     apt-get install -y {} 2>&1
   else
-    yum install -y --nogpgcheck --assumeyes {} 2>&1
+    # gpgcheck 默认 1：自定义包可能来自 EPEL，先导入其公钥
+    __leepanel_import_epel_key || true
+    yum install -y --assumeyes {} 2>&1
   fi
   # Try to enable and start service if exists
   _svc=$(systemctl list-unit-files --type=service 2>/dev/null | grep -oP '^{}[\d._-]*\.service' | head -1 | sed 's/.service$//')
@@ -4497,7 +4506,8 @@ else
 fi
 echo "ACTION_SUCCESS"
 "#,
-        action, safe, action, safe, safe, safe, safe, safe, safe, safe, safe
+        action, safe, action, safe, safe, safe, safe, safe, safe, safe, safe,
+        epel_key_fn = RHEL_EPEL_KEY_FN
     );
 
     crate::ssh::session_write_file(session, "/tmp/software-action.sh", &script).await?;
@@ -4523,7 +4533,10 @@ echo "ACTION_SUCCESS"
     // 原因：sudo -S 前缀只提权命令链第一段，后续 `bash /tmp/software-action.sh`
     // 会以普通用户运行导致安装失败（exit -1）；脚本文件方式让整条链以 root 执行，
     // 且 $$/引号在文件内保持原样。
-    let run_script: String = format!("echo $$ > /tmp/leepanel-install.pid; echo '{}:{}' > /tmp/leepanel-install.info; > /tmp/leepanel-install.log; chmod 644 /tmp/leepanel-install.log; bash /tmp/software-action.sh >> /tmp/leepanel-install.log 2>&1; rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info", action, display_name);
+    // 权限加固：action / display_name 会被插值进 shell 单引号内，先净化再拼装
+    let info_action = crate::permissions::sanitize_label(action);
+    let info_display = crate::permissions::sanitize_label(display_name);
+    let run_script: String = format!("echo $$ > /tmp/leepanel-install.pid; echo '{}:{}' > /tmp/leepanel-install.info; > /tmp/leepanel-install.log; chmod 644 /tmp/leepanel-install.log; bash /tmp/software-action.sh >> /tmp/leepanel-install.log 2>&1; rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info", info_action, info_display);
     crate::ssh::session_write_file(session, "/tmp/leepanel-run.sh", &run_script).await?;
     let (mut channel, _) = crate::ssh::session_exec_channel(session, "bash /tmp/leepanel-run.sh").await?;
     // ponytail: tail the log file for real-time output display
@@ -4765,6 +4778,10 @@ pub async fn remove_sources(
     if source_names.is_empty() {
         return Err("No sources selected for removal".to_string());
     }
+    // 权限加固：源名会拼进远端 rm 路径，逐个白名单校验（[A-Za-z0-9_-]）
+    for n in &source_names {
+        crate::permissions::validate_source_name(n)?;
+    }
     
     let cmd = format!(r#"
 if [ -f /etc/os-release ]; then
@@ -4888,7 +4905,154 @@ fi
     }
 }
 
-/// Add a new package source
+/// 生成"添加软件源"远端脚本。
+/// 用户输入（源定位符 / 公钥地址）由调用方经 SFTP 落盘到
+/// `/tmp/leepanel-src-<name>.url` 与 `.key`，脚本运行时从文件读取，
+/// 因此本脚本内除已白名单校验的 `name` / `allow_unsigned` 外没有任何外部字符串插值。
+///
+/// 校验策略（GPG 加固）：
+/// - Debian：公钥 dearmor 到 `/etc/apt/keyrings/<name>.gpg`，源行写入
+///   `[signed-by=...]` —— 这是 apt 认可 keyring 的唯一方式（`/etc/apt/keyrings`
+///   不在 apt 默认信任路径内，必须由 `signed-by` 显式引用）。
+/// - RHEL：`gpgcheck=1` + `gpgkey=`，并 `rpm --import` 预导入，确保首次安装即可验签。
+/// - 无公钥时：仅当调用方显式 `allow_unsigned` 才降级为 `trusted=yes` / `gpgcheck=0`，
+///   否则直接拒绝 —— 不做静默降级。
+fn build_add_source_script(name: &str, allow_unsigned: bool) -> String {
+    // 脚本内按字符串 "0"/"1" 比较，避免 Rust bool 渲染成 "true"/"false"
+    let allow_flag = if allow_unsigned { "1" } else { "0" };
+    format!(
+        r#"#!/bin/bash
+# LeePanel add package source — 用户输入自文件读取，无 shell 插值
+NAME="{name}"
+URL_FILE="/tmp/leepanel-src-${{NAME}}.url"
+KEY_FILE="/tmp/leepanel-src-${{NAME}}.key"
+ALLOW_UNSIGNED="{allow_flag}"
+
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+fi
+ID="${{ID:-unknown}}"
+SRC="$(cat "$URL_FILE" 2>/dev/null)"
+if [ -z "$SRC" ]; then
+  echo "ERROR: source locator is empty"
+  exit 1
+fi
+
+if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
+  DEST="/etc/apt/sources.list.d/${{NAME}}.list"
+  if [ -e "$DEST" ]; then
+    echo "ERROR: Source file already exists: $DEST"
+    exit 1
+  fi
+  mkdir -p /etc/apt/keyrings
+
+  if [ -f "$KEY_FILE" ]; then
+    KEYURL="$(cat "$KEY_FILE")"
+    if ! curl -fsSL "$KEYURL" | gpg --dearmor -o "/etc/apt/keyrings/${{NAME}}.gpg"; then
+      echo "ERROR: failed to download or dearmor GPG key: $KEYURL"
+      exit 1
+    fi
+    chmod a+r "/etc/apt/keyrings/${{NAME}}.gpg"
+    OPTS="signed-by=/etc/apt/keyrings/${{NAME}}.gpg"
+    echo "GPG key installed: /etc/apt/keyrings/${{NAME}}.gpg (signature verification enforced)"
+  else
+    if [ "$ALLOW_UNSIGNED" != "1" ]; then
+      echo "ERROR: no GPG key provided — refusing to add an unverified source"
+      exit 1
+    fi
+    OPTS="trusted=yes"
+    echo "WARNING: adding UNSIGNED source — apt signature verification disabled for this repo" >&2
+  fi
+
+  case "$SRC" in
+    "deb "*|"deb-src "*)
+      HEAD="${{SRC%% *}}"
+      REST="${{SRC#* }}"
+      # 丢弃用户原有的 [...] 选项块，统一改用本工具生成的选项
+      REST="$(printf '%s' "$REST" | sed 's/^\[[^]]*\][[:space:]]*//')"
+      LINE="$HEAD [$OPTS] $REST"
+      ;;
+    http://*|https://*)
+      CODENAME="${{VERSION_CODENAME:-}}"
+      if [ -z "$CODENAME" ]; then
+        CODENAME="$(lsb_release -cs 2>/dev/null)"
+      fi
+      if [ -z "$CODENAME" ]; then
+        echo "ERROR: cannot detect distribution codename for a bare URL — supply a full 'deb ...' line instead"
+        exit 1
+      fi
+      LINE="deb [$OPTS] $SRC $CODENAME main"
+      ;;
+    *)
+      echo "ERROR: unsupported source locator: $SRC"
+      exit 1
+      ;;
+  esac
+
+  printf '%s\n' "$LINE" > "$DEST"
+  chmod 644 "$DEST"
+  echo "Wrote $DEST:"
+  cat "$DEST"
+else
+  case "$SRC" in
+    "deb "*|"deb-src "*)
+      echo "ERROR: 'deb' source lines are only valid on Debian/Ubuntu"
+      exit 1
+      ;;
+  esac
+
+  DEST="/etc/yum.repos.d/${{NAME}}.repo"
+  if [ -e "$DEST" ]; then
+    echo "ERROR: Source file already exists: $DEST"
+    exit 1
+  fi
+
+  GPGCHECK=1
+  GPGKEY_LINE=""
+  if [ -f "$KEY_FILE" ]; then
+    KEYURL="$(cat "$KEY_FILE")"
+    GPGKEY_LINE="gpgkey=$KEYURL"
+    rpm --import "$KEYURL" 2>/dev/null || echo "WARNING: rpm --import failed for $KEYURL" >&2
+    echo "GPG key imported: $KEYURL (signature verification enforced)"
+  else
+    if [ "$ALLOW_UNSIGNED" != "1" ]; then
+      echo "ERROR: no GPG key provided — refusing to add an unverified source"
+      exit 1
+    fi
+    GPGCHECK=0
+    echo "WARNING: adding UNSIGNED source — yum signature verification disabled for this repo" >&2
+  fi
+
+  {{
+    echo "[$NAME]"
+    echo "name=$NAME"
+    echo "baseurl=$SRC"
+    echo "enabled=1"
+    echo "gpgcheck=$GPGCHECK"
+    echo "repo_gpgcheck=0"
+    if [ -n "$GPGKEY_LINE" ]; then
+      echo "$GPGKEY_LINE"
+    fi
+  }} > "$DEST"
+  chmod 644 "$DEST"
+  echo "Wrote $DEST:"
+  cat "$DEST"
+fi
+
+rm -f "$URL_FILE" "$KEY_FILE"
+echo "ACTION_SUCCESS"
+"#
+    )
+}
+
+/// Add a new package source.
+///
+/// 安全设计（GPG 加固）：
+/// - `name` / `url`（可为完整 `deb` 源行）/ `gpg_key` 全部经 `permissions` 白名单校验；
+/// - 用户输入经 SFTP 写入 `/tmp/leepanel-src-<name>.{url,key}`，远端脚本只读文件，
+///   全程零 shell 字符串插值 → 不存在命令注入面；
+/// - Debian 侧生成 `signed-by=` 引用 keyring，yum 侧写 `gpgcheck=1` + `gpgkey=`；
+/// - 未提供公钥时必须显式 `allow_unsigned`，否则拒绝（不静默降级）。
 pub async fn add_source(
     session: &SshSession,
     _cache: &SshCache,
@@ -4896,71 +5060,45 @@ pub async fn add_source(
     name: &str,
     url: &str,
     gpg_key: Option<&str>,
+    allow_unsigned: bool,
 ) -> Result<String, String> {
-    if name.is_empty() || url.is_empty() {
-        return Err("Source name and URL are required".to_string());
+    crate::permissions::validate_source_name(name)?;
+    crate::permissions::validate_source_locator(url)?;
+    let key = gpg_key.unwrap_or("").trim();
+    if key.is_empty() {
+        if !allow_unsigned {
+            return Err("A GPG key URL is required — without it the source cannot be signature-verified. \
+                        Enable 'allow unsigned source' to add it explicitly."
+                .to_string());
+        }
+    } else {
+        crate::permissions::validate_gpg_key_url(key)?;
     }
 
-    // Validate name (alphanumeric, hyphen, underscore only)
-    if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
-        return Err("Source name can only contain letters, numbers, hyphens, and underscores".to_string());
+    let base = format!("/tmp/leepanel-src-{}", name);
+    // 1) 用户输入经 SFTP 落盘（不经 shell 解析）
+    crate::ssh::session_write_file(session, &format!("{}.url", base), url).await?;
+    if !key.is_empty() {
+        crate::ssh::session_write_file(session, &format!("{}.key", base), key).await?;
     }
+    // 2) 脚本（name / allow_unsigned 均已白名单校验）
+    let script = build_add_source_script(name, allow_unsigned);
+    crate::ssh::session_write_file(session, &format!("{}.sh", base), &script).await?;
 
-    let cmd = format!(r#"
-if [ -f /etc/os-release ]; then
-  . /etc/os-release
-fi
+    // 3) 执行 + 清理。`sudo -S` 只提权命令链第一段，因此首条命令必须是 `bash <script>`；
+    //    临时文件属主为登录用户，尾部 rm 无需提权。
+    let cmd = format!("bash {base}.sh; __lp_rc=$?; rm -f {base}.sh {base}.url {base}.key; exit $__lp_rc");
+    let (stdout, stderr, code) = crate::ssh::session_exec_with_output(session, &cmd, 60).await?;
 
-echo "Adding package source: {}"
-
-if [ "$ID" = "ubuntu" ] || [ "$ID" = "debian" ]; then
-  # Debian/Ubuntu: Create .list file
-  SOURCE_FILE="/etc/apt/sources.list.d/{}.list"
-  
-  if [ -f "$SOURCE_FILE" ]; then
-    echo "ERROR: Source file already exists: $SOURCE_FILE"
-    exit 1
-  fi
-  
-  # Write the source line
-  echo '{}' > "$SOURCE_FILE"
-  
-  # Add GPG key if provided
-  if [ -n "{}" ]; then
-    mkdir -p /etc/apt/keyrings
-    curl -fsSL "{}" | gpg --dearmor -o /etc/apt/keyrings/{}.gpg 2>/dev/null || true
-    chmod a+r /etc/apt/keyrings/{}.gpg 2>/dev/null || true
-  fi
-  
-  echo "Source added successfully"
-else
-  # CentOS/RHEL: Create .repo file
-  SOURCE_FILE="/etc/yum.repos.d/{}.repo"
-  
-  if [ -f "$SOURCE_FILE" ]; then
-    echo "ERROR: Source file already exists: $SOURCE_FILE"
-    exit 1
-  fi
-  
-  # Write repo configuration
-  cat > "$SOURCE_FILE" << 'EOF'
-[{}]
-name={}
-baseurl={}
-enabled=1
-gpgcheck=0
-EOF
-  
-  # Add GPG key if provided
-  if [ -n "{}" ]; then
-    sed -i "s/gpgcheck=0/gpgcheck=1\ngpgkey={}/" "$SOURCE_FILE"
-  fi
-  
-  echo "Source added successfully"
-fi
-"#, name, name, url, gpg_key.unwrap_or(""), gpg_key.unwrap_or(""), name, name, name, name, name, name, url, gpg_key.unwrap_or(""));
-
-    let (_stdout, _stderr, _exit_code) = crate::ssh::session_exec_with_output(session, &cmd, 15).await?;
+    if code != 0 || !stdout.contains("ACTION_SUCCESS") {
+        let detail = format!("{}{}", stdout, stderr);
+        let detail = detail.trim();
+        return Err(format!(
+            "Failed to add package source '{}':\n{}",
+            name,
+            if detail.is_empty() { "no output" } else { detail }
+        ));
+    }
     Ok(format!("Package source '{}' added successfully", name))
 }
 
@@ -5007,7 +5145,10 @@ pub async fn software_action(
     // 原因：sudo -S 前缀只提权命令链第一段，后续 `bash /tmp/software-action.sh`
     // 会以普通用户运行导致安装失败（exit -1）；脚本文件方式让整条链以 root 执行，
     // 且 $$/引号在文件内保持原样。
-    let run_script: String = format!("echo $$ > /tmp/leepanel-install.pid; echo '{}:{}' > /tmp/leepanel-install.info; > /tmp/leepanel-install.log; chmod 644 /tmp/leepanel-install.log; bash /tmp/software-action.sh >> /tmp/leepanel-install.log 2>&1; rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info", action, display_name);
+    // 权限加固：action / display_name 会被插值进 shell 单引号内，先净化再拼装
+    let info_action = crate::permissions::sanitize_label(action);
+    let info_display = crate::permissions::sanitize_label(display_name);
+    let run_script: String = format!("echo $$ > /tmp/leepanel-install.pid; echo '{}:{}' > /tmp/leepanel-install.info; > /tmp/leepanel-install.log; chmod 644 /tmp/leepanel-install.log; bash /tmp/software-action.sh >> /tmp/leepanel-install.log 2>&1; rm -f /tmp/leepanel-install.pid /tmp/leepanel-install.info", info_action, info_display);
     crate::ssh::session_write_file(session, "/tmp/leepanel-run.sh", &run_script).await?;
     let (mut channel, _) = crate::ssh::session_exec_channel(session, "bash /tmp/leepanel-run.sh").await?;
     // ponytail: tail the log file for real-time output display
@@ -5153,6 +5294,30 @@ pub async fn software_action(
     }
 }
 
+/// RHEL 系（yum/dnf）默认 `gpgcheck=1`，第三方仓库首次使用前必须先导入签名公钥，
+/// 否则会以 "Public key not installed" 失败。此处按「阿里云镜像 → 官方源」顺序尝试，
+/// 两者都不可达时打印 WARNING 但不中断 —— 后续安装会给出明确的 GPG 报错，属 fail-closed。
+const RHEL_EPEL_KEY_FN: &str = r#"__leepanel_import_epel_key() {
+  for _u in "https://mirrors.aliyun.com/epel/RPM-GPG-KEY-EPEL-$(rpm -E %rhel)" \
+            "https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-$(rpm -E %rhel)"; do
+    rpm --import "$_u" 2>/dev/null && return 0
+  done
+  echo "WARNING: EPEL GPG key not imported — EPEL packages may fail signature check" >&2
+  return 1
+}
+"#;
+
+/// Remi 仓库签名公钥预导入（PHP 第三方版本源）。
+const RHEL_REMI_KEY_FN: &str = r#"__leepanel_import_remi_key() {
+  rpm --import "https://rpms.remirepo.net/RPM-GPG-KEY-remi" 2>/dev/null && return 0
+  echo "WARNING: Remi GPG key not imported — Remi packages may fail signature check" >&2
+  return 1
+}
+"#;
+
+/// EPEL 公钥预导入的单行形式（用于必须保持单命令的调用点，内部不得出现单引号）。
+const RHEL_EPEL_KEY_ONELINE: &str = r#"for _u in "https://mirrors.aliyun.com/epel/RPM-GPG-KEY-EPEL-$(rpm -E %rhel)" "https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-$(rpm -E %rhel)"; do rpm --import "$_u" 2>/dev/null && break; done"#;
+
 /// Generate a PHP source compilation script (BT Panel style)
 fn build_php_source_compile_script(php_ver: &str, action: &str) -> String {
     // ponytail: PHP source URLs — pinned to specific patch versions for reproducibility
@@ -5219,16 +5384,18 @@ install_deps() {{
     else
       PM="yum"
     fi
-    $PM install -y --nogpgcheck epel-release 2>/dev/null || true
+    # gpgcheck 默认为 1：先导入 EPEL 公钥，避免 epel 包因缺 key 校验失败
+    {epel_key_oneline} || true
+    $PM install -y epel-release 2>/dev/null || true
     # Core build tools
-    $PM install -y --nogpgcheck gcc gcc-c++ make autoconf automake libtool re2c bison flex pkgconf-pkg-config
+    $PM install -y gcc gcc-c++ make autoconf automake libtool re2c bison flex pkgconf-pkg-config
     # Each lib individually — CentOS 9 compatible names
     for pkg in libxml2-devel openssl-devel libcurl-devel sqlite-devel \
                libpng-devel libjpeg-devel freetype-devel libzip-devel \
                oniguruma-devel libsodium-devel readline-devel libxslt-devel \
                zlib-devel bzip2-devel libicu-devel gmp-devel \
                libwebp-devel libtidy-devel enchant2-devel; do
-      $PM install -y --nogpgcheck "$pkg" 2>/dev/null || MISSING="$MISSING $pkg"
+      $PM install -y "$pkg" 2>/dev/null || MISSING="$MISSING $pkg"
     done
   fi
   [ -n "$MISSING" ] && echo "INFO: Some packages not available (non-fatal):$MISSING"
@@ -5457,7 +5624,7 @@ else
   echo "PHP $PHP_VER removed"
 fi
 echo "ACTION_SUCCESS"
-"#, php_ver = php_ver, full_ver = full_ver, source_url = source_url, action = action)
+"#, php_ver = php_ver, full_ver = full_ver, source_url = source_url, action = action, epel_key_oneline = RHEL_EPEL_KEY_ONELINE)
 }
 
 fn build_software_script(
@@ -5470,13 +5637,14 @@ fn build_software_script(
     let (pkg_mgr, pkg_install, pkg_remove) = if is_debian {
         ("apt-get", "apt-get install -y", "apt-get purge -y")
     } else {
-        ("yum", "yum install -y --nogpgcheck --assumeyes", "yum remove -y --assumeyes")
+        ("yum", "yum install -y --assumeyes", "yum remove -y --assumeyes")
     };
 
     let (packages, service_name, post_install, post_remove) = match software {
         "redis" => {
             // ponytail: version selection removed — system package manager picks the version
             return format!(r#"#!/bin/bash
+{epel_key_fn}
 echo "=== {} Redis ==="
 if [ -f /etc/os-release ]; then
   . /etc/os-release
@@ -5500,8 +5668,9 @@ if [ "{}" = "install" ]; then
     apt-get update -q --allow-releaseinfo-change 2>&1 || true
     apt-get install -y redis-server
   else
-    yum install -y --nogpgcheck --assumeyes epel-release
-    yum install -y --nogpgcheck --assumeyes redis
+    __leepanel_import_epel_key || true
+    yum install -y --assumeyes epel-release
+    yum install -y --assumeyes redis
   fi
   systemctl enable redis-server && systemctl start redis-server 2>/dev/null || systemctl enable redis && systemctl start redis
 else
@@ -5516,7 +5685,7 @@ else
   fi
 fi
 echo "ACTION_SUCCESS"
-"#, action, action);
+"#, action, action, epel_key_fn = RHEL_EPEL_KEY_FN);
         }
         "memcached" => (
             "memcached",
@@ -5549,7 +5718,7 @@ if [ "{}" = "install" ]; then
       apt-get update -q --allow-releaseinfo-change 2>&1 || true
       apt-get install -y nodejs npm
     else
-      yum install -y --nogpgcheck --assumeyes nodejs npm
+      yum install -y --assumeyes nodejs npm
     fi
   fi
 else
@@ -5586,10 +5755,12 @@ echo "ACTION_SUCCESS"
     apt-get update -q --allow-releaseinfo-change 2>&1 || true
     apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
   else
-    yum install -y --nogpgcheck --assumeyes yum-utils
+    yum install -y --assumeyes yum-utils
     yum-config-manager --add-repo https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
     sed -i 's+download.docker.com+mirrors.aliyun.com/docker-ce+' /etc/yum.repos.d/docker-ce.repo
-    yum install -y --nogpgcheck --assumeyes docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    # 该 repo 自带 gpgcheck=1，先导入阿里云镜像的 Docker 签名公钥，避免首次安装校验失败
+    rpm --import https://mirrors.aliyun.com/docker-ce/linux/centos/gpg 2>/dev/null || true
+    yum install -y --assumeyes docker-ce docker-ce-cli containerd.io docker-compose-plugin
   fi"#, lock_wait)
             } else {
                 // Direct pipe for official source
@@ -5703,10 +5874,10 @@ if [ "__ACTION__" = "install" ]; then
     fi
     
     if [ "$VARIANT" = "mysql" ]; then
-      yum install -y --nogpgcheck --assumeyes mysql-server
+      yum install -y --assumeyes mysql-server
       SVC_NAME="mysqld"
     else
-      yum install -y --nogpgcheck --assumeyes mariadb-server
+      yum install -y --assumeyes mariadb-server
       SVC_NAME="mariadb"
     fi
   fi
@@ -5785,6 +5956,8 @@ echo "ACTION_SUCCESS"
 
             let script = r#"#!/bin/bash
 # ponytail: no set -e — optional extensions may be missing from repos
+__EPEL_KEY_FN__
+__REMI_KEY_FN__
 echo "=== __ACTION__ PHP __VERSION__ ==="
 if [ -f /etc/os-release ]; then
   . /etc/os-release
@@ -5822,7 +5995,8 @@ if [ "__ACTION__" = "install" ]; then
       SVC=$(systemctl list-units --type=service | grep -E 'php[0-9.]*-fpm' | awk '{print $1}' | head -1 | sed 's/.service//')
     fi
   else
-    yum install -y --nogpgcheck --assumeyes epel-release 2>/dev/null || true
+    __leepanel_import_epel_key || true
+    yum install -y --assumeyes epel-release 2>/dev/null || true
     if [ -n "__VERSION__" ]; then
       VER_NODOT=$(echo "__VERSION__" | tr -d '.')
       # ponytail: try DNF module stream first (RHEL 8+/CentOS 8+), fallback to Remi SCL
@@ -5836,27 +6010,29 @@ if [ "__ACTION__" = "install" ]; then
           SVC="php-fpm"
         else
           # Fallback to Remi SCL
-          yum install -y --nogpgcheck --assumeyes https://rpms.remirepo.net/enterprise/remi-release-$(rpm -E %{rhel}).rpm 2>/dev/null || true
+          __leepanel_import_remi_key || true
+          yum install -y --assumeyes https://rpms.remirepo.net/enterprise/remi-release-$(rpm -E %{rhel}).rpm 2>/dev/null || true
           yum module enable -y php:remi-__VERSION__ 2>/dev/null || true
-          yum install -y --nogpgcheck --assumeyes php${VER_NODOT}-php-fpm || { echo "ERROR: php${VER_NODOT}-php-fpm install failed"; exit 1; }
+          yum install -y --assumeyes php${VER_NODOT}-php-fpm || { echo "ERROR: php${VER_NODOT}-php-fpm install failed"; exit 1; }
           for pkg in php${VER_NODOT}-php-mysqlnd php${VER_NODOT}-php-curl php${VER_NODOT}-php-mbstring php${VER_NODOT}-php-xml php${VER_NODOT}-php-zip php${VER_NODOT}-php-gd php${VER_NODOT}-php-bcmath php${VER_NODOT}-php-opcache; do
-            yum install -y --nogpgcheck --assumeyes "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
+            yum install -y --assumeyes "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
           done
           SVC="php${VER_NODOT}-php-fpm"
         fi
       else
         # yum (CentOS 7) or no module: use Remi SCL directly
-        yum install -y --nogpgcheck --assumeyes https://rpms.remirepo.net/enterprise/remi-release-$(rpm -E %{rhel}).rpm 2>/dev/null || true
-        yum install -y --nogpgcheck --assumeyes php${VER_NODOT}-php-fpm || { echo "ERROR: php${VER_NODOT}-php-fpm install failed"; exit 1; }
+        __leepanel_import_remi_key || true
+        yum install -y --assumeyes https://rpms.remirepo.net/enterprise/remi-release-$(rpm -E %{rhel}).rpm 2>/dev/null || true
+        yum install -y --assumeyes php${VER_NODOT}-php-fpm || { echo "ERROR: php${VER_NODOT}-php-fpm install failed"; exit 1; }
         for pkg in php${VER_NODOT}-php-mysqlnd php${VER_NODOT}-php-curl php${VER_NODOT}-php-mbstring php${VER_NODOT}-php-xml php${VER_NODOT}-php-zip php${VER_NODOT}-php-gd php${VER_NODOT}-php-bcmath php${VER_NODOT}-php-opcache; do
-          yum install -y --nogpgcheck --assumeyes "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
+          yum install -y --assumeyes "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
         done
         SVC="php${VER_NODOT}-php-fpm"
       fi
     else
-      yum install -y --nogpgcheck --assumeyes php-fpm || { echo "ERROR: php-fpm install failed"; exit 1; }
+      yum install -y --assumeyes php-fpm || { echo "ERROR: php-fpm install failed"; exit 1; }
       for pkg in php-mysqlnd php-curl php-mbstring php-xml php-zip php-gd php-bcmath php-opcache; do
-        yum install -y --nogpgcheck --assumeyes "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
+        yum install -y --assumeyes "$pkg" || { echo "SKIP: $pkg not available"; SKIPPED="$SKIPPED $pkg"; }
       done
       SVC="php-fpm"
     fi
@@ -5882,7 +6058,9 @@ echo "ACTION_SUCCESS"
 "#;
             return script
                 .replace("__ACTION__", action)
-                .replace("__VERSION__", &version);
+                .replace("__VERSION__", &version)
+                .replace("__EPEL_KEY_FN__", RHEL_EPEL_KEY_FN)
+                .replace("__REMI_KEY_FN__", RHEL_REMI_KEY_FN);
         }
         _ if software.starts_with("php") => {
             // ponytail: dynamic PHP version — any phpX.Y name handled uniformly
@@ -5895,6 +6073,8 @@ echo "ACTION_SUCCESS"
             let svc_name = format!("php{}-fpm", php_ver);
             let script = "#!/bin/bash\n\
 # ponytail: no set -e — optional extensions may be missing from repos\n\
+__EPEL_KEY_FN__\n\
+__REMI_KEY_FN__\n\
 SKIPPED=\"\"\n\
 echo \"=== __ACTION__ PHP __VER__ ===\"\n\
 if [ -f /etc/os-release ]; then\n\
@@ -5931,14 +6111,16 @@ if [ \"__ACTION__\" = \"install\" ]; then\n\
       done\n\
     else\n\
       # Fallback to Remi SCL\n\
-      yum install -y --nogpgcheck --assumeyes epel-release 2>/dev/null || true\n\
-      yum install -y --nogpgcheck --assumeyes https://rpms.remirepo.net/enterprise/remi-release-$(rpm -E %{rhel}).rpm 2>/dev/null || true\n\
+      __leepanel_import_epel_key || true\n\
+      yum install -y --assumeyes epel-release 2>/dev/null || true\n\
+      __leepanel_import_remi_key || true\n\
+      yum install -y --assumeyes https://rpms.remirepo.net/enterprise/remi-release-$(rpm -E %{rhel}).rpm 2>/dev/null || true\n\
       yum module enable -y php:remi-__VER__ 2>/dev/null || true\n\
       REMI_VER=$(echo __VER__ | tr -d '.')\n\
-      yum install -y --nogpgcheck --assumeyes php${REMI_VER}-php-fpm || { echo \"ERROR: php${REMI_VER}-php-fpm install failed\"; exit 1; }\n\
+      yum install -y --assumeyes php${REMI_VER}-php-fpm || { echo \"ERROR: php${REMI_VER}-php-fpm install failed\"; exit 1; }\n\
       SVC_NAME=php${REMI_VER}-php-fpm\n\
       for pkg in php${REMI_VER}-php-mysqlnd php${REMI_VER}-php-curl php${REMI_VER}-php-mbstring php${REMI_VER}-php-xml php${REMI_VER}-php-zip php${REMI_VER}-php-gd php${REMI_VER}-php-bcmath php${REMI_VER}-php-opcache; do\n\
-        yum install -y --nogpgcheck --assumeyes \"$pkg\" || { echo \"SKIP: $pkg not available\"; SKIPPED=\"$SKIPPED $pkg\"; }\n\
+        yum install -y --assumeyes \"$pkg\" || { echo \"SKIP: $pkg not available\"; SKIPPED=\"$SKIPPED $pkg\"; }\n\
       done\n\
     fi\n\
   fi\n\
@@ -5959,6 +6141,8 @@ echo \"ACTION_SUCCESS\"\n";
                 .replace("__ACTION__", action)
                 .replace("__VER__", php_ver)
                 .replace("__EXT__", &extensions)
+                .replace("__EPEL_KEY_FN__", RHEL_EPEL_KEY_FN)
+                .replace("__REMI_KEY_FN__", RHEL_REMI_KEY_FN)
                 .replace("__SVC__", &svc_name);
         }
         "apache" | "apache2.2" | "apache2.4" => {
@@ -6022,7 +6206,7 @@ if [ "{}" = "install" ]; then
     apt-get update -q 2>&1
     apt-get install -y postgresql postgresql-contrib
   else
-    yum install -y --nogpgcheck --assumeyes postgresql-server postgresql-contrib
+    yum install -y --assumeyes postgresql-server postgresql-contrib
     postgresql-setup --initdb 2>/dev/null || true
   fi
   systemctl enable postgresql && systemctl start postgresql
@@ -9584,5 +9768,84 @@ mod keygen_tests {
         let normalized: Option<&str> = Some("").filter(|p| !p.is_empty());
         let res = try_load(&kp.private_key_pem, normalized);
         assert!(res.is_ok(), "normalized empty passphrase should load an unencrypted key: {:?}", res.err());
+    }
+}
+
+#[cfg(test)]
+mod add_source_script_tests {
+    use super::*;
+
+    #[test]
+    fn debian_branch_references_downloaded_keyring_via_signed_by() {
+        let s = build_add_source_script("example", false);
+        // 关键回归点：keyring 必须由 signed-by 显式引用，否则 apt 不会信任它
+        assert!(
+            s.contains("signed-by=/etc/apt/keyrings/${NAME}.gpg"),
+            "signed-by reference missing:\n{}", s
+        );
+        assert!(s.contains("gpg --dearmor -o \"/etc/apt/keyrings/${NAME}.gpg\""));
+        assert!(s.contains("/etc/apt/sources.list.d/${NAME}.list"));
+        assert!(s.ends_with("echo \"ACTION_SUCCESS\"\n"));
+    }
+
+    #[test]
+    fn rhel_branch_enforces_gpgcheck_by_default() {
+        let s = build_add_source_script("example", false);
+        assert!(s.contains("GPGCHECK=1"), "gpgcheck must default to 1");
+        assert!(s.contains("echo \"gpgcheck=$GPGCHECK\""));
+        assert!(s.contains("gpgkey=$KEYURL") || s.contains("GPGKEY_LINE=\"gpgkey=$KEYURL\""));
+        assert!(s.contains("rpm --import \"$KEYURL\""));
+        assert!(s.contains("/etc/yum.repos.d/${NAME}.repo"));
+    }
+
+    #[test]
+    fn unsigned_mode_is_explicit_and_flagged() {
+        let off = build_add_source_script("example", false);
+        let on = build_add_source_script("example", true);
+        // Rust bool 不能被渲染成 true/false —— 脚本按 "1" 比较
+        assert!(off.contains("ALLOW_UNSIGNED=\"0\""));
+        assert!(on.contains("ALLOW_UNSIGNED=\"1\""));
+        assert!(!off.contains("ALLOW_UNSIGNED=\"true\""));
+        assert!(off.contains("refusing to add an unverified source"));
+        assert!(on.contains("trusted=yes"));
+        assert!(on.contains("GPGCHECK=0"));
+    }
+
+    #[test]
+    fn user_input_is_read_from_files_not_interpolated() {
+        let s = build_add_source_script("example", false);
+        assert!(s.contains("SRC=\"$(cat \"$URL_FILE\""));
+        assert!(s.contains("KEYURL=\"$(cat \"$KEY_FILE\")\""));
+        // 源定位符只能从文件读取：脚本里唯一出现的 URL 字面量是 case 的模式串
+        assert_eq!(s.matches("https://").count(), 1, "unexpected URL literal in script:\n{}", s);
+        assert!(s.contains("\"http://*|https://*)\"") || s.contains("http://*|https://*)"));
+    }
+
+    #[test]
+    fn epel_key_oneline_is_safe_inside_single_quoted_bash_c() {
+        // certbot 安装走 `bash -c '<oneline> ; yum install ...'`，内嵌单引号会破坏外层引用
+        assert!(!RHEL_EPEL_KEY_ONELINE.contains('\''));
+        assert!(RHEL_EPEL_KEY_ONELINE.contains("rpm --import"));
+    }
+
+    #[test]
+    fn rhel_key_helpers_define_expected_functions() {
+        assert!(RHEL_EPEL_KEY_FN.contains("__leepanel_import_epel_key()"));
+        assert!(RHEL_REMI_KEY_FN.contains("__leepanel_import_remi_key()"));
+        // 两个函数体不得出现单引号（会被 insert 进单引号上下文之外，但保持一致更安全）
+        assert!(!RHEL_EPEL_KEY_FN.contains('\''));
+        assert!(!RHEL_REMI_KEY_FN.contains('\''));
+    }
+
+    #[test]
+    fn no_package_manager_call_disables_gpg_check() {
+        // 全项目回归：任何安装路径都不得再出现跳过 GPG 校验的 yum/dnf 参数
+        let src = include_str!("server.rs");
+        let needle = concat!("--", "nogpgcheck");
+        assert!(
+            !src.contains(needle),
+            "GPG 校验不允许被静默关闭：仍有安装命令在使用 {}",
+            needle
+        );
     }
 }
